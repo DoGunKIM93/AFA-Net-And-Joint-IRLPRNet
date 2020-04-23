@@ -1,7 +1,7 @@
 '''
 utils.py
 '''
-version = "1.21.200423.1"
+version = "1.22.200423.2"
 
 import torch.nn as nn
 import torch
@@ -347,10 +347,8 @@ def loadModels(modelList, version, subversion, loadModelNum, isTest):
 
 
 
-        if (loadModelNum is not 'None'): # 로드 할거야
+        if (loadModelNum is not 'None' or len([attr for attr in vars(modelList) if attr == (mdlStr+"_pretrained")]) > 0 ): # 로드 할거야
             
-
-
             isPretrainedLoad = False
             if optimizer is None:
                 isPretrainedLoad = True
@@ -366,21 +364,40 @@ def loadModels(modelList, version, subversion, loadModelNum, isTest):
                         isPretrainedLoad = True
 
             if isPretrainedLoad is True:
+                print(f"utils.py :: load pretrained model... : {modelList.getPretrainedPath(mdlStr)}")
                 checkpoint = torch.load(modelList.getPretrainedPath(mdlStr))
             
             
             # LOAD MODEL
-            modelObj.load_state_dict(checkpoint['model'],strict=False)
+            try:
+                modelObj.load_state_dict(checkpoint['model'],strict=True)
+            except:
+                try:
+                    print("utils.py :: model load failed... load model in GLOBAL STRUCTURE mode..")
+                    modelObj.load_state_dict(checkpoint ,strict=True)
+                except:
+                    try:
+                        print("utils.py :: model load failed... load model in UNSTRICT mode.. (WARNING : load weights imperfectly)")
+                        modelObj.load_state_dict(checkpoint['model'],strict=False)
+                    except:
+                        try:
+                            print("utils.py :: model load failed... load model in GLOBAL STRUCTURE UNSTRICT mode.. (WARNING : load weights imperfectly)")
+                            modelObj.load_state_dict(checkpoint ,strict=False)
+                        except:
+                            print("utils.py :: model load failed..... I'm sorry~")
+
+            
 
             # LOAD OPTIMIZER
-            try:
-                optimizer.load_state_dict(checkpoint['optim'])
-                for param_group in optimizer.param_groups: param_group['lr'] = p.learningRate
-            except:
-                optimDict = optimizer.state_dict()
-                preTrainedDict = {k: v for k, v in checkpoint.items() if k in optimDict}
+            if optimizer is not None:
+                try:
+                    optimizer.load_state_dict(checkpoint['optim'])
+                    for param_group in optimizer.param_groups: param_group['lr'] = p.learningRate
+                except:
+                    optimDict = optimizer.state_dict()
+                    preTrainedDict = {k: v for k, v in checkpoint.items() if k in optimDict}
 
-                optimDict.update(preTrainedDict)
+                    optimDict.update(preTrainedDict)
 
             # LOAD VARs..
             try:
@@ -544,6 +561,13 @@ class ModelListBase():
         for mdlStr in mdlStrLst:
             mdlSchLst.append(getattr(self, mdlStr))
         return mdlSchLst
+
+    def getPretrainedPaths(self):
+        mdlStrLst = [attr for attr in vars(self) if not attr.startswith("__") and not attr.endswith("_optimizer") and not attr.endswith("_scheduler") and attr.endswith("_pretrained")]
+        mdlPpaLst = []
+        for mdlStr in mdlStrLst:
+            mdlPpaLst.append(getattr(self, mdlStr))
+        return mdlPpaLst
 
     def getPretrainedPath(self, mdlStr):
         pP = p.pretrainedPath + getattr(self, mdlStr + "_pretrained")
