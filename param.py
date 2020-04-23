@@ -35,7 +35,7 @@ testDataset = 'Vid4' # See above table
 testDatasetType = 'test'  # 'train' || 'valid' || 'test'.  # See above table
 testScaleMethod = 'bicubic' # See above table
 
-batchSize = 15
+batchSize = 1
 samplingCount = 1 # Random Crop (samplingCount) per one Image.  Actual Batch Size = batchSize * samplingCount
 cropSize = [256, 256]  # HR Image cropping size. LR Image size: cropSize / scaleFactor. None -> No crop
 scaleFactor = 4
@@ -65,6 +65,6 @@ mixedPrecision = False # Reduce memory size i.e,.
 archiveStep = 25
 
 # GPU
-GPUNum = '0,1,2' # 0~7
+GPUNum = '0' # 0~7
 
 ############################################
