@@ -1,0 +1,10 @@
+.DS_Store*
+data
+runs
+__pycache__
+.empty
+.vscode
+final
+old code
+* bu.py
+README.md
