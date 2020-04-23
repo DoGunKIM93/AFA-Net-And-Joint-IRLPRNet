@@ -1,0 +1,3 @@
+# ninja log v5
+0	27289	1587621976754893043	/home/projSR/jin/EDVR/codes/models/archs/dcn/build/temp.linux-x86_64-3.6/src/deform_conv_cuda.o	798e2837ebbe45ec
+0	61661	1587622011126804326	/home/projSR/jin/EDVR/codes/models/archs/dcn/build/temp.linux-x86_64-3.6/src/deform_conv_cuda_kernel.o	c1170dde7b866655
