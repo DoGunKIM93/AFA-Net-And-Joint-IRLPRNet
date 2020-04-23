@@ -1,7 +1,7 @@
 '''
 utils.py
 '''
-version = "1.2.200423"
+version = "1.21.200423.1"
 
 import torch.nn as nn
 import torch
@@ -500,7 +500,7 @@ class ModelListBase():
         super(ModelListBase, self).__init__()
 
     def initDataparallel(self):
-        mdlStrLst = [attr for attr in vars(self) if not attr.startswith("__") and not attr.endswith("_optimizer") and not attr.endswith("_scheduler")]
+        mdlStrLst = [attr for attr in vars(self) if not attr.startswith("__") and not attr.endswith("_optimizer") and not attr.endswith("_scheduler") and not attr.endswith("_pretrained")]
 
         for mdlStr in mdlStrLst:
             setattr(self, mdlStr, nn.DataParallel(getattr(self, mdlStr)))
@@ -508,7 +508,7 @@ class ModelListBase():
     def initApexAMP(self):
         if p.mixedPrecision is True:
             opt_level = 'O0' if p.mixedPrecision is False else 'O1'
-            mdlStrLst = [attr for attr in vars(self) if not attr.startswith("__") and not attr.endswith("_optimizer") and not attr.endswith("_scheduler")]
+            mdlStrLst = [attr for attr in vars(self) if not attr.startswith("__") and not attr.endswith("_optimizer") and not attr.endswith("_scheduler") and not attr.endswith("_pretrained")]
             for mdlStr in mdlStrLst:
                 mdlObj = getattr(self, mdlStr)
                 mdlOpt = getattr(self, mdlStr + "_optimizer")

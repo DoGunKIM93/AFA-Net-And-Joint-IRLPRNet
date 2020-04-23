@@ -66,9 +66,10 @@ class ModelList(utils.ModelListBase):
         
         #(모델 인스턴스 이름)
         self.NET = model.EDVR(nf=128, nframes=7, groups=8, front_RBs=5, back_RBs=40)
+        self.NET_pretrained = "EDVR_Vimeo90K_SR_L.pth"
 
         #(모델 인스턴스 이름)_optimizer로 선언
-        self.NET_optimizer = torch.optim.Adam(self.NET.parameters(), lr=p.learningRate)
+        #self.NET_optimizer = torch.optim.Adam(self.NET.parameters(), lr=p.learningRate)
 
         #Learning Rate 스케쥴러 (없어도 됨)
         #self.NET_scheduler = torch.optim.lr_scheduler.OneCycleLR(self.NET_optimizer, 0.0003, total_steps=200)
@@ -76,8 +77,8 @@ class ModelList(utils.ModelListBase):
         #self.NET_scheduler = torch.optim.lr_scheduler.CyclicLR(self.NET_optimizer, 0, 0.0003, step_size_up=50, step_size_down=150, cycle_momentum=False)
         #self.NET_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.NET_optimizer, 200)
 
-        self.JUDGE = model.EfficientNet.from_name('efficientnet-b0')
-        self.JUDGE_pretrained = 'efficientnet_b0_ns.pth'
+        #self.JUDGE = model.EfficientNet.from_name('efficientnet-b0')
+        #self.JUDGE_pretrained = 'efficientnet_b0_ns.pth'
 
 
 
@@ -114,16 +115,13 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     else:
         loss = cpl_criterion(SRImages, HRImages) 
 
-    
-    rst = modelList.JUDGE(F.interpolate(HRImages[:,p.sequenceLength//2,:,:,:], [224,224]))
-
 
 
     # Update All model weights
     # if modelNames = None, this function updates all trainable model.
     # if modelNames is a String, updates one model
     # if modelNames is a List of string, updates those models.
-    backproagateAndWeightUpdate(modelList, loss, modelNames = None)
+    #backproagateAndWeightUpdate(modelList, loss, modelNames = None)
 
 
     #AF = AF.detach()
