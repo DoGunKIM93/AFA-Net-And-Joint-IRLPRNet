@@ -1,7 +1,7 @@
 '''
 utils.py
 '''
-version = "1.22.200423.2"
+version = "1.23.200423.3"
 
 import torch.nn as nn
 import torch
@@ -377,14 +377,18 @@ def loadModels(modelList, version, subversion, loadModelNum, isTest):
                     modelObj.load_state_dict(checkpoint ,strict=True)
                 except:
                     try:
-                        print("utils.py :: model load failed... load model in UNSTRICT mode.. (WARNING : load weights imperfectly)")
-                        modelObj.load_state_dict(checkpoint['model'],strict=False)
+                        print("utils.py :: model load failed... load model in INNER MODEL GLOBAL STRUCTURE mode..")
+                        modelObj.module.load_state_dict(checkpoint ,strict=True)
                     except:
                         try:
-                            print("utils.py :: model load failed... load model in GLOBAL STRUCTURE UNSTRICT mode.. (WARNING : load weights imperfectly)")
-                            modelObj.load_state_dict(checkpoint ,strict=False)
+                            print("utils.py :: model load failed... load model in UNSTRICT mode.. (WARNING : load weights imperfectly)")
+                            modelObj.load_state_dict(checkpoint['model'],strict=False)
                         except:
-                            print("utils.py :: model load failed..... I'm sorry~")
+                            try:
+                                print("utils.py :: model load failed... load model in GLOBAL STRUCTURE UNSTRICT mode.. (WARNING : load weights imperfectly)")
+                                modelObj.load_state_dict(checkpoint ,strict=False)
+                            except:
+                                print("utils.py :: model load failed..... I'm sorry~")
 
             
 
