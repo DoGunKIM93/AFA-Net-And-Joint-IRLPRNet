@@ -416,21 +416,22 @@ def loadModels(modelList, version, subversion, loadModelNum, isTest):
 
                     optimDict.update(preTrainedDict)
 
+            if len([attr for attr in vars(modelList) if attr == (mdlStr+"_pretrained")]) > 0:
             # LOAD VARs..
-            try:
-                startEpoch = checkpoint['epoch']
-            except:
-                pass#startEpoch = 0
+                try:
+                    startEpoch = checkpoint['epoch']
+                except:
+                    pass#startEpoch = 0
 
-            try:
-                lastLoss = checkpoint['lastLoss']
-            except:
-                pass#lastLoss = torch.ones(1)*100
-            
-            try:
-                bestPSNR = checkpoint['bestPSNR']
-            except:
-                pass#bestPSNR = 0
+                try:
+                    lastLoss = checkpoint['lastLoss']
+                except:
+                    pass#lastLoss = torch.ones(1)*100
+                
+                try:
+                    bestPSNR = checkpoint['bestPSNR']
+                except:
+                    pass#bestPSNR = 0
             
             
             if scheduler is not None:
