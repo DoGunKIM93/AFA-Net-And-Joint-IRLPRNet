@@ -1,7 +1,7 @@
 '''
 utils.py
 '''
-version = "1.25.200427.1"
+version = "1.26.200427.2"
 
 import torch.nn as nn
 import torch
@@ -416,7 +416,7 @@ def loadModels(modelList, version, subversion, loadModelNum, isTest):
 
                     optimDict.update(preTrainedDict)
 
-            if len([attr for attr in vars(modelList) if attr == (mdlStr+"_pretrained")]) > 0:
+            if len([attr for attr in vars(modelList) if attr == (mdlStr+"_pretrained")]) == 0:
             # LOAD VARs..
                 try:
                     startEpoch = checkpoint['epoch']
