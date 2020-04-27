@@ -35,9 +35,9 @@ testDataset = 'Vid4' # See above table
 testDatasetType = 'test'  # 'train' || 'valid' || 'test'.  # See above table
 testScaleMethod = 'bicubic' # See above table
 
-batchSize = 1
+batchSize = 45
 samplingCount = 1 # Random Crop (samplingCount) per one Image.  Actual Batch Size = batchSize * samplingCount
-cropSize = [256, 256]  # HR Image cropping size. LR Image size: cropSize / scaleFactor. None -> No crop
+cropSize = [224, 224]  # HR Image cropping size. LR Image size: cropSize / scaleFactor. None -> No crop
 scaleFactor = 4
 colorMode = 'color' # 'color' || 'grayscale'
 sequenceLength = 7 # Only for 'REDS' Dataset
@@ -47,16 +47,17 @@ sameOutputSize = False
 valueRangeType = '-1~1' # '0~1' || '-1~1'
 
 # model
-NGF = 128
-NDF = 128
+NGF = 64
+NDF = 64
 
 pretrainedPath = '/home/projSR/dataset/pretrained/'
 
 # train
 MaxEpoch = 180000
-learningRate = 0.0001
+learningRate = 0.0004
 validStep = 100
 trainAccidentCoef = None
+
 schedulerPeriod = 300
 
 mixedPrecision = False # Reduce memory size i.e,.
@@ -65,6 +66,6 @@ mixedPrecision = False # Reduce memory size i.e,.
 archiveStep = 25
 
 # GPU
-GPUNum = '0' # 0~7
+GPUNum = '1,2,3' # 0~7
 
 ############################################
