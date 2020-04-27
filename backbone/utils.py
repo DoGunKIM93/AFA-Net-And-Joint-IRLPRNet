@@ -1,7 +1,7 @@
 '''
 utils.py
 '''
-version = "1.23.200423.3"
+version = "1.25.200427.1"
 
 import torch.nn as nn
 import torch
@@ -328,6 +328,7 @@ def logValues(writer, valueTuple, iter):
     writer.add_scalar(valueTuple[0], valueTuple[1], iter)
 
 def logImages(writer, imageTuple, iter):
+    saveImages = torch.clamp(imageTuple[1], 0, 1)
     for i in range(imageTuple[1].size(0)):
         writer.add_image(imageTuple[0], imageTuple[1][i,:,:,:], iter)
 
@@ -369,6 +370,17 @@ def loadModels(modelList, version, subversion, loadModelNum, isTest):
             
             
             # LOAD MODEL
+            '''
+            mk = list(modelObj.module.state_dict().keys())
+            ck = list(checkpoint.keys())
+
+            for i in range(len(mk)):
+                if mk[i] != ck[i]:
+                    print(mk[i], ck[i])
+            
+            '''
+                
+
             try:
                 modelObj.load_state_dict(checkpoint['model'],strict=True)
             except:
@@ -407,17 +419,17 @@ def loadModels(modelList, version, subversion, loadModelNum, isTest):
             try:
                 startEpoch = checkpoint['epoch']
             except:
-                startEpoch = 0
+                pass#startEpoch = 0
 
             try:
                 lastLoss = checkpoint['lastLoss']
             except:
-                lastLoss = torch.ones(1)*100
+                pass#lastLoss = torch.ones(1)*100
             
             try:
                 bestPSNR = checkpoint['bestPSNR']
             except:
-                bestPSNR = 0
+                pass#bestPSNR = 0
             
             
             if scheduler is not None:
@@ -532,7 +544,7 @@ class ModelListBase():
             mdlStrLst = [attr for attr in vars(self) if not attr.startswith("__") and not attr.endswith("_optimizer") and not attr.endswith("_scheduler") and not attr.endswith("_pretrained")]
             for mdlStr in mdlStrLst:
                 mdlObj = getattr(self, mdlStr)
-                mdlOpt = getattr(self, mdlStr + "_optimizer")
+                mdlOpt = getattr(self, mdlStr + "_optimizer") if len([attr for attr in vars(self) if attr == (mdlStr+"_optimizer")]) > 0 else None
 
                 if mdlOpt is None:
                     mdlObj = amp.initialize(mdlObj.to('cuda'), opt_level = opt_level)

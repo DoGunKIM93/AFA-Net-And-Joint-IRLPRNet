@@ -1,7 +1,7 @@
 '''
 model.py
 '''
-version = '1.2.200423'
+version = '1.21.200427'
 
 
 #from Python
@@ -39,7 +39,7 @@ from backbone.module import EDVR_Predeblur_ResNet_Pyramid, EDVR_PCD_Align, EDVR_
     #Attentions
 from backbone.module import SecondOrderChannalAttentionBlock, NonLocalBlock, CrissCrossAttention
     #EfficientNet
-from backbone.module import EFF_MBConvBlock, EFF_round_filters, EFF_round_repeats, EFF_drop_connect, EFF_get_same_padding_conv2d, EFF_get_model_params, EFF_efficientnet_params, EFF_load_pretrained_weights, EFF_Swish, EFF_MemoryEfficientSwish
+from backbone.module import EfficientNetBuilder, EFF_create_conv2d, EFF_round_channels, SelectAdaptivePool2d, efficientnet_init_weights, EFF_decode_arch_def
 
 
 
@@ -57,6 +57,42 @@ inputChannel = 1 if p.colorMode =='grayscale' else 3
 
 
 
+
+
+
+class WENDY(nn.Module):
+
+    def __init__(self, CW, Blocks = 3, ResPerBlocks = 10, Attention = True, attention_sub_sample = None):
+        super(WENDY, self).__init__()
+
+        self.CW = CW
+        self.Blocks = Blocks
+        self.ResPerBlocks = ResPerBlocks
+        self.Attention = Attention
+
+        self.ReconstructionBlocks = nn.ModuleList()
+        for i in range(self.Blocks):
+            self.ReconstructionBlocks.append(ReconstructionBlock(CW, ResPerBlocks, dim=2, use_attention=Attention, attention_sub_sample=None))
+
+        self.Encoder = nn.Conv2d(inputChannel * 2, CW, 4, 2, 1)
+        self.Decoder = nn.ConvTranspose2d(CW, inputChannel, 4, 2, 1)
+
+
+    def forward(self, x):
+
+        x = self.Encoder(x)
+        x = F.relu(x)
+        
+        for i in range(self.Blocks):
+            x = self.ReconstructionBlocks[i](x)
+        
+        x = self.Decoder(x)
+        x = F.tanh(x)
+
+        return x
+
+        
+    
 
 
 
@@ -229,19 +265,25 @@ class IRENE(nn.Module):
 
 
 class ReconstructionBlock(nn.Module):
-    def __init__(self, CW, basicRBs, dim=2, attention_sub_sample=None):
+    def __init__(self, CW, basicRBs, dim=2, use_attention=True, attention_sub_sample=None):
         super(ReconstructionBlock, self).__init__()
 
         assert dim in [2,3]
 
         self.dim = dim
 
-        self.AB = AttentionBlock(CW, dim=self.dim, sub_sample=attention_sub_sample)
+        self.use_attention = use_attention
+
+        if self.use_attention is True:
+            self.AB = AttentionBlock(CW, dim=self.dim, sub_sample=attention_sub_sample)
         self.RB = basicResBlocks(CW, basicRBs, dim=self.dim)
+
+        
 
     def forward(self, x):
         
-        x = self.AB(x)
+        if self.use_attention is True:
+            x = self.AB(x)
         x = self.RB(x)
 
         return x
@@ -417,151 +459,164 @@ class Upscale(nn.Module):
 
 
 
-
 class EfficientNet(nn.Module):
-    """
-    An EfficientNet model. Most easily loaded with the .from_name or .from_pretrained methods
+    """ (Generic) EfficientNet
+    A flexible and performant PyTorch implementation of efficient network architectures, including:
+      * EfficientNet B0-B8, L2
+      * EfficientNet-EdgeTPU
+      * EfficientNet-CondConv
+      * MixNet S, M, L, XL
+      * MnasNet A1, B1, and small
+      * FBNet C
+      * Single-Path NAS Pixel1
+    """ 
 
-    Args:
-        blocks_args (list): A list of BlockArgs to construct blocks
-        global_params (namedtuple): A set of GlobalParams shared between blocks
+    def __init__(self, name, num_classes=1000,  num_features=1280, in_chans=3, stem_size=32,
+                 channel_multiplier=1.0, channel_divisor=8, channel_min=None,
+                 output_stride=32, pad_type='', fix_stem=False, act_layer=nn.ReLU, drop_rate=0., drop_path_rate=0.,
+                 se_kwargs=None, norm_layer=nn.BatchNorm2d, norm_kwargs=None, global_pool='avg'):
+        super(EfficientNet, self).__init__()
 
-    Example:
-        model = EfficientNet.from_pretrained('efficientnet-b0')
 
-    """
+        assert name in ['b0','b1','b2','b3','b4','b5','b6','b7','b8','l2']
 
-    def __init__(self, blocks_args=None, global_params=None):
-        super().__init__()
-        assert isinstance(blocks_args, list), 'blocks_args should be a list'
-        assert len(blocks_args) > 0, 'block args must be greater than 0'
-        self._global_params = global_params
-        self._blocks_args = blocks_args
+        arch_def = [
+        ['ds_r1_k3_s1_e1_c16_se0.25'],
+        ['ir_r2_k3_s2_e6_c24_se0.25'],
+        ['ir_r2_k5_s2_e6_c40_se0.25'],
+        ['ir_r3_k3_s2_e6_c80_se0.25'],
+        ['ir_r3_k5_s1_e6_c112_se0.25'],
+        ['ir_r4_k5_s2_e6_c192_se0.25'],
+        ['ir_r1_k3_s1_e6_c320_se0.25'],
+        ]
 
-        # Get static or dynamic convolution depending on image size
-        Conv2d = EFF_get_same_padding_conv2d(image_size=global_params.image_size)
 
-        # Batch norm parameters
-        bn_mom = 1 - self._global_params.batch_norm_momentum
-        bn_eps = self._global_params.batch_norm_epsilon
+        if name == 'b0':
+            channel_multiplier = 1.0
+            depth_multiplier = 1.0
+            input_res = 224
+            drop_rate = 0.2
+        if name == 'b1':
+            channel_multiplier = 1.0
+            depth_multiplier = 1.1
+            input_res = 240
+            drop_rate = 0.2
+        if name == 'b2':
+            channel_multiplier = 1.1
+            depth_multiplier = 1.2
+            input_res = 260
+            drop_rate = 0.3
+        if name == 'b3':
+            channel_multiplier = 1.2
+            depth_multiplier = 1.4
+            input_res = 300
+            drop_rate = 0.3
+        if name == 'b4':
+            channel_multiplier = 1.4
+            depth_multiplier = 1.8
+            input_res = 380
+            drop_rate = 0.4
+        if name == 'b5':
+            channel_multiplier = 1.6
+            depth_multiplier = 2.2
+            input_res = 456
+            drop_rate = 0.4
+        if name == 'b6':
+            channel_multiplier = 1.8
+            depth_multiplier = 2.6
+            input_res = 528
+            drop_rate = 0.5
+        if name == 'b7':
+            channel_multiplier = 2.0
+            depth_multiplier = 3.1
+            input_res = 600
+            drop_rate = 0.5
+        if name == 'b8':
+            channel_multiplier = 2.2
+            depth_multiplier = 3.6
+            input_res = 672
+            drop_rate = 0.5
+        if name == 'l2':
+            channel_multiplier = 4.3
+            depth_multiplier = 5.3
+            input_res = 800
+            drop_rate = 0.5
+
+        self.input_res = input_res
+        block_args = EFF_decode_arch_def(arch_def, depth_multiplier)
+
+        norm_kwargs = norm_kwargs or {}
+
+        self.num_classes = num_classes
+        self.num_features = num_features
+        self.drop_rate = drop_rate
+        self._in_chs = in_chans
 
         # Stem
-        in_channels = 3  # rgb
-        out_channels = EFF_round_filters(32, self._global_params)  # number of output channels
-        self._conv_stem = Conv2d(in_channels, out_channels, kernel_size=3, stride=2, bias=False)
-        self._bn0 = nn.BatchNorm2d(num_features=out_channels, momentum=bn_mom, eps=bn_eps)
+        if not fix_stem:
+            stem_size = EFF_round_channels(stem_size, channel_multiplier, channel_divisor, channel_min)
+        self.conv_stem = EFF_create_conv2d(self._in_chs, stem_size, 3, stride=2, padding=pad_type)
+        self.bn1 = norm_layer(stem_size, **norm_kwargs)
+        self.act1 = act_layer(inplace=True)
+        self._in_chs = stem_size
 
-        # Build blocks
-        self._blocks = nn.ModuleList([])
-        for block_args in self._blocks_args:
+        # Middle stages (IR/ER/DS Blocks)
+        builder = EfficientNetBuilder(
+            channel_multiplier, channel_divisor, channel_min, output_stride, pad_type, act_layer, se_kwargs,
+            norm_layer, norm_kwargs, drop_path_rate, verbose=False)
+        self.blocks = nn.Sequential(*builder(self._in_chs, block_args))
+        self.feature_info = builder.features
+        self._in_chs = builder.in_chs
 
-            # Update block input and output filters based on depth multiplier.
-            block_args = block_args._replace(
-                input_filters=EFF_round_filters(block_args.input_filters, self._global_params),
-                output_filters=EFF_round_filters(block_args.output_filters, self._global_params),
-                num_repeat=EFF_round_repeats(block_args.num_repeat, self._global_params)
-            )
+        # Head + Pooling
+        self.conv_head = EFF_create_conv2d(self._in_chs, self.num_features, 1, padding=pad_type)
+        self.bn2 = norm_layer(self.num_features, **norm_kwargs)
+        self.act2 = act_layer(inplace=True)
+        self.global_pool = SelectAdaptivePool2d(pool_type=global_pool)
 
-            # The first block needs to take care of stride and filter size increase.
-            self._blocks.append(EFF_MBConvBlock(block_args, self._global_params))
-            if block_args.num_repeat > 1:
-                block_args = block_args._replace(input_filters=block_args.output_filters, stride=1)
-            for _ in range(block_args.num_repeat - 1):
-                self._blocks.append(EFF_MBConvBlock(block_args, self._global_params))
+        # Classifier
+        self.classifier = nn.Linear(self.num_features * self.global_pool.feat_mult(), self.num_classes)
 
-        # Head
-        in_channels = block_args.output_filters  # output of final block
-        out_channels = EFF_round_filters(1280, self._global_params)
-        self._conv_head = Conv2d(in_channels, out_channels, kernel_size=1, bias=False)
-        self._bn1 = nn.BatchNorm2d(num_features=out_channels, momentum=bn_mom, eps=bn_eps)
-
-        # Final linear layer
-        self._avg_pooling = nn.AdaptiveAvgPool2d(1)
-        self._dropout = nn.Dropout(self._global_params.dropout_rate)
-        self._fc = nn.Linear(out_channels, 1)#self._global_params.num_classes)
-        self._swish = EFF_MemoryEfficientSwish()
-
-    def set_swish(self, memory_efficient=True):
-        """Sets swish function as memory efficient (for training) or standard (for export)"""
-        self._swish = EFF_MemoryEfficientSwish() if memory_efficient else EFF_Swish()
-        for block in self._blocks:
-            block.set_swish(memory_efficient)
-
-
-    def extract_features(self, inputs):
-        """ Returns output of the final convolution layer """
-
-        # Stem
-        x = self._swish(self._bn0(self._conv_stem(inputs)))
-
-        # Blocks
-        for idx, block in enumerate(self._blocks):
-            EFF_drop_connect_rate = self._global_params.EFF_drop_connect_rate
-            if EFF_drop_connect_rate:
-                EFF_drop_connect_rate *= float(idx) / len(self._blocks)
-            x = block(x, EFF_drop_connect_rate=EFF_drop_connect_rate)
-
-        # Head
-        x = self._swish(self._bn1(self._conv_head(x)))
-
-        return x
-
-    def forward(self, inputs):
-        """ Calls extract_features to extract features, applies final linear layer, and returns logits. """
-        bs = inputs.size(0)
-        # Convolution layers
-        x = self.extract_features(inputs)
-
-        # Pooling and final linear layer
-        x = self._avg_pooling(x)
-        x = x.view(bs, -1)
-        x = self._dropout(x)
-        x = self._fc(x)
-
-        ##추가
-        x = F.sigmoid(x)
-        #x = F.softmax(F.sigmoid(x), dim=1)
-        return x
-
-    @classmethod
-    def from_name(cls, model_name, override_params=None):
-        cls._check_model_name_is_valid(model_name)
-        blocks_args, global_params = EFF_get_model_params(model_name, override_params)
-        return cls(blocks_args, global_params)
-
-    @classmethod
-    def from_pretrained(cls, model_name, num_classes=1000, in_channels = 3):
-        model = cls.from_name(model_name, override_params={'num_classes': num_classes})
-        EFF_load_pretrained_weights(model, model_name, load_fc=(num_classes == 1000))
-        if in_channels != 3:
-            Conv2d = EFF_get_same_padding_conv2d(image_size = model._global_params.image_size)
-            out_channels = EFF_round_filters(32, model._global_params)
-            model._conv_stem = Conv2d(in_channels, out_channels, kernel_size=3, stride=2, bias=False)
-        return model
+        efficientnet_init_weights(self)
     
-    @classmethod
-    def from_pretrained(cls, model_name, num_classes=1000):
-        model = cls.from_name(model_name, override_params={'num_classes': num_classes})
-        EFF_load_pretrained_weights(model, model_name, load_fc=(num_classes == 1000))
+        
 
-        return model
+    def as_sequential(self):
+        layers = [self.conv_stem, self.bn1, self.act1]
+        layers.extend(self.blocks)
+        layers.extend([self.conv_head, self.bn2, self.act2, self.global_pool])
+        layers.extend([nn.Flatten(), nn.Dropout(self.drop_rate), self.classifier])
+        return nn.Sequential(*layers)
 
-    @classmethod
-    def get_image_size(cls, model_name):
-        cls._check_model_name_is_valid(model_name)
-        _, _, res, _ = EFF_efficientnet_params(model_name)
-        return res
+    def get_classifier(self):
+        return self.classifier
 
-    @classmethod
-    def _check_model_name_is_valid(cls, model_name, also_need_pretrained_weights=False):
-        """ Validates model name. None that pretrained weights are only available for
-        the first four models (efficientnet-b{i} for i in 0,1,2,3) at the moment. """
-        num_models = 4 if also_need_pretrained_weights else 8
-        valid_models = ['efficientnet-b'+str(i) for i in range(num_models)]
-        if model_name not in valid_models:
-            raise ValueError('model_name should be one of: ' + ', '.join(valid_models))
+    def reset_classifier(self, num_classes, global_pool='avg'):
+        self.num_classes = num_classes
+        self.global_pool = SelectAdaptivePool2d(pool_type=global_pool)
+        self.classifier = nn.Linear(
+            self.num_features * self.global_pool.feat_mult(), num_classes) if num_classes else None
 
+    def forward_features(self, x):
+        x = self.conv_stem(x)
+        x = self.bn1(x)
+        x = self.act1(x)
+        x = self.blocks(x)
+        x = self.conv_head(x)
+        x = self.bn2(x)
+        x = self.act2(x)
+        return x
 
+    def forward(self, x):
+        assert x.size(2) == self.input_res
+        assert x.size(3) == self.input_res
+
+        x = self.forward_features(x)
+        x = self.global_pool(x)
+        x = x.flatten(1)
+        if self.drop_rate > 0.:
+            x = F.dropout(x, p=self.drop_rate, training=self.training)
+        return self.classifier(x)
 
 
 
@@ -851,7 +906,7 @@ class Conv_ReLU_Block(nn.Module):
 class VDSR(nn.Module):
     def __init__(self):
         super(VDSR, self).__init__()
-        self.residual_layer = self.EDVR_make_layer(Conv_ReLU_Block, 18)
+        self.residual_layer = self.VDSR_make_layer(Conv_ReLU_Block, 18)
         self.input = nn.Conv2d(in_channels=1, out_channels=64, kernel_size=3, stride=1, padding=1, bias=False)
         self.output = nn.Conv2d(in_channels=64, out_channels=1, kernel_size=3, stride=1, padding=1, bias=False)
         self.relu = nn.ReLU(inplace=True)
@@ -861,7 +916,7 @@ class VDSR(nn.Module):
                 n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
                 m.weight.data.normal_(0, math.sqrt(2. / n))
                 
-    def EDVR_make_layer(self, block, num_of_layer):
+    def VDSR_make_layer(self, block, num_of_layer):
         layers = []
         for _ in range(num_of_layer):
             layers.append(block())

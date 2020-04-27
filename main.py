@@ -1,7 +1,7 @@
 '''
 main.py
 '''
-mainversion = "1.4.200423"
+mainversion = "1.41.200427.1"
 
 
 #FROM Python LIBRARY
@@ -264,7 +264,7 @@ for epoch in range(startEpoch, p.MaxEpoch):
                 if len([attr for attr in vars(modelList) if attr == (mdlStr+"_scheduler")]) > 0:
                     schd = getattr(modelList, mdlStr+"_scheduler")
                     print(f"{mdlStr}: {schd.get_lr()[0]:.6f} ",  end="")
-                else:
+                elif len([attr for attr in vars(modelList) if attr == (mdlStr+"_optimizer")]) > 0:
                     print(f"{mdlStr}: {p.learningRate:.6f} ",  end="")
             print(f"] time: {(a - olda):.2f} sec    ", end="\r")
 
@@ -285,7 +285,7 @@ for epoch in range(startEpoch, p.MaxEpoch):
         if len([attr for attr in vars(modelList) if attr == (mdlStr+"_scheduler")]) > 0:
             schd = getattr(modelList, mdlStr+"_scheduler")
             print(f"{mdlStr}: {schd.get_lr()[0]:.6f} ",  end="")
-        else:
+        elif len([attr for attr in vars(modelList) if attr == (mdlStr+"_optimizer")]) > 0:
             print(f"{mdlStr}: {p.learningRate:.6f} ",  end="")
     print(f"] time: {(b - oldb):.2f} sec                    ")
 
