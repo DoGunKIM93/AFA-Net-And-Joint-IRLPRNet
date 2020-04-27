@@ -356,9 +356,9 @@ def loadModels(modelList, version, subversion, loadModelNum, isTest):
             else:
                 try:
                     if(loadModelNum == '-1'):
-                        checkpoint = torch.load('./data/' + version + '/model/'+subversion+'/' + mdlStr + '.pkl')
+                        checkpoint = torch.load('./data/' + version + '/model/'+subversion+'/' + mdlStr + '.pth')
                     else:
-                        checkpoint = torch.load('./data/' + version + '/model/'+subversion+'/' + mdlStr + '-' + loadModelNum+ '.pkl')
+                        checkpoint = torch.load('./data/' + version + '/model/'+subversion+'/' + mdlStr + '-' + loadModelNum+ '.pth')
                 except:
                     print("utils.py :: Failed to load saved checkpoints.")
                     if modelList.getPretrainedPath(mdlStr) is not None:
@@ -366,7 +366,8 @@ def loadModels(modelList, version, subversion, loadModelNum, isTest):
 
             if isPretrainedLoad is True:
                 print(f"utils.py :: load pretrained model... : {modelList.getPretrainedPath(mdlStr)}")
-                checkpoint = torch.load(modelList.getPretrainedPath(mdlStr))
+                loadPath = modelList.getPretrainedPath(mdlStr)
+                checkpoint = torch.load(loadPath)
             
             
             # LOAD MODEL
@@ -479,9 +480,9 @@ def saveModels(modelList, version, subversion, epoch, lastLoss, bestPSNR):
             saveData.update({'epoch': epoch + 1})
 
 
-            torch.save(saveData, './data/'+version+'/model/'+subversion+'/' + mdlStr + '.pkl')
+            torch.save(saveData, './data/'+version+'/model/'+subversion+'/' + mdlStr + '.pth')
             if epoch % p.archiveStep == 0:
-                torch.save(saveData, './data/'+version+'/model/'+subversion+'/'+ mdlStr +'-%d.pkl' % (epoch + 1))
+                torch.save(saveData, './data/'+version+'/model/'+subversion+'/'+ mdlStr +'-%d.pth' % (epoch + 1))
 
 
 

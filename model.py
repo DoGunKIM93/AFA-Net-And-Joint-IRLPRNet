@@ -848,7 +848,7 @@ class ESPCN(nn.Module):
     def __init__(self, upscale_factor=p.scaleFactor):
         super(ESPCN, self).__init__()
 
-        self.conv1 = nn.Conv2d(1, 256, (9, 9), (1, 1), (4, 4))
+        self.conv1 = nn.Conv2d(inputChannel, 256, (9, 9), (1, 1), (4, 4))
 
         self.res1 = resBlock(256, windowSize=3)
         self.res2 = resBlock(256, windowSize=3)
@@ -865,7 +865,7 @@ class ESPCN(nn.Module):
         self.res9 = resBlock(128, windowSize=3)
         self.res10 = resBlock(128, windowSize=3)
 
-        self.conv3 = nn.Conv2d(128, 1 * (upscale_factor ** 2), (3, 3), (1, 1), (1, 1))
+        self.conv3 = nn.Conv2d(128, inputChannel * (upscale_factor ** 2), (3, 3), (1, 1), (1, 1))
         self.pixel_shuffle = nn.PixelShuffle(upscale_factor)
 
     def forward(self, x):

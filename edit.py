@@ -38,7 +38,7 @@ from backbone.utils import loadModels, saveModels, backproagateAndWeightUpdate
 
 ################ V E R S I O N ################
 # VERSION
-version = '27-IRENE-APEX'
+version = '29-Ensemble'
 subversion = '0-test'
 ###############################################
 
@@ -65,11 +65,11 @@ class ModelList(utils.ModelListBase):
 
         
         #(모델 인스턴스 이름)
-        self.NET = model.EDVR(nf=128, nframes=7, groups=8, front_RBs=5, back_RBs=40)
-        self.NET_pretrained = "EDVR_Vimeo90K_SR_L.pth"
-
-        #(모델 인스턴스 이름)_optimizer로 선언
-        #self.NET_optimizer = torch.optim.Adam(self.NET.parameters(), lr=p.learningRate)
+        self.Entire = model.EDVR(nf=128, nframes=7, groups=8, front_RBs=5, back_RBs=40)
+        self.Entire_pretrained = "EDVR_Vimeo90K_SR_L.pth"
+        
+        self.Face = model.ESPCN()
+        self.Face_pretrained = "ESPCN_face.pth"
 
         #Learning Rate 스케쥴러 (없어도 됨)
         #self.NET_scheduler = torch.optim.lr_scheduler.OneCycleLR(self.NET_optimizer, 0.0003, total_steps=200)
@@ -77,10 +77,8 @@ class ModelList(utils.ModelListBase):
         #self.NET_scheduler = torch.optim.lr_scheduler.CyclicLR(self.NET_optimizer, 0, 0.0003, step_size_up=50, step_size_down=150, cycle_momentum=False)
         #self.NET_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.NET_optimizer, 200)
 
-        #self.JUDGE = model.EfficientNet.from_name('efficientnet-b0')
-        #self.JUDGE_pretrained = 'efficientnet_b0_ns.pth'
-
-
+        self.Ensemble = model.WENDY(CW=128)
+        self.Ensemble_optimizer = torch.optim.Adam(self.Ensemble.parameters(), lr=p.learningRate)
 
 
 
@@ -92,14 +90,13 @@ class ModelList(utils.ModelListBase):
 
 def trainStep(epoch, modelList, LRImages, HRImages):
 
-
     # loss
     mse_criterion = nn.MSELoss()
     cpl_criterion = utils.CharbonnierLoss(eps=1e-3)
     ssim_criterion = MS_SSIM(data_range=1, size_average=True, channel=3, nonnegative_ssim=False)
  
     # model
-    modelList.NET.train() 
+    modelList.NET.train()
 
 
     # batch size
@@ -109,9 +106,13 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     # SR Processing
     SRImages = modelList.NET(LRImages)
 
+    SRScore = modelList.JUDGE(SRImages)
+    HRScore = modelList.JUDGE(HRImages[:,p.sequenceLength//2,:,:,:])
+
     #for MISR
     if len(HRImages.size()) == 5:
-        loss = cpl_criterion(SRImages, HRImages[:,p.sequenceLength//2,:,:,:])
+        #loss = cpl_criterion(SRImages, HRImages[:,p.sequenceLength//2,:,:,:])
+        loss = mse_criterion(SRScore, HRScore)
     else:
         loss = cpl_criterion(SRImages, HRImages) 
 
