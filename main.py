@@ -1,7 +1,7 @@
 '''
 main.py
 '''
-mainversion = "1.41.200427.1"
+mainversion = "1.51.200529"
 
 
 #FROM Python LIBRARY
@@ -40,6 +40,7 @@ import param as p
 import backbone.utils as utils
 from edit import editversion, version, subversion, trainStep, inferenceStep, ModelList
 import backbone.module as module
+import backbone.structure as structure
 
 
 def initFolderAndFiles():
@@ -71,6 +72,7 @@ def initFolderAndFiles():
     copyfile('./model.py', './data/' + version + '/model/' + subversion + '/model.py')
     copyfile('./param.py', './data/' + version + '/model/'+ subversion +'/param.py')
     copyfile('./backbone/utils.py', './data/' + version + '/model/'+ subversion +'/backbone/utils.py')
+    copyfile('./backbone/structure.py', './data/' + version + '/model/'+ subversion +'/backbone/structure.py')
     copyfile('./edit.py', './data/' + version + '/model/'+ subversion +'/edit.py')
 
 
@@ -143,8 +145,10 @@ print("         vision Version     : " + vision.version)
 print("         model Version      : " + model.version)
 print("         module Version     : " + module.version)
 print("         utils Version      : " + utils.version)
+print("         structure Version  : " + structure.version)
 print("         param Version      : " + p.version)
 print("")
+print("         ------SETTING DETAIL------")
 ############################################
 ############################################
 
@@ -224,6 +228,9 @@ for epoch in range(startEpoch, p.MaxEpoch):
 
     
     for i, Imagepairs in enumerate(trainDataLoader):
+
+        if i == 200: break
+
         LRImages = []
         HRImages = []
         for _LRi, _HRi in Imagepairs:
@@ -236,7 +243,7 @@ for epoch in range(startEpoch, p.MaxEpoch):
         batchSize = LRImages.size(0)
                 
         ########### train STEP ############
-        loss, SRImagesList = trainStep(epoch, modelList, LRImages, HRImages)
+        lossList, SRImagesList = trainStep(epoch, modelList, LRImages, HRImages)
         ###################################
         SRImages = SRImagesList[-1]
         if len(LRImages.size()) == 5:
@@ -246,7 +253,8 @@ for epoch in range(startEpoch, p.MaxEpoch):
         
         GlobalPSNRCount += 1
 
-        Avgloss[0] = Avgloss[0] + torch.Tensor.item(loss.data)
+        for lossIdx, loss in enumerate(lossList):
+            Avgloss[lossIdx] = Avgloss[lossIdx] + torch.Tensor.item(loss.data)
             
         finali = i + 1
 
@@ -256,7 +264,11 @@ for epoch in range(startEpoch, p.MaxEpoch):
             print('                      E[%d/%d][%.2f%%] NET:'
                     % (epoch, p.MaxEpoch, (i + 1) / (len(trainDataLoader.dataset) / p.batchSize / 100)),  end=" ")
 
-            print('loss:%.5f' % (Avgloss[0]/finali), end = " ")
+            # print('loss:%.5f' % (Avgloss[0]/finali), end = " ")
+            print('loss: [', end="")
+            for lossIdx, _ in enumerate(lossList):
+                print(f'{torch.Tensor.item(Avgloss[lossIdx].data)/finali:.5f}, ', end="")
+            print('] ', end="")
 
             print('lr: [',  end="")
 
@@ -277,7 +289,12 @@ for epoch in range(startEpoch, p.MaxEpoch):
     print('E[%d/%d] NET:'
             % (epoch, p.MaxEpoch),  end=" ")
 
-    print('loss: %.5f PSNR: %.2f dB' % (Avgloss[0], PSNR/GlobalPSNRCount), end = " ")
+    #print('loss: %.5f PSNR: %.2f dB' % (Avgloss[0], PSNR/GlobalPSNRCount), end = " ")
+    print('loss: [', end="")
+    for lossIdx, _ in enumerate(lossList):
+                print(f'{torch.Tensor.item(Avgloss[lossIdx].data):.5f}, ', end="")
+    print(f'] PSNR: {PSNR/GlobalPSNRCount:.2f}dB', end=" ")
+    
 
     print('lr: [ ',  end="")
 
@@ -303,7 +320,10 @@ for epoch in range(startEpoch, p.MaxEpoch):
     print('log, ', end="")
     
     # Save loss log
-    utils.logValues(writer, ['train_loss', Avgloss[0].item()], epoch)
+    #utils.logValues(writer, ['train_loss', Avgloss[0].item()], epoch)
+    for lossIdx, _ in enumerate(lossList):
+        utils.logValues(writer, [f'train_loss_{lossIdx}', Avgloss[lossIdx].item()], epoch)
+
     utils.logValues(writer, ['train_PSNR', PSNR/GlobalPSNRCount], epoch)
     
 
@@ -346,7 +366,7 @@ for epoch in range(startEpoch, p.MaxEpoch):
     save_image(cated_images, savePath)
 
     
-    
+
     
 
     if (epoch + 1) % p.validStep == 0:
@@ -379,9 +399,9 @@ for epoch in range(startEpoch, p.MaxEpoch):
                 HRImages = utils.to_var(HRImages)
 
                 batchSize = LRImages.size(0)
-                        
+
                 ########### Valid STEP ############
-                loss, SRImages = inferenceStep(epoch, modelList, LRImages, HRImages)
+                loss, SRImagesList = inferenceStep(epoch, modelList, LRImages, HRImages)
                 ###################################
                 
                 
@@ -399,17 +419,25 @@ for epoch in range(startEpoch, p.MaxEpoch):
                 #print('saving output images...')
                 # Save sampled images
                 copyCoff = 1
-                if len(LRImages.size()) == 5:
-                    LRImages = LRImages[:,p.sequenceLength//2,:,:,:]#torch.cat(LRImages.cpu().split(1, dim=1),4).squeeze(1)
-                    HRImages = HRImages[:,p.sequenceLength//2,:,:,:]
-                    #copyCoff = p.sequenceLength
 
-                PSNR += utils.calculateImagePSNR(SRImages,HRImages)
+                ###################################
+                SRImages = SRImagesList[-1]
+                if len(LRImages.size()) == 5:
+                    PSNR += utils.calculateImagePSNR(SRImages,HRImages[:,p.sequenceLength//2,:,:,:])
+                else:
+                    PSNR += utils.calculateImagePSNR(SRImages,HRImages)
                 GlobalPSNRCount += 1
 
                 lr_images = utils.denorm(LRImages.cpu().view(LRImages.size(0), 1 if p.colorMode=='grayscale' else 3, LRImages.size(2), LRImages.size(3)))
 
                 hr_images = utils.denorm(HRImages.cpu().view(HRImages.size(0), 1 if p.colorMode=='grayscale' else 3, HRImages.size(2), HRImages.size(3)))
+
+
+                for ii, si in enumerate(SRImagesList):
+                    if (si.size(2) != HRImages.size(2) or si.size(3) != HRImages.size(3)):
+                        SRImagesList[ii] = F.interpolate(si, size=(HRImages.size(2),HRImages.size(3)), mode='bicubic')
+
+                SRImages = torch.cat(SRImagesList, 3)
 
                 sr_images = utils.denorm(SRImages.cpu().view(SRImages.size(0), 1 if p.colorMode=='grayscale' else 3, SRImages.size(2), SRImages.size(3))) 
             

@@ -1,7 +1,7 @@
 '''
 data_loader.py
 '''
-version = "1.51.200423"
+version = "1.54.200519"
 
 #FROM Python LIBRARY
 import os
@@ -10,6 +10,7 @@ import math
 import numpy as np
 
 from PIL import Image
+from PIL import PngImagePlugin
 
 
 #FROM PyTorch
@@ -23,6 +24,53 @@ from torchvision.datasets import ImageFolder
 
 
 import param as p
+
+
+
+
+
+
+PngImagePlugin.MAX_TEXT_CHUNK = 100 * (1024**2)
+
+
+class JointImageDataset(Dataset):
+
+    def __init__(self,
+                DatasetList,
+                mode, 
+                shuffle):
+
+        self.DatasetList = DatasetList
+        self.shuffle = shuffle
+
+
+        self.totalDatasetLength = 0
+        for ds in self.DatasetList:
+            print(self.DatasetList)
+            if len(ds) >= self.totalDatasetLength:
+                self.totalDatasetLength = len(ds)
+
+        
+
+        print(f'Joint Dataset Loaded: {len(self.DatasetList)}')
+           
+
+
+    def __getitem__(self, index):
+        rstList = []
+        for ds in self.DatasetList:
+            elems = ds.__getitem__(index % len(ds))
+            for elem in elems:
+                rstList.append(elem)
+        
+        return rstList
+        
+
+
+
+
+    def __len__(self):
+        return self.totalDatasetLength
 
 
 
@@ -146,14 +194,15 @@ class MultiImageDataset(Dataset):
             self.LRImageFileNames[i].sort()
             if self.isEval : self.numDataLR += len(sdir)
             self.seqlenList.append(len(sdir))
-        print(f"LR Sequence prepared : {self.numDataLR} Sequences")
-
+        if self.isEval : print(f"LR Sequence prepared : {self.numDataLR} Images")
+        else : print(f"LR Sequence prepared : {self.numDataLR} Sequences")
         
         for i, sdir in enumerate(self.HRImageFileNames):
             self.HRImageFileNames[i] = [file for file in sdir if (file.endswith(".png") or file.endswith(".jpg") or file.endswith(".jpeg") or file.endswith(".bmp"))]
             self.HRImageFileNames[i].sort()
             if self.isEval : self.numDataHR += len(sdir)
-        print(f"HR Sequence prepared : {self.numDataHR} Sequences")
+        if self.isEval : print(f"HR Sequence prepared : {self.numDataHR} Images")
+        else : print(f"HR Sequence prepared : {self.numDataHR} Sequences")
            
 
     def __getitem__(self, index):
@@ -211,9 +260,26 @@ class MultiImageDataset(Dataset):
             HRImageSeq = []
 
             for LRImage, HRImage in ImagesSeq:
+
+                HRH = HRImage.size(2)
+                HRW = HRImage.size(3)
+                LRH = LRImage.size(2)
+                LRW = LRImage.size(3)
+
+                HRR = HRH / HRW
+                LRR = LRH / LRW
+
+                HRrszSize = [math.floor(math.sqrt(p.testMaxPixelCount / HRR)), math.floor(math.sqrt(p.testMaxPixelCount / HRR) * HRR)]
+                LRrszSize = [math.floor(math.sqrt(p.testMaxPixelCount / LRR)), math.floor(math.sqrt(p.testMaxPixelCount / LRR) * LRR)]
+
+                LRImage = transforms.Resize(size=p.LRrszSize,interpolation=3)(LRImage)
+                HRImage = transforms.Resize(size=p.HRrszSize,interpolation=3)(HRImage)
                 LRImage = self.LRTransform(LRImage)
                 HRImage = self.HRTransform(HRImage)
-                    
+                 
+                if HRImage.size(0) > 3:
+                    LRImage = LRImage[0:3,:,:]
+                    HRImage = HRImage[0:3,:,:]  
                 if p.colorMode == 'grayscale' and HRImage.size(0) == 3:
                     LRImage = (LRImage[0:1,:,:] + LRImage[1:2,:,:] + LRImage[2:3,:,:]) / 3
                     HRImage = (HRImage[0:1,:,:] + HRImage[1:2,:,:] + HRImage[2:3,:,:]) / 3
@@ -235,9 +301,14 @@ class MultiImageDataset(Dataset):
                 HRImageSeq = []
 
                 for LRImage, HRImage in ImagesSeq:
+                    LRImage = transforms.Resize(size=p.trainSize,interpolation=3)(LRImage)
+                    HRImage = transforms.Resize(size=p.trainSize,interpolation=3)(HRImage)
                     LRImage = self.LRTransform(LRImage)
                     HRImage = self.HRTransform(HRImage)
 
+                    if HRImage.size(0) > 3:
+                        LRImage = LRImage[0:3,:,:]
+                        HRImage = HRImage[0:3,:,:]
                     if p.colorMode == 'grayscale' and HRImage.size(0) == 3:
                         LRImage = (LRImage[0:1,:,:] + LRImage[1:2,:,:] + LRImage[2:3,:,:]) / 3
                         HRImage = (HRImage[0:1,:,:] + HRImage[1:2,:,:] + HRImage[2:3,:,:]) / 3
@@ -259,7 +330,10 @@ class MultiImageDataset(Dataset):
 
 
 
-def SRDataLoader(dataset,
+
+
+
+def SRDataset(dataset,
                 datasetType,
                 dataPath,
                 scaleFactor,
@@ -267,14 +341,14 @@ def SRDataLoader(dataset,
                 batchSize,
                 mode, # 'train' || 'valid' || 'test'
                 cropSize=None, #[H,W] || None
+                MaxPixelCount=None, #[H,W] || None
                 colorMode='color', # 'color' || 'grayscale'
                 sameOutputSize=False,
                 samplingCount=p.samplingCount,
                 num_workers=16,
                 valueRangeType=p.valueRangeType
                 ):
-                
-    """Build and return data loader."""
+    """Build and return data set."""
     
 
 
@@ -404,6 +478,27 @@ def SRDataLoader(dataset,
             print(f"data_loader.py :: ERROR : {dataset} scaling method not found")
             return     
 
+
+    elif (dataset == 'DiaDora'):
+        LRDatapath += 'DiaDora/GT/'
+        HRDatapath += 'DiaDora/GT/'
+
+        if (datasetType != 'train' and datasetType != 'test'):
+            print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
+            return
+
+        if (scaleMethod != 'virtual'):
+            print(f"data_loader.py :: ERROR : {dataset} only provide \"virtual\" scaling method ")
+            return    
+
+        if (datasetType == 'train'):
+            LRDatapath += 'train/'
+            HRDatapath += 'train/'
+        elif (datasetType == 'test'):
+            LRDatapath += 'test/'
+            HRDatapath += 'test/'
+
+
     elif (dataset == 'CelebA'):
 
         if scaleMethod != 'virtual':
@@ -411,6 +506,45 @@ def SRDataLoader(dataset,
             return   
         else:
             LRDatapath += "CelebA/CelebA/Img/img_align_celeba_png.7z/"
+            HRDatapath = LRDatapath
+
+        if datasetType == 'test':
+            LRDatapath += 'test/'
+            HRDatapath += 'test/'
+        elif datasetType == 'train':
+            LRDatapath += 'train/'
+            HRDatapath += 'train/'
+        else:
+            print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
+            return
+
+    elif (dataset == 'FFHQ-Face'):
+
+        if scaleMethod != 'virtual':
+            print(f"data_loader.py :: ERROR : {dataset} only provide \"virtual\" scaling method ")
+            return   
+        else:
+            LRDatapath += "FFHQ/GT/Face/"
+            HRDatapath = LRDatapath
+
+        if datasetType == 'test':
+            LRDatapath += 'test/'
+            HRDatapath += 'test/'
+        elif datasetType == 'train':
+            LRDatapath += 'train/'
+            HRDatapath += 'train/'
+        else:
+            print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
+            return
+
+
+    elif (dataset == 'FFHQ-General'):
+
+        if scaleMethod != 'virtual':
+            print(f"data_loader.py :: ERROR : {dataset} only provide \"virtual\" scaling method ")
+            return   
+        else:
+            LRDatapath += "FFHQ/GT/General/"
             HRDatapath = LRDatapath
 
         if datasetType == 'test':
@@ -469,7 +603,8 @@ def SRDataLoader(dataset,
     cropTransform = None
     if mode == 'train':
         if cropSize != None:
-            cropTransform = PairedRandomCrop(cropSize, samplingCount=samplingCount)
+            cropTransform = PairedRandomCrop(cropSize, samplingCount=samplingCount, ResizeMinMax=p.randomResizeMinMax)
+
 
 
     if mode == 'train':
@@ -488,9 +623,9 @@ def SRDataLoader(dataset,
     
     if scaleMethod == 'virtual':
         if sameOutputSize == True:
-            LRTransformList.append(ResizeByScaleFactor(1/p.scaleFactor, same_output_size=True))
+            LRTransformList.append(ResizeByScaleFactor(1/p.scaleFactor, same_outputSize=True))
         else:
-            LRTransformList.append(ResizeByScaleFactor(1/p.scaleFactor, same_output_size=False))
+            LRTransformList.append(ResizeByScaleFactor(1/p.scaleFactor, same_outputSize=False))
     
     LRTransformList.append(transforms.ToTensor())
     if valueRangeType == '0~1':
@@ -516,7 +651,7 @@ def SRDataLoader(dataset,
 
     ##################################
     
-    if (dataset == 'REDS' or dataset == 'Vid4'):
+    if (dataset == 'REDS' or dataset == 'Vid4' or dataset == 'DiaDora'):
         if mode == 'train':
             dataset = MultiImageDataset(LRDatapath, HRDatapath, cropTransform, commonTransform, LRTransform, HRTransform, p.sequenceLength, False)
         else:
@@ -524,10 +659,51 @@ def SRDataLoader(dataset,
     else:
         dataset = SingleImageDataset(LRDatapath, HRDatapath, cropTransform, commonTransform, LRTransform, HRTransform)
     
+
+    return dataset
+
+
+
+def SRDataLoader(dataset,
+                datasetType,
+                dataPath,
+                scaleFactor,
+                scaleMethod, # 'bicubic' || 'unknown' || 'mild' || 'wild' || 'difficult' || 'virtual' -> software
+                batchSize,
+                mode, # 'train' || 'valid' || 'test'
+                cropSize=None, #[H,W] || None
+                MaxPixelCount=None, #[H,W] || None
+                colorMode='color', # 'color' || 'grayscale'
+                sameOutputSize=False,
+                samplingCount=p.samplingCount,
+                num_workers=16,
+                valueRangeType=p.valueRangeType
+                ):
+
+    dataset = SRDataset(dataset,
+                datasetType,
+                dataPath,
+                scaleFactor,
+                scaleMethod,
+                batchSize,
+                mode,
+                cropSize,
+                MaxPixelCount,
+                colorMode, 
+                sameOutputSize,
+                samplingCount,
+                num_workers,
+                valueRangeType)
+
+    """Build and return data loader."""
+
     if mode == 'train':
         shuffle = True
     elif (mode == 'test' or mode == 'valid'):
         shuffle = False
+
+    #dataset = JointImageDataset([dataset, dataset], True, True)
+    #print(len(dataset))
         
     data_loader = DataLoader(dataset=dataset,
                              batch_size=batchSize,
@@ -536,21 +712,31 @@ def SRDataLoader(dataset,
     return data_loader
 
 
-
 class PairedRandomCrop(object):
 
-    def __init__(self, output_size, samplingCount):
-        assert isinstance(output_size, (int, tuple, list))
-        if isinstance(output_size, int):
-            self.output_size = (output_size, output_size)
-            self.samplingCount = samplingCount
+    def __init__(self, outputSize, samplingCount, ResizeMinMax = None, ResizeBlurFactor = None):
+
+        assert isinstance(outputSize, (int, tuple, list))
+        self.samplingCount = samplingCount
+        self.ResizeMinMax = ResizeMinMax
+        self.ResizeBlurFactor = ResizeBlurFactor
+
+        if isinstance(outputSize, int):
+            self.outputSize = (outputSize, outputSize)
         else:
-            assert len(output_size) == 2
-            self.output_size = output_size
-            self.samplingCount = samplingCount
+            assert len(outputSize) == 2
+            self.outputSize = outputSize
 
 
     def __call__(self, sample):
+
+        resizeFactor = random.uniform(self.ResizeMinMax[0], self.ResizeMinMax[1])
+        
+        cropSize = [self.outputSize[0], self.outputSize[1]] 
+        if self.ResizeMinMax is not None:
+            cropSize[0] = math.ceil(cropSize[0] * resizeFactor)
+            cropSize[1] = math.ceil(cropSize[1] * resizeFactor)
+            
 
         if isinstance(sample[0], (tuple, list)):
             LRImage = sample[0][0]
@@ -560,11 +746,12 @@ class PairedRandomCrop(object):
 
             HRWidth, HRHeight = HRImage.size[:2]
             LRWidth, LRHeight = LRImage.size[:2]
-            
-            newHRHeight, newHRWidth = self.output_size
-            newLRHeight = math.ceil(self.output_size[0] * ratio)
-            newLRWidth = math.ceil(self.output_size[1] * ratio)
+             
+            newHRHeight, newHRWidth = cropSize
+            newLRHeight = math.ceil(cropSize[0] * ratio)
+            newLRWidth = math.ceil(cropSize[1] * ratio)
 
+ 
             assert HRHeight >= newHRHeight and HRWidth >= newHRWidth, 'ERROR :: data_loader.py : Crop Size must be smaller than image data Size'
 
             rst = []
@@ -588,8 +775,23 @@ class PairedRandomCrop(object):
                     LRImage = imagePair[0]
                     HRImage = imagePair[1]
 
-                    frames.append([LRImage.crop((leftLR, topLR, leftLR + newLRWidth, topLR + newLRHeight)), 
-                                HRImage.crop((leftHR, topHR, leftHR + newHRWidth, topHR + newHRHeight))])
+                    LRImageSampled = LRImage.crop((leftLR, topLR, leftLR + newLRWidth, topLR + newLRHeight))
+                    HRImageSampled = HRImage.crop((leftHR, topHR, leftHR + newHRWidth, topHR + newHRHeight))
+
+                    if self.ResizeMinMax is not None:
+                        LRImageSampled = LRImageSampled.resize((math.ceil(self.outputSize[0] * ratio), math.ceil(self.outputSize[1]  * ratio)), resample = Image.BICUBIC)
+                        HRImageSampled = HRImageSampled.resize(self.outputSize, resample = Image.BICUBIC)
+
+                        if self.ResizeBlurFactor is not None and resizeFactor > 1:
+                            blurFactor = 1 / math.sqrt(resizeFactor)
+
+                            LRImageSampled = LRImageSampled.resize((math.ceil(self.outputSize[0] * ratio * blurFactor), math.ceil(self.outputSize[1] * ratio * blurFactor)), resample = Image.BICUBIC)
+                            HRImageSampled = HRImageSampled.resize((math.ceil(self.outputSize[0] * blurFactor), math.ceil(self.outputSize[1] * blurFactor)), resample = Image.BICUBIC)   
+
+                            LRImageSampled = LRImageSampled.resize((math.ceil(self.outputSize[0] * ratio), math.ceil(self.outputSize[1]  * ratio)), resample = Image.BICUBIC)
+                            HRImageSampled = HRImageSampled.resize(self.outputSize, resample = Image.BICUBIC)    
+
+                    frames.append([LRImageSampled, HRImageSampled])
                 
                 rst.append(frames)
 
@@ -606,9 +808,9 @@ class PairedRandomCrop(object):
             HRWidth, HRHeight = HRImage.size[:2]
             LRWidth, LRHeight = LRImage.size[:2]
             
-            newHRHeight, newHRWidth = self.output_size
-            newLRHeight = math.ceil(self.output_size[0] * ratio)
-            newLRWidth = math.ceil(self.output_size[1] * ratio)
+            newHRHeight, newHRWidth = cropSize
+            newLRHeight = math.ceil(cropSize[0] * ratio)
+            newLRWidth = math.ceil(cropSize[1] * ratio)
 
             assert HRHeight >= newHRHeight and HRWidth >= newHRWidth, 'ERROR :: data_loader.py : Crop Size must be smaller than image data Size'
 
@@ -628,22 +830,27 @@ class PairedRandomCrop(object):
                 topLR = math.ceil(topHR * ratio)
                 leftLR = math.ceil(leftHR * ratio)
 
-                rst.append([LRImage.crop((leftLR, topLR, leftLR + newLRWidth, topLR + newLRHeight)), 
-                            HRImage.crop((leftHR, topHR, leftHR + newHRWidth, topHR + newHRHeight))])
+                LRImageSampled = LRImage.crop((leftLR, topLR, leftLR + newLRWidth, topLR + newLRHeight))
+                HRImageSampled = HRImage.crop((leftHR, topHR, leftHR + newHRWidth, topHR + newHRHeight))
+
+                if self.ResizeMinMax is not None:
+                    LRImageSampled = LRImageSampled.resize((math.ceil(self.outputSize[0] * ratio), math.ceil(self.outputSize[1]  * ratio)), resample = Image.BICUBIC)
+                    HRImageSampled = HRImageSampled.resize(self.outputSize, resample = Image.BICUBIC)
+
+                rst.append([LRImageSampled, HRImageSampled])
 
             return rst
 
 
-
 class PairedCenterCrop(object):
 
-    def __init__(self, output_size):
-        assert isinstance(output_size, (int, tuple, list))
-        if isinstance(output_size, int):
-            self.output_size = (output_size, output_size)
+    def __init__(self, outputSize):
+        assert isinstance(outputSize, (int, tuple, list))
+        if isinstance(outputSize, int):
+            self.outputSize = (outputSize, outputSize)
         else:
-            assert len(output_size) == 2
-            self.output_size = output_size
+            assert len(outputSize) == 2
+            self.outputSize = outputSize
 
     def __call__(self, sample):
         if isinstance(sample[0], (tuple, list)):
@@ -655,9 +862,9 @@ class PairedCenterCrop(object):
             HRWidth, HRHeight = HRImage.size[:2]
             LRWidth, LRHeight = LRImage.size[:2]
             
-            newHRHeight, newHRWidth = self.output_size
-            newLRHeight = math.ceil(self.output_size[0] * ratio)
-            newLRWidth = math.ceil(self.output_size[1] * ratio)
+            newHRHeight, newHRWidth = self.outputSize
+            newLRHeight = math.ceil(self.outputSize[0] * ratio)
+            newLRWidth = math.ceil(self.outputSize[1] * ratio)
 
             assert HRHeight >= newHRHeight and HRWidth >= newHRWidth, 'ERROR :: data_loader.py : Crop Size must be smaller than image data Size'
             
@@ -694,9 +901,9 @@ class PairedCenterCrop(object):
             HRWidth, HRHeight = HRImage.size[:2]
             LRWidth, LRHeight = LRImage.size[:2]
 
-            newHRHeight, newHRWidth = self.output_size
-            newLRHeight = math.ceil(self.output_size[0] * ratio)
-            newLRWidth = math.ceil(self.output_size[1] * ratio)
+            newHRHeight, newHRWidth = self.outputSize
+            newLRHeight = math.ceil(self.outputSize[0] * ratio)
+            newLRWidth = math.ceil(self.outputSize[1] * ratio)
 
             assert HRHeight >= newHRHeight and HRWidth >= newHRWidth, 'ERROR :: data_loader.py : Crop Size must be smaller than image data Size'
             
@@ -785,9 +992,9 @@ class PairedRandomRotate(object):
 
 class ResizeByScaleFactor(object):
 
-    def __init__(self, scale_factor, same_output_size=False):
+    def __init__(self, scale_factor, same_outputSize=False):
         self.scale_factor = scale_factor
-        self.same_output_size = same_output_size
+        self.same_outputSize = same_outputSize
 
     def __call__(self, sample):
         if isinstance(sample, (tuple, list)):
@@ -802,7 +1009,7 @@ class ResizeByScaleFactor(object):
             
                 rszimg = img.resize((rW,rH), resample = Image.BICUBIC)
 
-                if(self.same_output_size == True):
+                if(self.same_outputSize == True):
                     rszimg = rszimg.resize((W,H), resample = Image.BICUBIC)
 
                 rst.append(rszimg)
@@ -816,7 +1023,7 @@ class ResizeByScaleFactor(object):
             
             sample = sample.resize((rW,rH), resample = Image.BICUBIC)
 
-            if(self.same_output_size == True):
+            if(self.same_outputSize == True):
                 sample = sample.resize((W,H), resample = Image.BICUBIC)
 
             return sample

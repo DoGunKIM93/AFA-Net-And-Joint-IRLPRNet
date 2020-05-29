@@ -1,7 +1,7 @@
 '''
 model.py
 '''
-version = '1.21.200427'
+version = '1.30.200529'
 
 
 #from Python
@@ -55,14 +55,98 @@ inputChannel = 1 if p.colorMode =='grayscale' else 3
 
 
 
+#Disc using EfficientNet Feature. (2560*7*7)
+class ZIM(nn.Module):
+    
+    def __init__(self, drop_rate, training):
+        super(ZIM, self).__init__()
+
+        self.drop_rate = drop_rate
+        self.training = training
+
+        self.global_pool = SelectAdaptivePool2d(pool_type='avg')
+        # Classifier
+        self.classifier = nn.Linear(2560 * self.global_pool.feat_mult(), 1)
+
+    def forward(self, x_a_f, x_b_f):
+
+        x = torch.cat((x_a_f, x_b_f), 1)
+        x = self.global_pool(x)
+        x = x.flatten(1)
+        if self.drop_rate > 0.:
+            x = F.dropout(x, p=self.drop_rate, training=self.training)
+        return F.sigmoid(self.classifier(x))
 
 
 
+#Gen using EfficientNet Feature.
+class UMP(nn.Module):
+
+    def __init__(self):
+        super(UMP, self).__init__()
+
+        self.DecoderList = nn.ModuleList([ # 1/32
+            nn.ConvTranspose2d(2560,  512, 4, 2, 1), #1/16
+            nn.ConvTranspose2d( 512,  256, 4, 2, 1), #1/8
+            nn.ConvTranspose2d( 256,  128, 4, 2, 1), #1/4
+            nn.ConvTranspose2d( 128,  32, 4, 2, 1), #1/2
+            nn.ConvTranspose2d( 32, inputChannel, 4, 2, 1), #1/1
+        ])
+
+    def forward(self, x_a_f, x_b_f):
+
+        x = torch.cat([x_a_f, x_b_f], 1)
+
+        for i, decoder in enumerate(self.DecoderList):
+            x = decoder(x)
+            if i + 1 < len(self.DecoderList):    
+                x = F.relu(x)
+
+        return F.tanh(x)
 
 
+#adaptive filter Gen.
+class PSY(nn.Module):
+    
+    def __init__(self, CW, Blocks = 5, ResPerBlocks = 10, Attention = True, attention_sub_sample = None):
+        super(PSY, self).__init__()
+
+        self.CW = CW
+        self.Blocks = Blocks
+        self.ResPerBlocks = ResPerBlocks
+        self.Attention = Attention
+
+        self.ReconstructionBlocks = nn.ModuleList()
+        for i in range(self.Blocks):
+            self.ReconstructionBlocks.append(ReconstructionBlock(CW, ResPerBlocks, dim=2, use_attention=Attention, attention_sub_sample=None))
+
+        self.Encoder = nn.Conv2d(inputChannel * 2, CW, 4, 2, 1)
+        self.Decoder = nn.ConvTranspose2d(CW, inputChannel * 2, 4, 2, 1)
+
+
+    def forward(self, x):
+
+        ori = x[:,:,:,:]
+        
+        x = self.Encoder(x)
+        x = F.relu(x)
+        
+        for i in range(self.Blocks):
+            x = self.ReconstructionBlocks[i](x)
+        
+        x = self.Decoder(x)
+        x = x.view(x.size(0), x.size(1) // inputChannel, inputChannel, *x.size()[2:])
+        x = F.softmax(x, dim=1)#.view(x.size(0), -1, *x.size()[2:])
+
+        ori = ori.view(ori.size(0), ori.size(1) // inputChannel, inputChannel, *ori.size()[2:])
+
+        return (x * ori).sum(dim=1)
+
+
+#Gen.
 class WENDY(nn.Module):
-
-    def __init__(self, CW, Blocks = 3, ResPerBlocks = 10, Attention = True, attention_sub_sample = None):
+    
+    def __init__(self, CW, Blocks = 5, ResPerBlocks = 10, Attention = True, attention_sub_sample = None):
         super(WENDY, self).__init__()
 
         self.CW = CW
@@ -80,6 +164,7 @@ class WENDY(nn.Module):
 
     def forward(self, x):
 
+        sc = x[:,0:3,:,:]
         x = self.Encoder(x)
         x = F.relu(x)
         
@@ -89,7 +174,8 @@ class WENDY(nn.Module):
         x = self.Decoder(x)
         x = F.tanh(x)
 
-        return x
+        return x + sc
+
 
         
     
@@ -471,14 +557,16 @@ class EfficientNet(nn.Module):
       * Single-Path NAS Pixel1
     """ 
 
-    def __init__(self, name, num_classes=1000,  num_features=1280, in_chans=3, stem_size=32,
+    def __init__(self, name, num_classes=1000, num_features=1280, in_chans=3, stem_size=32,
                  channel_multiplier=1.0, channel_divisor=8, channel_min=None,
                  output_stride=32, pad_type='', fix_stem=False, act_layer=nn.ReLU, drop_rate=0., drop_path_rate=0.,
-                 se_kwargs=None, norm_layer=nn.BatchNorm2d, norm_kwargs=None, global_pool='avg'):
+                 se_kwargs=None, norm_layer=nn.BatchNorm2d, norm_kwargs=None, global_pool='avg', mode='classifier'):
+                 #mode : 'classifier' || 'feature_extractor' || 'perceptual'
         super(EfficientNet, self).__init__()
 
 
         assert name in ['b0','b1','b2','b3','b4','b5','b6','b7','b8','l2']
+        assert mode in ['classifier' , 'feature_extractor' , 'perceptual']
 
         arch_def = [
         ['ds_r1_k3_s1_e1_c16_se0.25'],
@@ -552,6 +640,10 @@ class EfficientNet(nn.Module):
         self.drop_rate = drop_rate
         self._in_chs = in_chans
 
+
+
+        self.mode = mode
+
         # Stem
         if not fix_stem:
             stem_size = EFF_round_channels(stem_size, channel_multiplier, channel_divisor, channel_min)
@@ -601,22 +693,41 @@ class EfficientNet(nn.Module):
         x = self.conv_stem(x)
         x = self.bn1(x)
         x = self.act1(x)
-        x = self.blocks(x)
-        x = self.conv_head(x)
-        x = self.bn2(x)
-        x = self.act2(x)
-        return x
+
+        if self.mode == 'classifier' or self.mode == 'feature_extractor':
+            x = self.blocks(x)
+            x = self.conv_head(x)
+            x = self.bn2(x)
+            x = self.act2(x)
+            return x
+        elif self.mode == 'perceptual':
+            rstList = []
+            for blkmdl in self.blocks:
+                x = blkmdl(x)
+                rstList.append(x.mean().unsqueeze(0))
+            return torch.sum(torch.cat(rstList, 0))
+
+    def getParams(self):
+        return self.drop_rate, self.training
 
     def forward(self, x):
-        assert x.size(2) == self.input_res
-        assert x.size(3) == self.input_res
+
+        if self.mode in ['classifier']:
+            assert x.size(2) == self.input_res
+            assert x.size(3) == self.input_res
 
         x = self.forward_features(x)
-        x = self.global_pool(x)
-        x = x.flatten(1)
-        if self.drop_rate > 0.:
-            x = F.dropout(x, p=self.drop_rate, training=self.training)
-        return self.classifier(x)
+
+        if self.mode == 'classifier':
+            x = self.global_pool(x)
+            x = x.flatten(1)
+            if self.drop_rate > 0.:
+                x = F.dropout(x, p=self.drop_rate, training=self.training)
+            return F.sigmoid(self.classifier(x))
+
+        elif self.mode == 'perceptual' or self.mode == 'feature_extractor':
+            return x
+
 
 
 
@@ -687,6 +798,8 @@ class EDVR(nn.Module):
         self.lrelu = nn.LeakyReLU(negative_slope=0.1, inplace=True)
 
     def forward(self, x):
+        if len(x.size()) == 4:
+            x = x.unsqueeze(1).repeat(1,7,1,1,1)
         B, N, C, H, W = x.size()  # N video frames
         x_center = x[:, self.center, :, :, :].contiguous()
 
@@ -891,7 +1004,7 @@ class ESPCN(nn.Module):
         x = F.leaky_relu(self.res10(x) + res, 0.2)
         
         x = F.tanh(self.pixel_shuffle(self.conv3(x))) + F.interpolate(sc, scale_factor=p.scaleFactor, mode='bicubic')
-        return x
+        return (x + 1)/2 if p.valueRangeType == '0~1' else x
 
 
 class Conv_ReLU_Block(nn.Module):
