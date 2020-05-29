@@ -37,6 +37,12 @@
 
 # 수정내역
 
+20200529
+
+1. GAN 관련 업데이트
+2. 여러 개의 loss Function 반환하도록 trainStep 조정
+3. inferenceStep 작동 안함
+
 20200427-1
 
 1. 저장 시 pth 파일로 저장하도록 변경
