@@ -1,7 +1,7 @@
 '''
 data_loader.py
 '''
-version = "1.54.200519"
+version = "1.55.200602"
 
 #FROM Python LIBRARY
 import os
@@ -126,6 +126,10 @@ class SingleImageDataset(Dataset):
 
             if p.colorMode == 'grayscale' and HRImage.size(0) == 3:
                 return [[(LRImage[0:1,:,:] + LRImage[1:2,:,:] + LRImage[2:3,:,:]) / 3, (HRImage[0:1,:,:] + HRImage[1:2,:,:] + HRImage[2:3,:,:]) / 3]]
+            elif p.colorMode == 'color' and HRImage.size(0) == 1:
+                LRImage = torch.cat((LRImage,LRImage,LRImage),0)
+                HRImage = torch.cat((HRImage,HRImage,HRImage),0)
+                return [[LRImage, HRImage]]
             else:
                 return [[LRImage, HRImage]]
         else:
@@ -136,6 +140,10 @@ class SingleImageDataset(Dataset):
                 HRImage = self.HRTransform(Images[1])
                 if p.colorMode == 'grayscale' and HRImage.size(0) == 3:
                     rst.append([(LRImage[0:1,:,:] + LRImage[1:2,:,:] + LRImage[2:3,:,:]) / 3, (HRImage[0:1,:,:] + HRImage[1:2,:,:] + HRImage[2:3,:,:]) / 3])
+                elif p.colorMode == 'color' and HRImage.size(0) == 1:
+                    LRImage = torch.cat((LRImage,LRImage,LRImage),0)
+                    HRImage = torch.cat((HRImage,HRImage,HRImage),0)
+                    rst.append([LRImage, HRImage])
                 else:
                     rst.append([LRImage, HRImage])
             return rst  
