@@ -1,7 +1,7 @@
 '''
 edit.py
 '''
-editversion = "1.11.200529"
+editversion = "1.11.200624"
 
 
 #FROM Python LIBRARY
@@ -9,6 +9,7 @@ import time
 import math
 import numpy as np
 import psutil
+import random
 
 #FROM PyTorch
 import torch
@@ -39,8 +40,8 @@ from backbone.utils import loadModels, saveModels, backproagateAndWeightUpdate
 
 ################ V E R S I O N ################
 # VERSION
-version = '29-Ensemble'
-subversion = '22-GAN-noPixelWiseLoss'
+version = '30-EndtoEntDeepBlending'
+subversion = '2-shiftmoduletrainassssment'
 ###############################################
 
 
@@ -66,11 +67,14 @@ class ModelList(structure.ModelListBase):
 
         
         #(모델 인스턴스 이름)
-        self.Entire = model.EDVR(nf=128, nframes=7, groups=8, front_RBs=5, back_RBs=40)
-        self.Entire_pretrained = "EDVR_Vimeo90K_SR_L.pth"
+        #self.Entire = model.EDVR(nf=128, nframes=7, groups=8, front_RBs=5, back_RBs=40)
+        #self.Entire_pretrained = "EDVR_Vimeo90K_SR_L.pth"
         
-        self.Face = model.ESPCN()
-        self.Face_pretrained = "ESPCN_face.pth"
+        #self.Face = model.ESPCN()
+        #self.Face_pretrained = "ESPCN_face.pth"
+
+        #self.Face = model.EDVR(nf=128, nframes=1, groups=1, front_RBs=5, back_RBs=40)
+        #self.Face_pretrained = "EDVR_Face.pth"
 
         #Learning Rate 스케쥴러 (없어도 됨)
         #self.NET_scheduler = torch.optim.lr_scheduler.OneCycleLR(self.NET_optimizer, 0.0003, total_steps=200)
@@ -81,12 +85,15 @@ class ModelList(structure.ModelListBase):
         #self.Ensemble = model.WENDY(CW=64, Blocks=10, Attention=False)
         #self.Ensemble_optimizer = torch.optim.Adam(self.Ensemble.parameters(), lr=p.learningRate)
 
-        self.E_FE = model.EfficientNet('b0', num_classes=1, mode='feature_extractor')
-        self.E_FE_optimizer = torch.optim.Adam(self.E_FE.parameters(), lr=p.learningRate)
-        self.E_FE_pretrained = 'efficientnet_b0_ns.pth'
+        #self.E_FE = model.EfficientNet('b0', num_classes=1, mode='feature_extractor')
+        #self.E_FE_optimizer = torch.optim.Adam(self.E_FE.parameters(), lr=p.learningRate)
+        #self.E_FE_pretrained = 'efficientnet_b0_ns.pth'
 
-        self.E_Deco = model.UMP()
-        self.E_Deco_optimizer = torch.optim.Adam(self.E_Deco.parameters(), lr=p.learningRate)
+        self.E_FE = model.SunnySideUp()
+        self.E_FE_optimizer = torch.optim.Adam(self.E_FE.parameters(), lr=p.learningRate)
+
+        #self.E_Deco = model.ISAF(featureExtractor = self.E_FE)
+        #self.E_Deco_optimizer = torch.optim.Adam(self.E_Deco.parameters(), lr=p.learningRate * 3)
 
         #self.Perceptual = model.EfficientNet('b0', mode='feature_extractor')
         #self.Perceptual_pretrained = 'efficientnet_b0_ns.pth'
@@ -94,18 +101,6 @@ class ModelList(structure.ModelListBase):
         #self.Disc = model.EfficientNet('b0', num_classes=1)
         #self.Disc_pretrained = 'efficientnet_b0_ns.pth'
         #self.Disc_optimizer = torch.optim.Adam(self.Disc.parameters(), lr=p.learningRate)
-
-        self.D_FE_LR = model.EfficientNet('b0', num_classes=1, mode='feature_extractor')
-        self.D_FE_LR_pretrained = 'efficientnet_b0_ns.pth'
-        self.D_FE_LR_optimizer = torch.optim.Adam(self.D_FE_LR.parameters(), lr=p.learningRate)
-
-        self.D_FE_SR = model.EfficientNet('b0', num_classes=1, mode='feature_extractor')
-        self.D_FE_SR_pretrained = 'efficientnet_b0_ns.pth'
-        self.D_FE_SR_optimizer = torch.optim.Adam(self.D_FE_SR.parameters(), lr=p.learningRate)
-        
-        self.D_CLS = model.ZIM(*self.D_FE_LR.getParams())
-        self.D_CLS_optimizer = torch.optim.Adam(self.D_CLS.parameters(), lr=p.learningRate)
-
 
         self.initApexAMP()
         self.initDataparallel()
@@ -122,13 +117,11 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     ssim_criterion = MS_SSIM(data_range=1, size_average=True, channel=3, nonnegative_ssim=False)
  
     # model
-    modelList.Entire.eval()
-    modelList.Face.eval()
+    #modelList.Entire.eval()
+    #modelList.Face.eval()
     modelList.E_FE.train()
-    modelList.E_Deco.train()
-    modelList.D_CLS.train()
-    modelList.D_FE_LR.train()
-    modelList.D_FE_SR.train()
+    #modelList.E_Deco.train()
+    #modelList.Disc.train()
 
 
     # batch size
@@ -138,64 +131,71 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     # SR Processing
 
     with torch.no_grad():
-        SRImages_Entire = modelList.Entire(LRImages)
-        SRImages_Face   = modelList.Face(LRImages * 2 - 1)
+        #SRImages_Entire = modelList.Entire(LRImages)
+        #SRImages_Face   = modelList.Face(LRImages)
+        pass
 
+    '''
+    gsklst = []
+    for bb in range(batchSize):
+        gsklst.append(vision.GaussianSpray(LRImages.size(2), LRImages.size(3), 3, 10).repeat(1,3,1,1))
+    gaussianSprayKernel = torch.cat(gsklst, 0)
+
+    bImage1 = LRImages * gaussianSprayKernel + HRImages * (1 - gaussianSprayKernel)
+    bImage2 = HRImages * gaussianSprayKernel + LRImages * (1 - gaussianSprayKernel)
+
+    if random.randint(0,1) == 1:
+        t = bImage1 
+        bImage1 = bImage2
+        bImage2 = t
+    '''
+
+    '''
     ####################################################### Train Disc. ####################################################
 
     with torch.no_grad():
-        #SRImages_Cat = torch.cat([SRImages_Entire, SRImages_Face], 1)
-        SRImages_Entire_Feature = modelList.E_FE(SRImages_Entire)
-        SRImages_Face_Feature = modelList.E_FE(SRImages_Face)
-
-        #SRImages_Ensembled = modelList.Ensemble(SRImages_Cat)
-        SRImages_Ensembled = modelList.E_Deco(SRImages_Entire_Feature, SRImages_Face_Feature) + SRImages_Entire
+        SRImages_Ensembled = modelList.E_Deco(SRImages_Entire, SRImages_Face)
 
     for xx in range(1):
         #lrAdversarialScore = modelList.Disc(F.interpolate(LRImages, scale_factor=p.scaleFactor, mode='bicubic'))
-
-        srAdversarialScore = modelList.D_CLS(modelList.D_FE_LR(SRImages_Entire), modelList.D_FE_SR(SRImages_Ensembled))
-        hrAdversarialScore = modelList.D_CLS(modelList.D_FE_LR(SRImages_Entire), modelList.D_FE_SR(HRImages))
+        srAdversarialScore = modelList.Disc(SRImages_Ensembled)
+        hrAdversarialScore = modelList.Disc(HRImages)
         #lrAdversarialLoss = bce_criterion(lrAdversarialScore, torch.zeros_like(lrAdversarialScore))
         srAdversarialLoss = bce_criterion(srAdversarialScore, torch.zeros_like(srAdversarialScore))
         hrAdversarialLoss = bce_criterion(hrAdversarialScore, torch.ones_like(hrAdversarialScore))
         loss_disc = srAdversarialLoss + hrAdversarialLoss
-        backproagateAndWeightUpdate(modelList, loss_disc, modelNames = ["D_CLS", "D_FE_LR", "D_FE_SR"])
+        backproagateAndWeightUpdate(modelList, loss_disc, modelNames = "Disc")
 
     ####################################################### Ensemble. #######################################################
+    '''
+
     
-    #SRImages_Cat = torch.cat([SRImages_Entire, SRImages_Face], 1)
+    trI = Variable(torch.ones(batchSize,3,256,256), requires_grad=True).cuda()
+    trI[:,:,1,1] = 0.
 
-    #SRImages_Ensembled = modelList.Ensemble(SRImages_Cat)
+    gtI = torch.ones(batchSize,3,256,256).cuda()
+    gtI[:,:,2,2] = 0.
+
+    trI = modelList.E_FE(trI)
 
 
-    SRImages_Entire_Feature = modelList.E_FE(SRImages_Entire)
-    SRImages_Face_Feature = modelList.E_FE(SRImages_Face)
 
-    SRImages_Ensembled = modelList.E_Deco(SRImages_Entire_Feature, SRImages_Face_Feature) + SRImages_Entire
+    #blendedImages = modelList.E_Deco(bImage1, bImage2)
     
 
-    srAdversarialScore = modelList.D_CLS(modelList.D_FE_LR(SRImages_Entire), modelList.D_FE_LR(SRImages_Ensembled))
+    #srAdversarialScore = modelList.Disc(SRImages_Ensembled)
 
     #srPerceptureScore = modelList.Perceptual(SRImages_Ensembled)
     #with torch.no_grad():
     #    hrPerceptureScore = modelList.Perceptual(HRImages)
 
     #loss_perceptual = mse_criterion(srPerceptureScore * 100000, hrPerceptureScore * 100000) 
-    loss_pixelwise = cpl_criterion(SRImages_Ensembled, HRImages)
-    loss_adversarial = bce_criterion(srAdversarialScore, torch.ones_like(srAdversarialScore))
+    loss_pixelwise = mse_criterion(trI, gtI)
+    #loss_adversarial = bce_criterion(srAdversarialScore, torch.ones_like(srAdversarialScore))
 
     #print(loss_disc, loss_perceptual, loss_pixelwise, loss_adversarial)
 
-    loss = loss_adversarial
-
-
-    #for MISR
-    #if len(HRImages.size()) == 5:
-    #    loss = cpl_criterion(SRImages_Ensembled, HRImages[:,p.sequenceLength//2,:,:,:])
-    #else:
-    #    loss = cpl_criterion(SRImages_Ensembled, HRImages) 
-
+    loss = loss_pixelwise# + loss_adversarial * 0.002
 
 
     # Update All model weights
@@ -203,48 +203,14 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     # if modelNames is a String, updates one model
     # if modelNames is a List of string, updates those models.
     #backproagateAndWeightUpdate(modelList, loss, modelNames = "Ensemble")
-    backproagateAndWeightUpdate(modelList, loss, modelNames = ["E_FE","E_Deco"])
-
-
-    #AF = AF.detach()
-    #SRImagesX2 = SRImages.detach()
-
-    '''
-    ############################################# Texture Restoration ##############################################
-     # SR Processing
-    _, SRImages = modelList.NET(alignedFeatureSeq = AF, UltraLongSkipConnection = SRImagesX4, scaleLevel='TR')
-
-    #for MISR
-    if len(HRImages.size()) == 5:
-        
-        sM, sP = vision.HPFinFreq(SRImages, 3, freqReturn = True)
-        gM, gP = vision.HPFinFreq(HRImages[:,p.sequenceLength//2,:,:,:], 3, freqReturn = True)
-        #sM, sP = vision.polarFFT(SRImages)
-        #gM, gP = vision.polarFFT(HRImages[:,p.sequenceLength//2,:,:,:])
-        #print(sM.max(), sM.min())
-        #lossM = (1 - ssim_criterion( sM / 65535 , gM / 65535 )) * 200
-        #lossC = cpl_criterion(SRImages, HRImages[:,p.sequenceLength//2,:,:,:])
-        #lossM = cpl_criterion(sM, gM)
-        #lossP = cpl_criterion(sP, gP)
-        #loss = lossM + lossC
-        loss = cpl_criterion(SRImages, torch.zeros_like(SRImages))#HRImages[:,p.sequenceLength//2,:,:,:]) 
-        
-        
-    else:
-        loss = cpl_criterion(vision.HistogramEqualization(SRImages), 
-                             vision.HistogramEqualization(HRImages)) 
-
-    # Update All model weights
-    backproagateAndWeightUpdate(modelList, loss, modelNames = None)
-    #loss.backward()
-
-    SRImages = SRImages.detach()
-    '''
+    backproagateAndWeightUpdate(modelList, loss, modelNames = ["E_FE"])
 
     # return losses
-    lossList = [srAdversarialLoss, hrAdversarialLoss, loss_disc, loss_pixelwise, loss_adversarial, loss]
+    lossList = [loss_pixelwise]
+    #lossList = [srAdversarialLoss, hrAdversarialLoss, loss_disc, loss_pixelwise, loss_adversarial, loss]
     # return List of Result Images (also you can add some intermediate results).
-    SRImagesList = [SRImages_Entire,SRImages_Face,SRImages_Ensembled] 
+    #SRImagesList = [gaussianSprayKernel,bImage1,bImage2,blendedImages] 
+    SRImagesList = [trI,gtI]
 
     
     return lossList, SRImagesList
@@ -254,7 +220,6 @@ def trainStep(epoch, modelList, LRImages, HRImages):
 
 def inferenceStep(epoch, modelList, LRImages, HRImages):
 
-    
 
     # loss
     mse_criterion = nn.MSELoss()

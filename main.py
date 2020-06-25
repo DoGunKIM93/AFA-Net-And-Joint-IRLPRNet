@@ -1,7 +1,7 @@
 '''
 main.py
 '''
-mainversion = "1.51.200529"
+mainversion = "1.51.200624"
 
 
 #FROM Python LIBRARY
@@ -43,6 +43,9 @@ import backbone.module as module
 import backbone.structure as structure
 
 
+
+# 시작시 폴더와 파일들을 지정된 경로로 복사 (백업)
+# 텐서보드 관련 초기화
 def initFolderAndFiles():
     
     if not os.path.exists('data/' + version):
@@ -66,7 +69,11 @@ def initFolderAndFiles():
     if not os.path.exists('./data/' + version + '/model/'+ subversion + '/backbone'):
         os.makedirs('./data/' + version + '/model/'+ subversion + '/backbone')
 
-    copyfile('./' + sys.argv[0], './data/' + version + '/model/' + subversion+'/'+ sys.argv[0])
+    if args.debug is True:
+        copyfile('./' + 'main.py', './data/' + version + '/model/' + subversion+'/'+ 'main.py')
+    else:
+        copyfile('./' + sys.argv[0], './data/' + version + '/model/' + subversion+'/'+ sys.argv[0])
+
     copyfile('./data_loader.py', './data/' + version + '/model/'+ subversion +'/data_loader.py')
     copyfile('./backbone/vision.py', './data/' + version + '/model/' + subversion +'/backbone/vision.py')
     copyfile('./model.py', './data/' + version + '/model/' + subversion + '/model.py')
@@ -87,9 +94,8 @@ def initFolderAndFiles():
 
 
 
-
+# GPU 지정
 os.environ["CUDA_VISIBLE_DEVICES"]=p.GPUNum
-#os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 #Arg parser init
 parser = argparse.ArgumentParser()
@@ -98,6 +104,7 @@ parser.add_argument('--test', '-t', action='store_true', help="test 여부")
 parser.add_argument('--load', '-l', nargs='?', default='None', const='-1', help="load 여부")
 parser.add_argument('--irene', '-i', action='store_true', help="키지마세요")
 parser.add_argument('--nosave', '-n', action='store_true', help="epoch마다 validation 과정에 생기는 이미지를 가장 최근 이미지만 저장")
+parser.add_argument('--debug', '-d', action='store_true', help="VS코드 디버그 모드")
 
 args = parser.parse_args()
 
@@ -128,6 +135,8 @@ elif (p.testDataset == 'Set5'):
 initFolderAndFiles()
 
 
+
+#버전 체크
 ############################################
 ############################################
 print("")
@@ -229,7 +238,7 @@ for epoch in range(startEpoch, p.MaxEpoch):
     
     for i, Imagepairs in enumerate(trainDataLoader):
 
-        if i == 200: break
+        #if i == 200: break
 
         LRImages = []
         HRImages = []

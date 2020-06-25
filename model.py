@@ -1,7 +1,7 @@
 '''
 model.py
 '''
-version = '1.30.200529'
+version = '1.3.200624'
 
 
 #from Python
@@ -35,11 +35,15 @@ import backbone.vision as vision
     #CovPool
 from backbone.module import CovpoolLayer, SqrtmLayer, CovpoolLayer3d, SqrtmLayer3d, TriuvecLayer
     #EDVR
-from backbone.module import EDVR_Predeblur_ResNet_Pyramid, EDVR_PCD_Align, EDVR_TSA_Fusion, EDVR_make_layer, EDVR_ResidualBlock_noBN
+from backbone.EDVR.EDVR import EDVR_Predeblur_ResNet_Pyramid, EDVR_PCD_Align, EDVR_TSA_Fusion, EDVR_make_layer, EDVR_ResidualBlock_noBN
     #Attentions
 from backbone.module import SecondOrderChannalAttentionBlock, NonLocalBlock, CrissCrossAttention
     #EfficientNet
-from backbone.module import EfficientNetBuilder, EFF_create_conv2d, EFF_round_channels, SelectAdaptivePool2d, efficientnet_init_weights, EFF_decode_arch_def
+from backbone.EfficientNet.EfficientNet import EfficientNetBuilder, EFF_create_conv2d, EFF_round_channels, SelectAdaptivePool2d, efficientnet_init_weights, EFF_decode_arch_def
+    #ResNeSt
+from backbone.ResNeSt.resnest import resnest50, resnest101, resnest200, resnest269
+from backbone.ResNeSt.resnet import ResNet, Bottleneck
+
 
 
 
@@ -53,38 +57,278 @@ from backbone.module import EfficientNetBuilder, EFF_create_conv2d, EFF_round_ch
 inputChannel = 1 if p.colorMode =='grayscale' else 3
 
 
-
-
-#Disc using EfficientNet Feature. (2560*7*7)
-class ZIM(nn.Module):
+class SunnySideUp(nn.Module):
     
-    def __init__(self, drop_rate, training):
-        super(ZIM, self).__init__()
+    def __init__(self, CW=32):
+        super(SunnySideUp, self).__init__()
 
-        self.drop_rate = drop_rate
-        self.training = training
+        self.conv1 = nn.Conv2d(        3, CW *   1, 4, 2, 1) # 256 -> 128
+        self.conv2 = nn.Conv2d(CW *   1, CW *   2, 4, 2, 1) # 256 -> 128
+        self.conv3 = nn.Conv2d(CW *   2, CW *   4, 4, 2, 1) # 256 -> 128
+        self.conv4 = nn.Conv2d(CW *   4, CW *   8, 4, 2, 1) # 256 -> 128
+        self.conv5 = nn.Conv2d(CW *   8, 1, 4, 2, 1) # 256 -> 128
+        self.AAP = nn.AdaptiveAvgPool2d((3, 3))
 
-        self.global_pool = SelectAdaptivePool2d(pool_type='avg')
-        # Classifier
-        self.classifier = nn.Linear(2560 * self.global_pool.feat_mult(), 1)
-
-    def forward(self, x_a_f, x_b_f):
-
-        x = torch.cat((x_a_f, x_b_f), 1)
-        x = self.global_pool(x)
-        x = x.flatten(1)
-        if self.drop_rate > 0.:
-            x = F.dropout(x, p=self.drop_rate, training=self.training)
-        return F.sigmoid(self.classifier(x))
+        self.shifter = Shifter()
 
 
+    def forward(self, x):
 
-#Gen using EfficientNet Feature.
+        ori = x
+
+        x = F.leaky_relu(self.conv1(x), 0.2)
+
+        x = F.leaky_relu(self.conv2(x), 0.2)
+
+        x = F.leaky_relu(self.conv3(x), 0.2)
+
+        x = F.leaky_relu(self.conv4(x), 0.2)
+
+        x = F.leaky_relu(self.conv5(x), 0.2)
+
+        x = F.sigmoid(self.AAP(x)).repeat(1,3,1,1)
+        
+        ori = self.shifter(ori, x)
+
+        return ori
+
+
+
+
+class BlueLemonade(nn.Module):#v2 
+    
+    def __init__(self, featureExtractor, CW = p.NGF, blendingChannel = 3, shiftDistance = 9):#, CW = p.NDF, Blocks = 5, ResPerBlocks = 10):
+        super(BlueLemonade, self).__init__()
+
+        self.blendingChannel = blendingChannel
+        self.shiftDistance = shiftDistance
+        self.featureExtractor = featureExtractor
+
+        self.adaptiveFilterMaker = nn.Sequential( # 1/32
+            nn.ConvTranspose2d( 3840,  CW*16, 4, 2, 1), #1/16
+            nn.ReLU(),
+            nn.ConvTranspose2d( CW*16, CW*8, 4, 2, 1), #1/8
+            nn.ReLU(),
+            nn.ConvTranspose2d( CW*8,  CW*4, 4, 2, 1), #1/4
+            nn.ReLU(),
+            nn.ConvTranspose2d( CW*4,  CW, 4, 2, 1), #1/2
+            nn.ReLU(),
+            nn.ConvTranspose2d( CW, inputChannel * self.blendingChannel, 4, 2, 1), #1/1
+            nn.Tanh(),
+        )
+
+        self.shiftKernelMaker = nn.Sequential( # 1/32
+            nn.ConvTranspose2d( 3840,  CW*16, 4, 2, 1), #1/16
+            nn.ReLU(),
+            nn.ConvTranspose2d( CW*16, CW*8, 4, 2, 1), #1/8
+            nn.ReLU(),
+            nn.ConvTranspose2d( CW*8,  CW*4, 4, 2, 1), #1/4
+            nn.ReLU(),
+            nn.ConvTranspose2d( CW*4,  CW, 4, 2, 1), #1/2
+            nn.ReLU(),
+            nn.ConvTranspose2d( CW, self.blendingChannel, 4, 2, 1), #1/1
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d((self.shiftDistance, self.shiftDistance)),
+            nn.Sigmoid(),
+        )
+        #for i in range(Blocks):
+        #    self.kernelMaker.append(ReconstructionBlock(CW, ResPerBlocks, dim=2, use_attention=False, attention_sub_sample=None))
+
+        self.shifter = Shifter()
+
+        self.iteration = iteration
+    
+    def kernelMaking(self, a, b, c):
+        cated = torch.cat((a,b,c),1)
+        adaptiveFilter = self.adaptiveFilterMaker(cated) * (2 / self.iteration) 
+        shiftKernel = self.shiftKernelMaker(cated)
+        return adaptiveFilter, [shiftKernel[:,0:1,:,:].repeat(1,3,1,1), shiftKernel[:,1:2,:,:].repeat(1,3,1,1), shiftKernel[:,2:3,:,:].repeat(1,3,1,1)]
+
+    def applyFilter(self, ori, aFilter):
+        aFilter = aFilter.view(aFilter.size(0), aFilter.size(1) // inputChannel, inputChannel, *aFilter.size()[2:])
+        aFilter = F.softmax(aFilter, dim=1)#.view(x.size(0), -1, *x.size()[2:])
+
+        ori = ori.view(ori.size(0), ori.size(1) // inputChannel, inputChannel, *ori.size()[2:])
+
+        return (aFilter * ori).sum(dim=1)
+
+    def forward(self, x1, x2):
+
+        xb = x1
+        x1f = self.featureExtractor(x1)
+        x2f = self.featureExtractor(x2)
+
+        for i in range(self.iteration):
+
+            xbf = self.featureExtractor(xb)
+
+            adaptiveFilter, shiftKernel = self.kernelMaking(x1f, x2f, xbf)
+
+            shiftedX1 = self.shifter(x1, shiftKernel[0])
+            shiftedX2 = self.shifter(x2, shiftKernel[1])
+            shiftedXB = self.shifter(xb, shiftKernel[2])
+
+            catedX = torch.cat((shiftedX1, shiftedX2, shiftedXB), 1)
+            filterdX = self.applyFilter(catedX, adaptiveFilter)
+
+            xb = filterdX
+
+        return xb
+
+
+class ISAF(nn.Module):#v2 
+    
+    def __init__(self, featureExtractor, CW = p.NGF, iteration = 5, blendingChannel = 3, shiftDistance = 3):#, CW = p.NDF, Blocks = 5, ResPerBlocks = 10):
+        super(ISAF, self).__init__()
+
+        self.blendingChannel = blendingChannel
+        self.shiftDistance = shiftDistance
+        self.featureExtractor = featureExtractor
+
+        self.adaptiveFilterMaker = nn.Sequential( # 1/32
+            nn.ConvTranspose2d( 3840,  CW*16, 4, 2, 1), #1/16
+            nn.ReLU(),
+            nn.ConvTranspose2d( CW*16, CW*8, 4, 2, 1), #1/8
+            nn.ReLU(),
+            nn.ConvTranspose2d( CW*8,  CW*4, 4, 2, 1), #1/4
+            nn.ReLU(),
+            nn.ConvTranspose2d( CW*4,  CW, 4, 2, 1), #1/2
+            nn.ReLU(),
+            nn.ConvTranspose2d( CW, inputChannel * self.blendingChannel, 4, 2, 1), #1/1
+            nn.Tanh(),
+        )
+
+        self.shiftKernelMaker = nn.Sequential( # 1/32
+            nn.ConvTranspose2d( 3840,  CW*16, 4, 2, 1), #1/16
+            nn.ReLU(),
+            nn.ConvTranspose2d( CW*16, CW*8, 4, 2, 1), #1/8
+            nn.ReLU(),
+            nn.ConvTranspose2d( CW*8,  CW*4, 4, 2, 1), #1/4
+            nn.ReLU(),
+            nn.ConvTranspose2d( CW*4,  CW, 4, 2, 1), #1/2
+            nn.ReLU(),
+            nn.ConvTranspose2d( CW, self.blendingChannel, 4, 2, 1), #1/1
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d((self.shiftDistance, self.shiftDistance)),
+            nn.Sigmoid(),
+        )
+        #for i in range(Blocks):
+        #    self.kernelMaker.append(ReconstructionBlock(CW, ResPerBlocks, dim=2, use_attention=False, attention_sub_sample=None))
+
+        self.shifter = Shifter()
+
+        self.iteration = iteration
+    
+    def kernelMaking(self, a, b, c):
+        cated = torch.cat((a,b,c),1)
+        adaptiveFilter = self.adaptiveFilterMaker(cated) * (2 / self.iteration) 
+        shiftKernel = self.shiftKernelMaker(cated)
+        return adaptiveFilter, [shiftKernel[:,0:1,:,:].repeat(1,3,1,1), shiftKernel[:,1:2,:,:].repeat(1,3,1,1), shiftKernel[:,2:3,:,:].repeat(1,3,1,1)]
+
+    def applyFilter(self, ori, aFilter):
+        aFilter = aFilter.view(aFilter.size(0), aFilter.size(1) // inputChannel, inputChannel, *aFilter.size()[2:])
+        aFilter = F.softmax(aFilter, dim=1)#.view(x.size(0), -1, *x.size()[2:])
+
+        ori = ori.view(ori.size(0), ori.size(1) // inputChannel, inputChannel, *ori.size()[2:])
+
+        return (aFilter * ori).sum(dim=1)
+
+    def forward(self, x1, x2):
+
+        xb = x1
+        x1f = self.featureExtractor(x1)
+        x2f = self.featureExtractor(x2)
+
+        for i in range(self.iteration):
+
+            xbf = self.featureExtractor(xb)
+
+            adaptiveFilter, shiftKernel = self.kernelMaking(x1f, x2f, xbf)
+
+            shiftedX1 = self.shifter(x1, shiftKernel[0])
+            shiftedX2 = self.shifter(x2, shiftKernel[1])
+            shiftedXB = self.shifter(xb, shiftKernel[2])
+
+            catedX = torch.cat((shiftedX1, shiftedX2, shiftedXB), 1)
+            filterdX = self.applyFilter(catedX, adaptiveFilter)
+
+            xb = filterdX
+
+        return xb
+
+
+
+
+class ShiftKernelMaker(nn.Module):
+    def __init__(self):
+        super(ShiftKernelMaker, self).__init__()
+
+    def forward(self, shiftKernel):
+        assert shiftKernel.size(2) % 2 == 1
+        assert shiftKernel.size(3) % 2 == 1
+
+        #Construct Channel
+        shiftKernel = shiftKernel.view(1,-1,*shiftKernel.size()[2:])
+        #print(shiftKernel.size())
+        skList = []
+        for i in range(shiftKernel.size(1)):
+            skSlice = shiftKernel[:,i:i+1,:,:]
+            skSlice = (skSlice == skSlice.max()).type_as(skSlice)
+            skList.append(skSlice)
+        skTensor = torch.cat(skList, 0)
+        #skTensor = skTensor.unsqueeze(2)#.permute(1,0,2,3)
+
+        return skTensor
+
+
+
+class Shifter(nn.Module):
+    
+    def __init__(self):
+        super(Shifter, self).__init__()
+        self.shiftKernelMaker = ShiftKernelMaker()
+
+    def forward(self, x, shiftKernel):
+
+        shiftKernel = self.shiftKernelMaker(shiftKernel)
+        #print(shiftKernel[0,0,:,:])
+
+        N = x.size(0)
+        C = x.size(1)
+
+        #print(x.size(), shiftKernel.size())
+        assert x.size(1)*x.size(0) == shiftKernel.size(0)
+        assert x.size(2) >= shiftKernel.size(2)
+        assert x.size(3) >= shiftKernel.size(3)
+        assert shiftKernel.size(2) % 2 == 1
+        assert shiftKernel.size(3) % 2 == 1
+
+        x = x.view(1,-1,*x.size()[2:])
+        paddingSize = shiftKernel.size(2)//2
+        x = F.conv2d(x, shiftKernel, padding=paddingSize, groups=x.size(1))
+        x = x.view(N,C,*x.size()[2:])
+        return x
+
+
+#sk1 = torch.randn(2,3,5,5)
+#sk2 = ShiftKernelMaker()(sk1)
+#inp = torch.randn(2,3,5,5)
+#out = Shifter()(inp, sk2)
+#print(sk1)
+#print(sk2)
+#print(inp)
+#print(out)
+#
+
+
+
+
 class UMP(nn.Module):
 
-    def __init__(self):
+    def __init__(self, CW):
         super(UMP, self).__init__()
 
+        self.CW = CW
         self.DecoderList = nn.ModuleList([ # 1/32
             nn.ConvTranspose2d(2560,  512, 4, 2, 1), #1/16
             nn.ConvTranspose2d( 512,  256, 4, 2, 1), #1/8
@@ -105,7 +349,6 @@ class UMP(nn.Module):
         return F.tanh(x)
 
 
-#adaptive filter Gen.
 class PSY(nn.Module):
     
     def __init__(self, CW, Blocks = 5, ResPerBlocks = 10, Attention = True, attention_sub_sample = None):
@@ -143,7 +386,7 @@ class PSY(nn.Module):
         return (x * ori).sum(dim=1)
 
 
-#Gen.
+
 class WENDY(nn.Module):
     
     def __init__(self, CW, Blocks = 5, ResPerBlocks = 10, Attention = True, attention_sub_sample = None):
@@ -541,6 +784,31 @@ class Upscale(nn.Module):
 
 
 
+def ResNeSt(tp, **kwargs):
+    assert tp in ['50', '101', '200', '269']
+    if tp == '50': #224
+        return ResNet(Bottleneck, [3, 4, 6, 3],
+                   radix=2, groups=1, bottleneck_width=64,
+                   deep_stem=True, stem_width=32, avg_down=True,
+                   avd=True, avd_first=False, **kwargs)
+    elif tp == '101': #256
+        return ResNet(Bottleneck, [3, 4, 23, 3],
+                   radix=2, groups=1, bottleneck_width=64,
+                   deep_stem=True, stem_width=64, avg_down=True,
+                   avd=True, avd_first=False, **kwargs)
+    elif tp == '200': #320
+        return ResNet(Bottleneck, [3, 24, 36, 3],
+                   radix=2, groups=1, bottleneck_width=64,
+                   deep_stem=True, stem_width=64, avg_down=True,
+                   avd=True, avd_first=False, **kwargs)
+    elif tp == '269': #416
+        return ResNet(Bottleneck, [3, 30, 48, 8],
+                   radix=2, groups=1, bottleneck_width=64,
+                   deep_stem=True, stem_width=64, avg_down=True,
+                   avd=True, avd_first=False, **kwargs)
+
+
+
 
 
 
@@ -707,8 +975,6 @@ class EfficientNet(nn.Module):
                 rstList.append(x.mean().unsqueeze(0))
             return torch.sum(torch.cat(rstList, 0))
 
-    def getParams(self):
-        return self.drop_rate, self.training
 
     def forward(self, x):
 
@@ -732,25 +998,6 @@ class EfficientNet(nn.Module):
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class EDVR(nn.Module):
     def __init__(self, nf=64, nframes=7, groups=8, front_RBs=5, back_RBs=10, center=None,
                  predeblur=False, HR_in=False, w_TSA=True):
@@ -760,6 +1007,7 @@ class EDVR(nn.Module):
         self.is_predeblur = True if predeblur else False
         self.HR_in = True if HR_in else False
         self.w_TSA = w_TSA
+        self.nframes = nframes
         ResidualBlock_noBN_f = functools.partial(EDVR_ResidualBlock_noBN, nf=nf)
 
         #### extract features (for each frame)
@@ -799,7 +1047,7 @@ class EDVR(nn.Module):
 
     def forward(self, x):
         if len(x.size()) == 4:
-            x = x.unsqueeze(1).repeat(1,7,1,1,1)
+            x = x.unsqueeze(1).repeat(1,self.nframes,1,1,1)
         B, N, C, H, W = x.size()  # N video frames
         x_center = x[:, self.center, :, :, :].contiguous()
 
@@ -860,21 +1108,6 @@ class EDVR(nn.Module):
             base = F.interpolate(x_center, scale_factor=4, mode='bilinear', align_corners=False)
         out += base
         return out
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
  
