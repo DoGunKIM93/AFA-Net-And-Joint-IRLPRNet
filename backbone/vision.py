@@ -27,6 +27,8 @@ from torchvision.utils import save_image
 
 #eps = 1e-6 if p.mixedPrecision == False else 1e-4
 
+blending_method_list = ['simpleBlending', 'gaussianBlending', 'possionBlending']
+
 def Laplacian(input,ksize):
 
     if ksize==1:
@@ -477,5 +479,94 @@ def gaussianKernelSpray(height, width, kernelMinCount, kernelMaxCount, rois):
     return dowhajee
     #output = F.conv3d(input.view(input.size()[0],1,3,input.size()[2],input.size()[3]),kernel,padding = [0, int(ksize/2), int(ksize/2)]).view(input.size()[0],-1,input.size()[2],input.size()[3])
 
+
+    def BlendingMethod(blending_method, source, destination, roi):
+        # 차후 불 필요한 형변환 수정 필요 (pil,cv2,pytorch tensor 사이의 형 변환)
+        if blending_method not in blending_method_list:
+            raise ValueError("blending mothod name error")
+
+        method = blending_method
+        width, height = (destination.shape[3], destination.shape[2]) # width, height (torch image기준 -> 수, 채널, 높이, 너비) 
+        rois = roi #(start_width, start_height, width, height) 반복
+        numberOfRoi = int(len(rois)/4)
+        center = (int(destination.shape[3]/2), int(destination.shape[2]/2)) # width/2, height/2
+        blended_img = Image.new(mode='RGB', size=(width, height), color ='black')
+
+
+        if method == "simpleBlending":
+            print("simpleBlending")
+            # pytorch to pil
+            source = source.squeeze()
+            destination = destination.squeeze()
+            source_pil = transforms.ToPILImage()(source)
+            destination_pil = transforms.ToPILImage()(destination)
+            destination_pil = np.array(destination_pil)
+            
+            for i in range(0, numberOfRoi):
+                x = roi[4*i]
+                y = roi[4*i+1]
+                width = roi[4*i+2]
+                height = roi[4*i+3]
+                
+                crppedimg = source_pil.crop((x, y, x+width, y+height))
+                destination_pil[y:y+height, x:x+width] = crppedimg
+            destination_pil = Image.fromarray(destination_pil)
+            destination_tensor = transforms.ToTensor()(destination_pil).unsqueeze_(0)
+
+            blended_img = destination_tensor
+
+        elif method == "gaussianBlending":
+            print("gaussianBlending")
+            # create gaussian map 
+            gaussian = gaussianKernelSpray(destination.shape[2], destination.shape[3], numberOfRoi, numberOfRoi, rois).repeat(1,3,1,1)
+            print(gaussian.shape)
+            gaussianSprayKernel = gaussian.cpu()
+            print("gaussianSprayKernel : ", gaussianSprayKernel.shape)
+
+            # create blending image
+            print("source : ", source.shape, "destination.shape : ", destination.shape) 
+            gaussianback = destination * gaussianSprayKernel + source * (1 - gaussianSprayKernel)
+            gaussianfore = source * gaussianSprayKernel + destination * (1 - gaussianSprayKernel)
+
+            blended_img = gaussianfore
+
+        elif method == "possionBlending":
+            print("possionBlending")
+            # pytorch tensor to cv2
+            destination_cv2 = destination.squeeze().numpy().transpose(1, 2, 0) * 255
+            destination_cv2 = cv2.cvtColor(destination_cv2, cv2.COLOR_RGB2BGR).astype(np.uint8)    
+                
+            source = source.squeeze()
+            source_pil = transforms.ToPILImage()(source)
+            mixed_clone = destination_cv2
+
+            for i in range(0, numberOfRoi):
+                x = rois[4*i]
+                y = rois[4*i+1]
+                width = rois[4*i+2]
+                height = rois[4*i+3]
+
+                crppedimg = source_pil.crop((x, y, x+width, y+height))
+                
+                area = (crppedimg.size[1], crppedimg.size[0], 3)            
+                a = int(((x+x+width)/2))
+                b = int(((y+y+height)/2))
+                center = (a, b)
+        
+                mask_cv2 = 255 * np.ones(area, dtype=np.uint8)
+
+                source_mask = crppedimg 
+                source_mask_cv2 = np.array(source_mask)
+                source_mask_cv2 = cv2.cvtColor(source_mask_cv2, cv2.COLOR_RGB2BGR)            
+                destination_cv2 = mixed_clone
+                mixed_clone = cv2.seamlessClone(source_mask_cv2, destination_cv2, mask_cv2, center, cv2.MIXED_CLONE)
+
+            mixed_clone = cv2.cvtColor(mixed_clone, cv2.COLOR_BGR2RGB).astype(np.float32)/255.0
+            mixed_clone = torch.from_numpy(mixed_clone.transpose(2, 0, 1)).unsqueeze_(0)
+            blended_img = mixed_clone
+
+        #save_image(blended_img, '/home/projSR/dgk/SR_Reference/EDSR-PyTorch/test/blending_test/blended_img.png')
+        return blended_img
+ 
 #os.environ["CUDA_VISIBLE_DEVICES"]='3'
 #print(GaussianSpray(21, 21, 1, 2))
