@@ -425,24 +425,53 @@ def HistogramEqualization(input):
     image = torch.stack([s1, s2, s3], 2)
     return image
 
-def GaussianSpray(height, width, kernelMinCount, kernelMaxCount):
-
+def gaussianKernelSpray(height, width, kernelMinCount, kernelMaxCount, rois):
+    # rois -> 카우시안 커널의 기본 area을 설정 
+    # rois = 0 -> 해당 기능 사용 X : np.size(rois) <= 1
+    # rois = [left x, left y, width, height, ...] -> 해당 기능 사용 O : np.size(rois) > 1
+    
     chikChik = random.randint(kernelMinCount, kernelMaxCount)
     dowhajee = np.zeros((height, width))
-    test = 1
-    for chik in range(chikChik):
-        centerY = random.randint(0, height - 1)
-        centerX = random.randint(0, width - 1)
-        longLen = max([height, width])
-        sigma = random.uniform(longLen / 50, longLen / 5)
+    
+    for i in range(chikChik):        
+        scale_x = 1
+        scale_y = 1
+    
+        if np.size(rois) <= 1:
+            print("rois 미사용")
+            centerY = random.randint(0, height - 1)
+            centerX = random.randint(0, width - 1)
+            longLen = max([height, width])
+            sigma = random.uniform(longLen / 50, longLen / 5)
+        elif np.size(rois) > 1:
+            print("rois 사용")
+            x = rois[4*i]
+            y = rois[4*i+1]
+            x_width = rois[4*i+2]
+            y_height = rois[4*i+3]
+
+            centerY = int(y + y_height/2)
+            centerX = int(x + x_width/2)
+            #-4σ ~ +4σ의 범위 값은 전체 분포의 약 99.99%를 차지하기 때문에 적절한 커널 크기로 σ의 4배 * 2배가 되어야 함
+            sigma = random.uniform((x_width +y_height)/6, (x_width +y_height)/5.5) # sigma 기준 정립 필요 
+            
+            # rois에 따른 scale_factor 기준 정립 필요
+            if y_height/x_width > x_width/y_height:
+                scale_factor = y_height/x_width
+                scale_x = scale_x * scale_factor
+                scale_y = scale_y * 1
+            elif y_height/x_width < x_width/y_height:
+                scale_factor = x_width/y_height
+                scale_x = scale_x * 1
+                scale_y = scale_y * scale_factor
 
         ax = np.arange(0 - centerX, width - centerX)
         ay = np.arange(0 - centerY, height - centerY)
-        yy, xx = np.meshgrid(ay, ax)
-        kernel = np.exp(-(xx**2 + yy**2) / (2. * sigma**2))
 
-        dowhajee = np.maximum(dowhajee, kernel)
-    
+        ## x에 배수하면 가우시안 커널의 좌우 너비 조정, y에 배수하면 가우시안 커널의 상하 너비 조정 
+        xx, yy = np.meshgrid(ax*scale_x, ay*scale_y) 
+        kernel = np.exp(-(xx**2 + yy**2) / (2. * sigma**2))
+        dowhajee = np.maximum(dowhajee, kernel)    
 
     dowhajee = Variable((torch.from_numpy(dowhajee).float()).cuda()).view(1,1,height,width)
     return dowhajee
