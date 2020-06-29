@@ -429,7 +429,7 @@ def GaussianSpray(height, width, kernelMinCount, kernelMaxCount):
 
     chikChik = random.randint(kernelMinCount, kernelMaxCount)
     dowhajee = np.zeros((height, width))
-
+    test = 1
     for chik in range(chikChik):
         centerY = random.randint(0, height - 1)
         centerX = random.randint(0, width - 1)
