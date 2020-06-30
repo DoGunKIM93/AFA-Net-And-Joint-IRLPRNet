@@ -440,13 +440,11 @@ def gaussianKernelSpray(height, width, kernelMinCount, kernelMaxCount, rois):
         scale_y = 1
     
         if np.size(rois) <= 1:
-            print("rois 미사용")
             centerY = random.randint(0, height - 1)
             centerX = random.randint(0, width - 1)
             longLen = max([height, width])
             sigma = random.uniform(longLen / 50, longLen / 5)
         elif np.size(rois) > 1:
-            print("rois 사용")
             x = rois[4*i]
             y = rois[4*i+1]
             x_width = rois[4*i+2]
@@ -494,7 +492,7 @@ def BlendingMethod(blending_method, source, destination, roi):
 
 
     if method == "simpleBlending":
-        print("simpleBlending")
+        print("simpleBlending mothod")
         # pytorch to pil
         source = source.squeeze()
         destination = destination.squeeze()
@@ -516,22 +514,19 @@ def BlendingMethod(blending_method, source, destination, roi):
         blended_img = destination_tensor
 
     elif method == "gaussianBlending":
-        print("gaussianBlending")
+        print("gaussianBlending mothod")
         # create gaussian map 
         gaussian = gaussianKernelSpray(destination.shape[2], destination.shape[3], numberOfRoi, numberOfRoi, rois).repeat(1,3,1,1)
-        print(gaussian.shape)
         gaussianSprayKernel = gaussian.cpu()
-        print("gaussianSprayKernel : ", gaussianSprayKernel.shape)
 
         # create blending image
-        print("source : ", source.shape, "destination.shape : ", destination.shape) 
         gaussianback = destination * gaussianSprayKernel + source * (1 - gaussianSprayKernel)
         gaussianfore = source * gaussianSprayKernel + destination * (1 - gaussianSprayKernel)
 
         blended_img = gaussianfore
 
     elif method == "possionBlending":
-        print("possionBlending")
+        print("possionBlending mothod")
         # pytorch tensor to cv2
         destination_cv2 = destination.squeeze().numpy().transpose(1, 2, 0) * 255
         destination_cv2 = cv2.cvtColor(destination_cv2, cv2.COLOR_RGB2BGR).astype(np.uint8)    
