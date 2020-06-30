@@ -1,7 +1,7 @@
 '''
 module.py
 '''
-version = '1.71.200618'
+version = '1.72.200630'
 
 #from Python
 import time
@@ -23,11 +23,13 @@ from torchvision import datasets
 from torchvision import transforms
 from torchvision.utils import save_image
 
+#from cv2, PIL -> 차후 pytorch tensor로만 활용할 수 있도록 수정 필요
+import cv2
+from PIL import Image, ImageDraw
+
 #import param as p
 
 #eps = 1e-6 if p.mixedPrecision == False else 1e-4
-
-blending_method_list = ['simpleBlending', 'gaussianBlending', 'possionBlending']
 
 def Laplacian(input,ksize):
 
@@ -480,6 +482,8 @@ def gaussianKernelSpray(height, width, kernelMinCount, kernelMaxCount, rois):
 
 def BlendingMethod(blending_method, source, destination, roi):
     # 차후 불 필요한 형변환 수정 필요 (pil,cv2,pytorch tensor 사이의 형 변환)
+    blending_method_list = ['simpleBlending', 'gaussianBlending', 'possionBlending']
+
     if blending_method not in blending_method_list:
         raise ValueError("blending mothod name error")
 
@@ -560,7 +564,6 @@ def BlendingMethod(blending_method, source, destination, roi):
         mixed_clone = torch.from_numpy(mixed_clone.transpose(2, 0, 1)).unsqueeze_(0)
         blended_img = mixed_clone
 
-    #save_image(blended_img, '/home/projSR/dgk/SR_Reference/EDSR-PyTorch/test/blending_test/blended_img.png')
     return blended_img
  
 #os.environ["CUDA_VISIBLE_DEVICES"]='3'
