@@ -36,6 +36,9 @@
 16. mixedPrecision : 믹스드 프리시전 (속도 빨라지고 메모리 덜 먹으나 성능 하락할 수 있음)
 
 # 수정내역
+20200629
+
+1. 컴퓨터비전 기반의 영상 블렌딩 Function 적용 (Simple, Gaussian, Possion)
 
 20200625
 
