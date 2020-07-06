@@ -1,7 +1,7 @@
 '''
 data_loader.py
 '''
-version = "1.56.200602.1"
+version = "1.57.200703.1"
 
 #FROM Python LIBRARY
 import os
@@ -72,6 +72,65 @@ class JointImageDataset(Dataset):
     def __len__(self):
         return self.totalDatasetLength
 
+
+
+class NonPairedSingleImageDataset(Dataset):
+    def __init__(self,
+                LRDatapath,
+                cropTransform,
+                commonTransform,
+                LRTransform):
+
+        self.imageType = 'Single'
+
+        self.LRDatapath = LRDatapath
+        self.cropTransform = cropTransform
+        self.commonTransform = commonTransform
+        self.LRTransform = LRTransform
+        self.numDataLR = 0
+        self.LRImageFileNames = []
+
+        self.LRImageFileNames = os.listdir(self.LRDatapath)
+        self.LRImageFileNames = [file for file in self.LRImageFileNames if (file.endswith(".png") or file.endswith(".jpg") or file.endswith(".jpeg") or file.endswith(".bmp"))]
+        self.numDataLR = len(self.LRImageFileNames)
+        self.LRImageFileNames.sort()
+        print('LR Image prepared : %d images'%self.numDataLR)
+
+    def __getitem__(self, index):
+        dot = "" 
+        for i in range(index%5):
+            dot += "."
+        print(f"preprocessing{dot}     ", end="\r")
+        LRImageOri = Image.open(os.path.join(self.LRDatapath, self.LRImageFileNames[index]))
+
+        if self.cropTransform == None:
+            Images = self.commonTransform(LRImageOri)
+            LRImage = self.LRTransform(Images)
+
+            if p.colorMode == 'grayscale' and LRImage.size(0) == 3:
+                return [(LRImage[0:1,:,:] + LRImage[1:2,:,:] + LRImage[2:3,:,:]) / 3]
+            elif p.colorMode == 'color' and LRImage.size(0) == 1:
+                LRImage = torch.cat((LRImage,LRImage,LRImage),0)
+                return [LRImage]
+            else:
+                return [LRImage]
+        else:
+            rst = []
+            for LRImage in self.cropTransform(LRImageOri):
+                Images = self.commonTransform(LRImage)
+                LRImage = self.LRTransform(Images)
+
+                if p.colorMode == 'grayscale' and LRImage.size(0) == 3:
+                    rst.append([(LRImage[0:1,:,:] + LRImage[1:2,:,:] + LRImage[2:3,:,:]) / 3])
+                elif p.colorMode == 'color' and LRImage.size(0) == 1:
+                    LRImage = torch.cat((LRImage,LRImage,LRImage),0)
+                    rst.append([LRImage])
+                else:
+                    rst.append([LRImage])
+            return rst  
+
+    def __len__(self):
+        return self.numDataLR
 
 
 class SingleImageDataset(Dataset):
@@ -345,7 +404,7 @@ def SRDataset(dataset,
                 scaleFactor,
                 scaleMethod, # 'bicubic' || 'unknown' || 'mild' || 'wild' || 'difficult' || 'virtual' -> software
                 batchSize,
-                mode, # 'train' || 'valid' || 'test'
+                mode, # 'train' || 'valid' || 'test' || 'inference'
                 cropSize=None, #[H,W] || None
                 MaxPixelCount=None, #[H,W] || None
                 colorMode='color', # 'color' || 'grayscale'
@@ -440,7 +499,7 @@ def SRDataset(dataset,
         elif (datasetType == 'valid'):
             LRDatapath += 'val/val_'
             HRDatapath += 'val/val_'
-        elif (datasetType == 'test'):
+        elif (datasetType == 'test' or datasetType == 'inference'):
             LRDatapath += 'test/test_'
             HRDatapath += 'test/test_'
         else:
@@ -454,7 +513,7 @@ def SRDataset(dataset,
             LRDatapath += 'blur_comp/'
             HRDatapath += 'sharp/'
         elif (scaleMethod == 'virtual'):
-            if (datasetType == 'test'):
+            if (datasetType == 'test' or datasetType == 'inference'):
                 print(f"data_loader.py :: ERROR : {dataset}:{datasetType} doesn't provide \"virtual\" scaling method ")
                 return   
             LRDatapath += 'sharp/'
@@ -467,7 +526,7 @@ def SRDataset(dataset,
         LRDatapath += 'Vid4/'
         HRDatapath += 'Vid4/'
 
-        if (datasetType != 'test'):
+        if (datasetType != 'test' and datasetType != 'inference'):
             print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
             return
         
@@ -489,7 +548,7 @@ def SRDataset(dataset,
         LRDatapath += 'DiaDora/GT/'
         HRDatapath += 'DiaDora/GT/'
 
-        if (datasetType != 'train' and datasetType != 'test'):
+        if (datasetType != 'train' and datasetType != 'test' and datasetType != 'inference'):
             print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
             return
 
@@ -500,7 +559,7 @@ def SRDataset(dataset,
         if (datasetType == 'train'):
             LRDatapath += 'train/'
             HRDatapath += 'train/'
-        elif (datasetType == 'test'):
+        elif (datasetType == 'test' or datasetType == 'inference'):
             LRDatapath += 'test/'
             HRDatapath += 'test/'
 
@@ -514,7 +573,7 @@ def SRDataset(dataset,
             LRDatapath += "CelebA/CelebA/Img/img_align_celeba_png.7z/"
             HRDatapath = LRDatapath
 
-        if datasetType == 'test':
+        if (datasetType == 'test' or datasetType == 'inference'):
             LRDatapath += 'test/'
             HRDatapath += 'test/'
         elif datasetType == 'train':
@@ -533,7 +592,7 @@ def SRDataset(dataset,
             LRDatapath += "FFHQ/GT/Face/"
             HRDatapath = LRDatapath
 
-        if datasetType == 'test':
+        if (datasetType == 'test' or datasetType == 'inference'):
             LRDatapath += 'test/'
             HRDatapath += 'test/'
         elif datasetType == 'train':
@@ -553,7 +612,7 @@ def SRDataset(dataset,
             LRDatapath += "FFHQ/GT/General/"
             HRDatapath = LRDatapath
 
-        if datasetType == 'test':
+        if (datasetType == 'test' or datasetType == 'inference'):
             LRDatapath += 'test/'
             HRDatapath += 'test/'
         elif datasetType == 'train':
@@ -572,7 +631,7 @@ def SRDataset(dataset,
         LRDatapath += 'benchmark/' + dataset + '/'
         HRDatapath += 'benchmark/' + dataset + '/HR/'
 
-        if (datasetType != 'test'):
+        if (datasetType != 'test' and datasetType != 'inference'):
             print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
             return
 
@@ -590,6 +649,18 @@ def SRDataset(dataset,
             print(f"data_loader.py :: ERROR : {dataset} scaling method not found")
             return
     
+    elif (dataset == 'CUSTOM'):
+        if (datasetType != 'test' and datasetType != 'inference'):
+            print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
+            return
+
+        if scaleMethod != 'virtual':
+            print(f"data_loader.py :: ERROR : {dataset} only provide \"virtual\" scaling method ")
+            return 
+        else:
+            LRDatapath += p.customPath
+            if not os.path.exists(LRDatapath):
+                os.makedirs(LRDatapath)
     else:
         print("data_loader.py :: ERROR : Dataset not found")
         return
@@ -628,10 +699,11 @@ def SRDataset(dataset,
 
     
     if scaleMethod == 'virtual':
-        if sameOutputSize == True:
-            LRTransformList.append(ResizeByScaleFactor(1/p.scaleFactor, same_outputSize=True))
-        else:
-            LRTransformList.append(ResizeByScaleFactor(1/p.scaleFactor, same_outputSize=False))
+        if datasetType != 'inference':
+            if sameOutputSize == True:
+                LRTransformList.append(ResizeByScaleFactor(1/p.scaleFactor, same_outputSize=True))
+            else:
+                LRTransformList.append(ResizeByScaleFactor(1/p.scaleFactor, same_outputSize=False))
     
     LRTransformList.append(transforms.ToTensor())
     if valueRangeType == '0~1':
@@ -663,8 +735,11 @@ def SRDataset(dataset,
         else:
             dataset = MultiImageDataset(LRDatapath, HRDatapath, cropTransform, commonTransform, LRTransform, HRTransform, p.sequenceLength, True)
     else:
-        dataset = SingleImageDataset(LRDatapath, HRDatapath, cropTransform, commonTransform, LRTransform, HRTransform)
-    
+        if (dataset == 'CUSTOM'):
+            dataset = NonPairedSingleImageDataset(LRDatapath, cropTransform, commonTransform, LRTransform)
+        else:
+            dataset = SingleImageDataset(LRDatapath, HRDatapath, cropTransform, commonTransform, LRTransform, HRTransform)
+
 
     return dataset
 
@@ -705,7 +780,7 @@ def SRDataLoader(dataset,
 
     if mode == 'train':
         shuffle = True
-    elif (mode == 'test' or mode == 'valid'):
+    elif (mode == 'test' or mode == 'valid' or mode == 'inference'):
         shuffle = False
 
     #dataset = JointImageDataset([dataset, dataset], True, True)
