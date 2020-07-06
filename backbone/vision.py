@@ -1,7 +1,7 @@
 '''
 module.py
 '''
-version = '1.72.200630'
+version = '1.73.200706'
 
 #from Python
 import time
@@ -23,11 +23,13 @@ from torchvision import datasets
 from torchvision import transforms
 from torchvision.utils import save_image
 
-#from cv2, PIL -> 차후 pytorch tensor로만 활용할 수 있도록 수정 필요
+#from Image Library
 import cv2
 from PIL import Image, ImageDraw
 
-#import param as p
+#from this project
+import param as p
+import backbone.utils as utils
 
 #eps = 1e-6 if p.mixedPrecision == False else 1e-4
 
@@ -494,34 +496,22 @@ def BlendingMethod(blending_method, source, destination, roi):
     center = (int(destination.shape[3]/2), int(destination.shape[2]/2)) # width/2, height/2
     blended_img = Image.new(mode='RGB', size=(width, height), color ='black')
 
-
     if method == "simpleBlending":
-        print("simpleBlending mothod")
-        # pytorch to pil
-        source = source.squeeze()
-        destination = destination.squeeze()
-        source_pil = transforms.ToPILImage()(source)
-        destination_pil = transforms.ToPILImage()(destination)
-        destination_pil = np.array(destination_pil)
-        
+        print("simpleBlending")
         for i in range(0, numberOfRoi):
             x = roi[4*i]
             y = roi[4*i+1]
             width = roi[4*i+2]
             height = roi[4*i+3]
-            
-            crppedimg = source_pil.crop((x, y, x+width, y+height))
-            destination_pil[y:y+height, x:x+width] = crppedimg
-        destination_pil = Image.fromarray(destination_pil)
-        destination_tensor = transforms.ToTensor()(destination_pil).unsqueeze_(0)
-
-        blended_img = destination_tensor
-
+                        
+            cropped_image = source[:,:,y:y+height, x:x+width]
+            destination[:,:,y:y+height, x:x+width] = cropped_image
+        blended_img = destination
     elif method == "gaussianBlending":
         print("gaussianBlending mothod")
         # create gaussian map 
         gaussian = gaussianKernelSpray(destination.shape[2], destination.shape[3], numberOfRoi, numberOfRoi, rois).repeat(1,3,1,1)
-        gaussianSprayKernel = gaussian.cpu()
+        gaussianSprayKernel = gaussian
 
         # create blending image
         gaussianback = destination * gaussianSprayKernel + source * (1 - gaussianSprayKernel)
@@ -532,31 +522,29 @@ def BlendingMethod(blending_method, source, destination, roi):
     elif method == "possionBlending":
         print("possionBlending mothod")
         # pytorch tensor to cv2
-        destination_cv2 = destination.squeeze().numpy().transpose(1, 2, 0) * 255
-        destination_cv2 = cv2.cvtColor(destination_cv2, cv2.COLOR_RGB2BGR).astype(np.uint8)    
-            
-        source = source.squeeze()
-        source_pil = transforms.ToPILImage()(source)
+        destination = utils.denorm(destination.cpu().view(destination.size(0), 1 if p.colorMode=='grayscale' else 3, destination.size(2), destination.size(3))) 
+        source = utils.denorm(source.cpu().view(source.size(0), 1 if p.colorMode=='grayscale' else 3, source.size(2), source.size(3)))
+        
+        destination_cv2 = destination.squeeze().cpu().numpy().transpose(1, 2, 0) * 255
+        destination_cv2 = cv2.cvtColor(destination_cv2, cv2.COLOR_RGB2BGR).astype(np.uint8)
+        source_cv2 = source.squeeze().cpu().numpy().transpose(1, 2, 0) * 255
+        source_cv2 = cv2.cvtColor(source_cv2, cv2.COLOR_RGB2BGR).astype(np.uint8)
+        
         mixed_clone = destination_cv2
-
         for i in range(0, numberOfRoi):
             x = rois[4*i]
             y = rois[4*i+1]
             width = rois[4*i+2]
             height = rois[4*i+3]
 
-            crppedimg = source_pil.crop((x, y, x+width, y+height))
-            
-            area = (crppedimg.size[1], crppedimg.size[0], 3)            
+            cropped_image = source_cv2[y:y+height, x:x+width, :]
+            area = (cropped_image.shape[0], cropped_image.shape[1], 3)            
             a = int(((x+x+width)/2))
             b = int(((y+y+height)/2))
             center = (a, b)
-    
-            mask_cv2 = 255 * np.ones(area, dtype=np.uint8)
 
-            source_mask = crppedimg 
-            source_mask_cv2 = np.array(source_mask)
-            source_mask_cv2 = cv2.cvtColor(source_mask_cv2, cv2.COLOR_RGB2BGR)            
+            mask_cv2 = 255 * np.ones(area, dtype=np.uint8)
+            source_mask_cv2 = cropped_image
             destination_cv2 = mixed_clone
             mixed_clone = cv2.seamlessClone(source_mask_cv2, destination_cv2, mask_cv2, center, cv2.MIXED_CLONE)
 
