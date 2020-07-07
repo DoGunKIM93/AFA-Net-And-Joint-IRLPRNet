@@ -1,7 +1,7 @@
 '''
 data_loader.py
 '''
-version = "1.57.200703.1"
+version = "1.58.200707"
 
 #FROM Python LIBRARY
 import os
@@ -426,15 +426,10 @@ def SRDataset(dataset,
     if (dataset == 'DIV2K'):
 
         # mode
-        if (datasetType == 'train'):
+        if (datasetType == 'train') or (datasetType == 'valid'):
 
-            LRDatapath += 'DIV2K/DIV2K_train_'
-            HRDatapath += 'DIV2K/DIV2K_train_HR/'
-
-        elif (datasetType == 'valid'):
-            
-            LRDatapath += 'DIV2K/DIV2K_valid_'
-            HRDatapath += 'DIV2K/DIV2K_valid_HR/'
+            LRDatapath += f'DIV2K/{datasetType}/'
+            HRDatapath += f'DIV2K/{datasetType}/'
             
         else:
             print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
@@ -442,21 +437,21 @@ def SRDataset(dataset,
     
         # scale method
         if (scaleMethod == 'virtual' or scaleFactor == 1):
-            LRDatapath += 'HR/'
+            LRDatapath += 'GT/'
 
         elif scaleMethod == 'bicubic':
             if not(scaleFactor == 2 or scaleFactor == 3 or scaleFactor == 4 or scaleFactor == 8) :
                 print(f"data_loader.py :: ERROR : {dataset} {scaleMethod} support only X2, X3, X4, X8 Scale")
                 return
             else:
-                LRDatapath += 'LR_' + scaleMethod + '/' + 'X' + str(scaleFactor) + '/'
+                LRDatapath += f'{scaleMethod}/{str(scaleFactor)}/'
 
         elif scaleMethod == 'unknown':
             if not(scaleFactor == 2 or scaleFactor == 3 or scaleFactor == 4 ) :
                 print(f"data_loader.py :: ERROR : {dataset} {scaleMethod} support only X2, X3, X4 Scale")
                 return
             else:
-                LRDatapath += 'LR_' + scaleMethod + '/' + 'X' + str(scaleFactor) + '/'
+                LRDatapath += f'{scaleMethod}/{str(scaleFactor)}/'
 
         elif (scaleMethod == 'mild' or
              scaleMethod == 'wild' or
@@ -466,7 +461,7 @@ def SRDataset(dataset,
                 print(f"data_loader.py :: ERROR : {dataset} {scaleMethod} support only X4 Scale")
                 return
             else:
-                LRDatapath += 'LR_' + scaleMethod + '/'
+                LRDatapath += f'{scaleMethod}/{str(scaleFactor)}/'
         
         else:
             print(f"data_loader.py :: ERROR : {dataset} scaling method not found")
@@ -475,7 +470,7 @@ def SRDataset(dataset,
     elif (dataset == '291'):
         # mode
         LRDatapath += '291/'
-        HRDatapath += '291/HR/'
+        HRDatapath += '291/GT/'
     
         if (datasetType != 'train'):
             print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
@@ -483,7 +478,7 @@ def SRDataset(dataset,
 
         # scale method
         if (scaleMethod == 'virtual'):
-            LRDatapath += 'HR/'
+            LRDatapath += 'GT/'
         else:
             print(f"data_loader.py :: ERROR : {dataset} only provide \"virtual\" scaling method ")
             return    
@@ -494,37 +489,37 @@ def SRDataset(dataset,
         HRDatapath += 'REDS/'
 
         if (datasetType == 'train'):
-            LRDatapath += 'train/train_'
-            HRDatapath += 'train/train_'
+            LRDatapath += 'train/'
+            HRDatapath += 'train/'
         elif (datasetType == 'valid'):
-            LRDatapath += 'val/val_'
-            HRDatapath += 'val/val_'
+            LRDatapath += 'validation/'
+            HRDatapath += 'validation/'
         elif (datasetType == 'test' or datasetType == 'inference'):
-            LRDatapath += 'test/test_'
-            HRDatapath += 'test/test_'
+            LRDatapath += 'test/'
+            HRDatapath += 'test/'
         else:
             print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
             return
 
         if (scaleMethod == 'blur'):
-            LRDatapath += 'blur/'
-            HRDatapath += 'sharp/'
+            LRDatapath += 'blur/1/'
+            HRDatapath += 'GT/'
         elif (scaleMethod == 'blur_comp'):
-            LRDatapath += 'blur_comp/'
-            HRDatapath += 'sharp/'
+            LRDatapath += 'blur_comp/1/'
+            HRDatapath += 'GT/'
         elif (scaleMethod == 'virtual'):
             if (datasetType == 'test' or datasetType == 'inference'):
                 print(f"data_loader.py :: ERROR : {dataset}:{datasetType} doesn't provide \"virtual\" scaling method ")
                 return   
-            LRDatapath += 'sharp/'
-            HRDatapath += 'sharp/'
+            LRDatapath += 'GT/'
+            HRDatapath += 'GT/'
         else:
             print(f"data_loader.py :: ERROR : {dataset} only provide \"virtual\" scaling method ")
             return   
     
     elif (dataset == 'Vid4'):
-        LRDatapath += 'Vid4/'
-        HRDatapath += 'Vid4/'
+        LRDatapath += 'Vid4/test/'
+        HRDatapath += 'Vid4/test/'
 
         if (datasetType != 'test' and datasetType != 'inference'):
             print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
@@ -534,7 +529,7 @@ def SRDataset(dataset,
             if (scaleFactor != 4):
                 print(f"data_loader.py :: ERROR : {dataset} {scaleMethod} support only X4 Scale")
                 return
-            LRDatapath += 'BIx4/'
+            LRDatapath += 'bicubic/4/'
             HRDatapath += 'GT/'
         elif (scaleMethod == 'virtual'):
             LRDatapath += 'GT/'
@@ -543,10 +538,9 @@ def SRDataset(dataset,
             print(f"data_loader.py :: ERROR : {dataset} scaling method not found")
             return     
 
-
     elif (dataset == 'DiaDora'):
-        LRDatapath += 'DiaDora/GT/'
-        HRDatapath += 'DiaDora/GT/'
+        LRDatapath += 'DiaDora/'
+        HRDatapath += 'DiaDora/'
 
         if (datasetType != 'train' and datasetType != 'test' and datasetType != 'inference'):
             print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
@@ -557,12 +551,11 @@ def SRDataset(dataset,
             return    
 
         if (datasetType == 'train'):
-            LRDatapath += 'train/'
-            HRDatapath += 'train/'
+            LRDatapath += 'train/GT/'
+            HRDatapath += 'train/GT/'
         elif (datasetType == 'test' or datasetType == 'inference'):
-            LRDatapath += 'test/'
-            HRDatapath += 'test/'
-
+            LRDatapath += 'test/GT/'
+            HRDatapath += 'test/GT/'
 
     elif (dataset == 'CelebA'):
 
@@ -574,11 +567,11 @@ def SRDataset(dataset,
             HRDatapath = LRDatapath
 
         if (datasetType == 'test' or datasetType == 'inference'):
-            LRDatapath += 'test/'
-            HRDatapath += 'test/'
+            LRDatapath += 'test/GT/'
+            HRDatapath += 'test/GT/'
         elif datasetType == 'train':
-            LRDatapath += 'train/'
-            HRDatapath += 'train/'
+            LRDatapath += 'train/GT/'
+            HRDatapath += 'train/GT/'
         else:
             print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
             return
@@ -589,19 +582,18 @@ def SRDataset(dataset,
             print(f"data_loader.py :: ERROR : {dataset} only provide \"virtual\" scaling method ")
             return   
         else:
-            LRDatapath += "FFHQ/GT/Face/"
+            LRDatapath += "FFHQ/Face/"
             HRDatapath = LRDatapath
 
         if (datasetType == 'test' or datasetType == 'inference'):
-            LRDatapath += 'test/'
-            HRDatapath += 'test/'
+            LRDatapath += 'test/GT/'
+            HRDatapath += 'test/GT/'
         elif datasetType == 'train':
-            LRDatapath += 'train/'
-            HRDatapath += 'train/'
+            LRDatapath += 'train/GT/'
+            HRDatapath += 'train/GT/'
         else:
             print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
             return
-
 
     elif (dataset == 'FFHQ-General'):
 
@@ -609,15 +601,15 @@ def SRDataset(dataset,
             print(f"data_loader.py :: ERROR : {dataset} only provide \"virtual\" scaling method ")
             return   
         else:
-            LRDatapath += "FFHQ/GT/General/"
+            LRDatapath += "FFHQ/General/"
             HRDatapath = LRDatapath
 
         if (datasetType == 'test' or datasetType == 'inference'):
-            LRDatapath += 'test/'
-            HRDatapath += 'test/'
+            LRDatapath += 'test/GT/'
+            HRDatapath += 'test/GT/'
         elif datasetType == 'train':
-            LRDatapath += 'train/'
-            HRDatapath += 'train/'
+            LRDatapath += 'train/GT/'
+            HRDatapath += 'train/GT/'
         else:
             print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
             return
@@ -628,22 +620,22 @@ def SRDataset(dataset,
          dataset == 'Manga109' or
          dataset == 'historical' or
          dataset == 'BSDS100'):
-        LRDatapath += 'benchmark/' + dataset + '/'
-        HRDatapath += 'benchmark/' + dataset + '/HR/'
+        LRDatapath += 'benchmark/' + dataset + '/test/'
+        HRDatapath += 'benchmark/' + dataset + '/test/GT/'
 
         if (datasetType != 'test' and datasetType != 'inference'):
             print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
             return
 
         if (scaleMethod == 'virtual' or scaleFactor == 1):
-            LRDatapath += 'HR/'
+            LRDatapath += 'GT/'
 
         elif scaleMethod == 'bicubic':
             if not(scaleFactor == 2 or scaleFactor == 3 or scaleFactor == 4 or scaleFactor == 8) :
                 print(f"data_loader.py :: ERROR : {dataset} {scaleMethod} support only X2, X3, X4, X8 Scale")
                 return
             else:
-                LRDatapath += 'LR_' + scaleMethod + '/' + 'X' + str(scaleFactor) + '/'
+                LRDatapath += scaleMethod + '/' + str(scaleFactor) + '/'
         
         else:
             print(f"data_loader.py :: ERROR : {dataset} scaling method not found")
