@@ -1,7 +1,7 @@
 '''
 edit.py
 '''
-editversion = "1.11.200624"
+editversion = "1.12.200706"
 
 
 #FROM Python LIBRARY
@@ -66,12 +66,12 @@ class ModelList(structure.ModelListBase):
 
 
         
-        #(모델 인스턴스 이름)
-        #self.Entire = model.EDVR(nf=128, nframes=7, groups=8, front_RBs=5, back_RBs=40)
-        #self.Entire_pretrained = "EDVR_Vimeo90K_SR_L.pth"
-        
-        #self.Face = model.ESPCN()
-        #self.Face_pretrained = "ESPCN_face.pth"
+        #(모델 인스턴스 이름)        
+        self.Entire = model.ESPCN()
+        self.Entire_pretrained = "ESPCN_general.pth"
+
+        self.Face = model.ESPCN()
+        self.Face_pretrained = "ESPCN_face.pth"
 
         #self.Face = model.EDVR(nf=128, nframes=1, groups=1, front_RBs=5, back_RBs=40)
         #self.Face_pretrained = "EDVR_Face.pth"
@@ -89,8 +89,8 @@ class ModelList(structure.ModelListBase):
         #self.E_FE_optimizer = torch.optim.Adam(self.E_FE.parameters(), lr=p.learningRate)
         #self.E_FE_pretrained = 'efficientnet_b0_ns.pth'
 
-        self.E_FE = model.SunnySideUp()
-        self.E_FE_optimizer = torch.optim.Adam(self.E_FE.parameters(), lr=p.learningRate)
+        #self.E_FE = model.SunnySideUp()
+        #self.E_FE_optimizer = torch.optim.Adam(self.E_FE.parameters(), lr=p.learningRate)
 
         #self.E_Deco = model.ISAF(featureExtractor = self.E_FE)
         #self.E_Deco_optimizer = torch.optim.Adam(self.E_Deco.parameters(), lr=p.learningRate * 3)
@@ -217,41 +217,115 @@ def trainStep(epoch, modelList, LRImages, HRImages):
      
 
 
-
-def inferenceStep(epoch, modelList, LRImages, HRImages):
-
-
+    ''' validationStep
+    ############# Inference Example code (with GT)#############
     # loss
     mse_criterion = nn.MSELoss()
     cpl_criterion = utils.CharbonnierLoss(eps=1e-3)
  
     # model
     modelList.Entire.eval()
-    modelList.Face.eval()
-    modelList.E_FE.train()
-    modelList.E_Deco.train()
-    # batch size
-    batchSize = LRImages.size(0)
 
     ####################################################### Preproc. #######################################################
     # SR Processing
-
     with torch.no_grad():
-        SRImages_Entire = modelList.Entire(LRImages)
-        SRImages_Face   = modelList.Face(LRImages * 2 - 1)
-        SRImages_Cat = torch.cat([SRImages_Entire, SRImages_Face], 1)
-
+        SRImages   = modelList.Entire(LRImages)
     ####################################################### Ensemble. #######################################################
+    #SRImages_Ensembled = modelList.Ensemble(SRImages_Cat)
+    #loss = mse_criterion(SRImages_Ensembled, HRImages)
+    if SRImages.shape != HRImages.shape:
+        print(f"edit.py :: ERROR : \"SRImages.shape\" : {SRImages.shape} doesn't matach \"HRImages.shape\" : {HRImages.shape}")
+        return
+    else:
+        loss = mse_criterion(SRImages, HRImages)
+        # return List of Result Images (also you can add some intermediate results).
+        #SRImagesList = [SRImages_Entire,SRImages_Face,SRImages_Ensembled] 
+        SRImagesList = [SRImages]
 
-    SRImages_Ensembled = modelList.Ensemble(SRImages_Cat)
+    '''
+def validationStep(epoch, modelList, LRImages, HRImages):
+   ############# Inference Example code (with GT)#############
+    # loss
+    mse_criterion = nn.MSELoss()
+    cpl_criterion = utils.CharbonnierLoss(eps=1e-3)
+ 
+    # model
+    modelList.Entire.eval()
 
-    loss = mse_criterion(SRImages_Ensembled, HRImages)  
+    ####################################################### Preproc. #######################################################
+    # SR Processing
+    with torch.no_grad():
+        SRImages   = modelList.Entire(LRImages)
+    ####################################################### Ensemble. #######################################################
+    #SRImages_Ensembled = modelList.Ensemble(SRImages_Cat)
+    #loss = mse_criterion(SRImages_Ensembled, HRImages)
+    if SRImages.shape != HRImages.shape:
+        print(f"edit.py :: ERROR : \"SRImages.shape\" : {SRImages.shape} doesn't matach \"HRImages.shape\" : {HRImages.shape}")
+        return
+    else:
+        loss = mse_criterion(SRImages, HRImages)
+        # return List of Result Images (also you can add some intermediate results).
+        #SRImagesList = [SRImages_Entire,SRImages_Face,SRImages_Ensembled] 
+        SRImagesList = [SRImages]
+
+    return loss, SRImagesList
+
+    ''' inferenceStep
+    ############# Inference Example code (without GT)#############
+    # model
+    modelList.Entire.eval()
+    modelList.Face.eval()
+
+    ####################################################### Preproc. #######################################################
+    # SR Processing
+    with torch.no_grad():
+        print("LRImages.shape : ", LRImages.shape)
+        SRImages_Entire = modelList.Entire(LRImages)
+        SRImages_Face = modelList.Face(LRImages)
+        print("SRImages_Entire.shape : ", SRImages_Entire.shape)
+        print("SRImages_Face.shape : ", SRImages_Face.shape)
+    ####################################################### Blending. #######################################################
+    if p.blendingMode != None:
+        destination = SRImages_Entire
+        source = SRImages_Face
+        
+        ## test를 위한 roi (Detection 추가하면 roi 매핑 부분 수정 예정)
+        roi = (1300, 700, 400, 400, 400, 900, 500, 300, 300, 400, 300, 500)
+        blended_img = vision.BlendingMethod(p.blendingMode, source, destination, roi)
+        SRImages_Ensembled = blended_img
+    else:
+        SRImages_Ensembled = SRImages_Entire
 
     # return List of Result Images (also you can add some intermediate results).
-    SRImagesList = [SRImages_Entire,SRImages_Face,SRImages_Ensembled] 
-
+    SRImagesList = [SRImages_Ensembled] 
     
-    return loss, SRImagesList
+    '''
+def inferenceStep(modelList, LRImages):
+    # model
+    modelList.Entire.eval()
+    modelList.Face.eval()
+
+    ####################################################### Preproc. #######################################################
+    # SR Processing
+    with torch.no_grad():
+        SRImages_Entire = modelList.Entire(LRImages)
+        SRImages_Face = modelList.Face(LRImages)
+    ####################################################### Blending. #######################################################
+    if p.blendingMode != None:
+        destination = SRImages_Entire
+        source = SRImages_Face
+        
+        # test를 위한 roi (Detection 추가하면 roi 매핑 부분 수정 예정)
+        roi = (1300, 700, 400, 400, 400, 900, 500, 300, 300, 400, 300, 500)
+        blended_img = vision.BlendingMethod(p.blendingMode, source, destination, roi)
+        SRImages_Ensembled = blended_img
+    else:
+        SRImages_Ensembled = SRImages_Entire
+
+    # return List of Result Images (also you can add some intermediate results).
+    SRImagesList = [SRImages_Ensembled] 
+    
+    return SRImagesList
 
 #################################################
 ###############  EDIT THIS AREA  ################

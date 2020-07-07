@@ -8,9 +8,9 @@
 
 # 실행시 주의사항 및 옵션 설명
 
-1. --load, -l : save된 checkpoint 로드 (인자 없을 시 최신 모델 로드, -l 51 -> 51번째 모델 로드)
-2. --test, -t : test 모드 (미구현)
-3. --nosave, -n : epoch마다 validation 과정에 생기는 이미지를 가장 최근 이미지만 저장
+1. --load, -l           : save된 checkpoint 로드 (인자 없을 시 최신 모델 로드, -l 51 -> 51번째 모델 로드)
+2. --inferenceTest, -it : inference 모드 (benchmark(with GT)->downscaling 후 upscaling 시 사이즈 달라지는 Dataset은 아직 적용 X , custom 지원(without GT))
+3. --nosave, -n         : epoch마다 validation 과정에 생기는 이미지를 가장 최근 이미지만 저장
 
 
 # 하이퍼패러미터 설명
@@ -36,6 +36,13 @@
 16. mixedPrecision : 믹스드 프리시전 (속도 빨라지고 메모리 덜 먹으나 성능 하락할 수 있음)
 
 # 수정내역
+20200706
+
+1. Inference 기능 추가
+
+20200629
+
+1. 컴퓨터비전 기반의 영상 블렌딩 Function 적용 (Simple, Gaussian, Possion)
 
 20200625
 

@@ -1,7 +1,7 @@
 '''
 module.py
 '''
-version = '1.71.200618'
+version = '1.73.200706'
 
 #from Python
 import time
@@ -23,7 +23,13 @@ from torchvision import datasets
 from torchvision import transforms
 from torchvision.utils import save_image
 
-#import param as p
+#from Image Library
+import cv2
+from PIL import Image, ImageDraw
+
+#from this project
+import param as p
+import backbone.utils as utils
 
 #eps = 1e-6 if p.mixedPrecision == False else 1e-4
 
@@ -425,28 +431,128 @@ def HistogramEqualization(input):
     image = torch.stack([s1, s2, s3], 2)
     return image
 
-def GaussianSpray(height, width, kernelMinCount, kernelMaxCount):
-
+def gaussianKernelSpray(height, width, kernelMinCount, kernelMaxCount, rois):
+    # rois -> 카우시안 커널의 기본 area을 설정 
+    # rois = 0 -> 해당 기능 사용 X : np.size(rois) <= 1
+    # rois = [left x, left y, width, height, ...] -> 해당 기능 사용 O : np.size(rois) > 1
+    
     chikChik = random.randint(kernelMinCount, kernelMaxCount)
     dowhajee = np.zeros((height, width))
+    
+    for i in range(chikChik):        
+        scale_x = 1
+        scale_y = 1
+    
+        if np.size(rois) <= 1:
+            centerY = random.randint(0, height - 1)
+            centerX = random.randint(0, width - 1)
+            longLen = max([height, width])
+            sigma = random.uniform(longLen / 50, longLen / 5)
+        elif np.size(rois) > 1:
+            x = rois[4*i]
+            y = rois[4*i+1]
+            x_width = rois[4*i+2]
+            y_height = rois[4*i+3]
 
-    for chik in range(chikChik):
-        centerY = random.randint(0, height - 1)
-        centerX = random.randint(0, width - 1)
-        longLen = max([height, width])
-        sigma = random.uniform(longLen / 50, longLen / 5)
+            centerY = int(y + y_height/2)
+            centerX = int(x + x_width/2)
+            #-4σ ~ +4σ의 범위 값은 전체 분포의 약 99.99%를 차지하기 때문에 적절한 커널 크기로 σ의 4배 * 2배가 되어야 함
+            sigma = random.uniform((x_width +y_height)/6, (x_width +y_height)/5.5) # sigma 기준 정립 필요 
+            
+            # rois에 따른 scale_factor 기준 정립 필요
+            if y_height/x_width > x_width/y_height:
+                scale_factor = y_height/x_width
+                scale_x = scale_x * scale_factor
+                scale_y = scale_y * 1
+            elif y_height/x_width < x_width/y_height:
+                scale_factor = x_width/y_height
+                scale_x = scale_x * 1
+                scale_y = scale_y * scale_factor
 
         ax = np.arange(0 - centerX, width - centerX)
         ay = np.arange(0 - centerY, height - centerY)
-        yy, xx = np.meshgrid(ay, ax)
-        kernel = np.exp(-(xx**2 + yy**2) / (2. * sigma**2))
 
-        dowhajee = np.maximum(dowhajee, kernel)
-    
+        ## x에 배수하면 가우시안 커널의 좌우 너비 조정, y에 배수하면 가우시안 커널의 상하 너비 조정 
+        xx, yy = np.meshgrid(ax*scale_x, ay*scale_y) 
+        kernel = np.exp(-(xx**2 + yy**2) / (2. * sigma**2))
+        dowhajee = np.maximum(dowhajee, kernel)    
 
     dowhajee = Variable((torch.from_numpy(dowhajee).float()).cuda()).view(1,1,height,width)
     return dowhajee
     #output = F.conv3d(input.view(input.size()[0],1,3,input.size()[2],input.size()[3]),kernel,padding = [0, int(ksize/2), int(ksize/2)]).view(input.size()[0],-1,input.size()[2],input.size()[3])
 
+
+def BlendingMethod(blending_method, source, destination, roi):
+    # 차후 불 필요한 형변환 수정 필요 (pil,cv2,pytorch tensor 사이의 형 변환)
+    blending_method_list = ['simpleBlending', 'gaussianBlending', 'possionBlending']
+
+    if blending_method not in blending_method_list:
+        raise ValueError("blending mothod name error")
+
+    method = blending_method
+    width, height = (destination.shape[3], destination.shape[2]) # width, height (torch image기준 -> 수, 채널, 높이, 너비) 
+    rois = roi #(start_width, start_height, width, height) 반복
+    numberOfRoi = int(len(rois)/4)
+    center = (int(destination.shape[3]/2), int(destination.shape[2]/2)) # width/2, height/2
+    blended_img = Image.new(mode='RGB', size=(width, height), color ='black')
+
+    if method == "simpleBlending":
+        print("simpleBlending")
+        for i in range(0, numberOfRoi):
+            x = roi[4*i]
+            y = roi[4*i+1]
+            width = roi[4*i+2]
+            height = roi[4*i+3]
+                        
+            cropped_image = source[:,:,y:y+height, x:x+width]
+            destination[:,:,y:y+height, x:x+width] = cropped_image
+        blended_img = destination
+    elif method == "gaussianBlending":
+        print("gaussianBlending mothod")
+        # create gaussian map 
+        gaussian = gaussianKernelSpray(destination.shape[2], destination.shape[3], numberOfRoi, numberOfRoi, rois).repeat(1,3,1,1)
+        gaussianSprayKernel = gaussian
+
+        # create blending image
+        gaussianback = destination * gaussianSprayKernel + source * (1 - gaussianSprayKernel)
+        gaussianfore = source * gaussianSprayKernel + destination * (1 - gaussianSprayKernel)
+
+        blended_img = gaussianfore
+
+    elif method == "possionBlending":
+        print("possionBlending mothod")
+        # pytorch tensor to cv2
+        destination = utils.denorm(destination.cpu().view(destination.size(0), 1 if p.colorMode=='grayscale' else 3, destination.size(2), destination.size(3))) 
+        source = utils.denorm(source.cpu().view(source.size(0), 1 if p.colorMode=='grayscale' else 3, source.size(2), source.size(3)))
+        
+        destination_cv2 = destination.squeeze().cpu().numpy().transpose(1, 2, 0) * 255
+        destination_cv2 = cv2.cvtColor(destination_cv2, cv2.COLOR_RGB2BGR).astype(np.uint8)
+        source_cv2 = source.squeeze().cpu().numpy().transpose(1, 2, 0) * 255
+        source_cv2 = cv2.cvtColor(source_cv2, cv2.COLOR_RGB2BGR).astype(np.uint8)
+        
+        mixed_clone = destination_cv2
+        for i in range(0, numberOfRoi):
+            x = rois[4*i]
+            y = rois[4*i+1]
+            width = rois[4*i+2]
+            height = rois[4*i+3]
+
+            cropped_image = source_cv2[y:y+height, x:x+width, :]
+            area = (cropped_image.shape[0], cropped_image.shape[1], 3)            
+            a = int(((x+x+width)/2))
+            b = int(((y+y+height)/2))
+            center = (a, b)
+
+            mask_cv2 = 255 * np.ones(area, dtype=np.uint8)
+            source_mask_cv2 = cropped_image
+            destination_cv2 = mixed_clone
+            mixed_clone = cv2.seamlessClone(source_mask_cv2, destination_cv2, mask_cv2, center, cv2.MIXED_CLONE)
+
+        mixed_clone = cv2.cvtColor(mixed_clone, cv2.COLOR_BGR2RGB).astype(np.float32)/255.0
+        mixed_clone = torch.from_numpy(mixed_clone.transpose(2, 0, 1)).unsqueeze_(0)
+        blended_img = mixed_clone
+
+    return blended_img
+ 
 #os.environ["CUDA_VISIBLE_DEVICES"]='3'
 #print(GaussianSpray(21, 21, 1, 2))
