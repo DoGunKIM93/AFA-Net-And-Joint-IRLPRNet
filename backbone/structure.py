@@ -13,6 +13,17 @@ from apex.parallel import DistributedDataParallel as DDP
 
 import param as p
 
+
+
+
+class DataLoaderVaultBase():
+    def __init__(self):
+        super(DataLoaderVaultBase, self).__init__()
+
+
+
+
+
 class ModelListBase():
     def __init__(self):
         super(ModelListBase, self).__init__()

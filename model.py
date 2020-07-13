@@ -57,6 +57,43 @@ from backbone.ResNeSt.resnet import ResNet, Bottleneck
 inputChannel = 1 if p.colorMode =='grayscale' else 3
 
 
+
+class DeNIQuA(nn.Module):
+    def __init__(self, featureExtractor, CW=64, inFeature=1):
+        super(DeNIQuA, self).__init__()
+
+        self.featureExtractor = featureExtractor
+
+        self.CW = CW
+
+        self.inFeature = inFeature
+
+        self.DecoderList = nn.ModuleList([ # 1/32
+            nn.ConvTranspose2d(1280*inFeature,   CW*8, 4, 2, 1), #1/16
+            nn.ConvTranspose2d( CW*8,  CW*4, 4, 2, 1), #1/8
+            nn.ConvTranspose2d( CW*4,  CW*2, 4, 2, 1), #1/4
+            nn.ConvTranspose2d( CW*2 , CW*1, 4, 2, 1), #1/2
+            nn.ConvTranspose2d( CW*1 , inputChannel, 4, 2, 1), #1/1
+        ])
+
+    def forward(self, xList):
+
+        assert self.inFeature == len(xList)
+        
+        rstList = []
+        for i in range(self.inFeature):
+            rstList.append(self.featureExtractor(xList[i]))
+        x = torch.cat(rstList, 1)
+
+        for i, decoder in enumerate(self.DecoderList):
+            x = decoder(x)
+            if i + 1 < len(self.DecoderList):    
+                x = F.relu(x)
+
+        return F.sigmoid(x)
+
+
+
 class SunnySideUp(nn.Module):
     
     def __init__(self, CW=32):

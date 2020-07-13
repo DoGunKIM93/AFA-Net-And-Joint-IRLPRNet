@@ -1,5 +1,5 @@
 '''
-module.py
+vision.py
 '''
 version = '1.73.200706'
 
@@ -31,7 +31,7 @@ from PIL import Image, ImageDraw
 import param as p
 import backbone.utils as utils
 
-#eps = 1e-6 if p.mixedPrecision == False else 1e-4
+eps = 1e-6 if p.mixedPrecision == False else 1e-4
 
 def Laplacian(input,ksize):
 

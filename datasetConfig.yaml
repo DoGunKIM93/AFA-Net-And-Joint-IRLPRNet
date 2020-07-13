@@ -1,0 +1,16 @@
+#DEFINE "FIXED" Dataset Config
+version : 1.0.200707
+
+(dataset name):
+    output: image, image # image, imagesequence, string
+    availableMode: train, validation, test #train, validation, test
+    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+        - scaleMethod
+        - scaleFactor
+    datasetSpecificPreprocessings: 
+        - RandomCrop
+        - HFlip
+        - VFlip
+        - HueAdjust
+
+

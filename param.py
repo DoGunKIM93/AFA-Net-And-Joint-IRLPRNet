@@ -44,7 +44,7 @@ sequenceLength = 7 # Only for 'REDS' Dataset
 trainDataset = 'DIV2K' # See above table
 trainDatasetType = 'train'  # 'train' || 'valid' || 'test'.  # See above table
 trainScaleMethod = 'virtual' # See above table
-batchSize = 30
+batchSize = 12
 samplingCount = 1 # Random Crop (samplingCount) per one Image.  Actual Batch Size = batchSize * samplingCount
 cropSize = [256, 256]  # HR Image cropping size. LR Image size: cropSize / scaleFactor. None -> No crop
 randomResizeMinMax = [1, 1]
@@ -70,7 +70,7 @@ inferenceScaleMethod = 'virtual' # See above table
 ## None, 'simpleBlending', 'gaussianBlending', 'possionBlending'
 blendingMode = None
 
-sameOutputSize = True
+sameOutputSize = False
 
 valueRangeType = '-1~1' # '0~1' || '-1~1'
 
@@ -92,7 +92,7 @@ schedulerPeriod = 300
 mixedPrecision = False # Reduce memory size i.e,.
 
 # save
-archiveStep = 1
+archiveStep = 100
 
 # GPU
 GPUNum = '0' # 0~7

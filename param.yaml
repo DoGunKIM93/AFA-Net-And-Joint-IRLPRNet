@@ -1,0 +1,94 @@
+#################################################################################
+#                               *** param.yaml ***                              #
+#################################################################################
+version : 2.0.200708
+ 
+
+
+
+
+
+#################################################################################
+#                                       DATA                                    #
+#################################################################################
+data:
+    path: 
+        datasetPath: /home/projSR/dataset/
+        pretrainedPath: /home/projSR/dataset/pretrained/
+    
+    dataset:
+        DIV2K_train:
+            dataset: DIV2K
+            mode: train # 'train' || 'validation' || 'test'.  # See above table
+            classParameter:
+                scaleMethod: virtual
+                scaleFactor: 4
+            colorMode: color  # 'color' || 'grayscale'
+        REDS_train:
+            dataset: REDS
+            mode: train
+            classParameter:
+                scaleMethod: virtual
+                scaleFactor: 4
+            colorMode: color
+            sequenceLength: 7 # Only for Image Sequence Dataset
+        Vid4:
+            dataset: Vid4
+            mode: test
+            classParameter:
+                scaleMethod: bicubic
+                scaleFactor: 4
+            colorMode: color
+            sequenceLength: 7
+            #dataset Preprocessing is defined in dataConfig.yaml
+
+    dataLoader:
+        train:
+            dataset: # Must be list
+                - DIV2K_train
+                - REDS_train
+            batchSize: 12
+            samplingCount: 1
+            sameOutputSize: False
+            valueRangeType : -1~1
+            preprocessing: # Must be list of dict
+                - crop: 256, 256
+                - randomResizeMinMax: 1, 1
+        validation:
+            dataset:
+                - Vid4
+            batchSize: 1
+            samplingCount: 1
+            sameOutputSize: False
+            valueRangeType : -1~1
+            preprocessing:
+                - resizeByMaxPixelCount: 590000
+
+        
+
+            
+#################################################################################
+#                                     TRAIN                                     #
+#################################################################################
+train:
+
+    step:
+        maxEpoch: 180000
+        validationStep: 5000
+        archiveStep: 100
+
+    hardware:
+        GPUNum: 0 # comma-separated
+
+    method:
+        mixedPrecision: False 
+
+
+
+
+
+
+
+#################################################################################
+#                               *** THANK YOU ***                               #
+#################################################################################

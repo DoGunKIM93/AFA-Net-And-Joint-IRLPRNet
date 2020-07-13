@@ -34,14 +34,15 @@ import model
 import param as p
 import backbone.utils as utils
 import backbone.structure as structure
+import backbone.module as module
 from backbone.utils import loadModels, saveModels, backproagateAndWeightUpdate        
 
 
 
 ################ V E R S I O N ################
 # VERSION
-version = '30-EndtoEntDeepBlending'
-subversion = '2-shiftmoduletrainassssment'
+version = '31-DeepIQA'
+subversion = '1-diff'
 ###############################################
 
 
@@ -64,43 +65,16 @@ class ModelList(structure.ModelListBase):
         # modelList.(모델 인스턴스 이름)_optimizer
         ##############################################################
 
-
         
-        #(모델 인스턴스 이름)        
-        self.Entire = model.ESPCN()
-        self.Entire_pretrained = "ESPCN_general.pth"
+        self.Entire = model.EDVR(nf=128, nframes=1, groups=1, front_RBs=5, back_RBs=40)
+        self.Entire_pretrained = "EDVR_SISR_general.pth"
 
-        self.Face = model.ESPCN()
-        self.Face_pretrained = "ESPCN_face.pth"
+        self.E_FE = model.EfficientNet('b0', num_classes=1, mode='feature_extractor')
+        self.E_FE_optimizer = torch.optim.Adam(self.E_FE.parameters(), lr=p.learningRate)
+        self.E_FE_pretrained = 'efficientnet_b0_ns.pth'
 
-        #self.Face = model.EDVR(nf=128, nframes=1, groups=1, front_RBs=5, back_RBs=40)
-        #self.Face_pretrained = "EDVR_Face.pth"
-
-        #Learning Rate 스케쥴러 (없어도 됨)
-        #self.NET_scheduler = torch.optim.lr_scheduler.OneCycleLR(self.NET_optimizer, 0.0003, total_steps=200)
-        #self.NET_scheduler = utils.NotOneCycleLR(self.NET_optimizer, p.learningRate, total_steps=p.schedulerPeriod)
-        #self.NET_scheduler = torch.optim.lr_scheduler.CyclicLR(self.NET_optimizer, 0, 0.0003, step_size_up=50, step_size_down=150, cycle_momentum=False)
-        #self.NET_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.NET_optimizer, 200)
-
-        #self.Ensemble = model.WENDY(CW=64, Blocks=10, Attention=False)
-        #self.Ensemble_optimizer = torch.optim.Adam(self.Ensemble.parameters(), lr=p.learningRate)
-
-        #self.E_FE = model.EfficientNet('b0', num_classes=1, mode='feature_extractor')
-        #self.E_FE_optimizer = torch.optim.Adam(self.E_FE.parameters(), lr=p.learningRate)
-        #self.E_FE_pretrained = 'efficientnet_b0_ns.pth'
-
-        #self.E_FE = model.SunnySideUp()
-        #self.E_FE_optimizer = torch.optim.Adam(self.E_FE.parameters(), lr=p.learningRate)
-
-        #self.E_Deco = model.ISAF(featureExtractor = self.E_FE)
-        #self.E_Deco_optimizer = torch.optim.Adam(self.E_Deco.parameters(), lr=p.learningRate * 3)
-
-        #self.Perceptual = model.EfficientNet('b0', mode='feature_extractor')
-        #self.Perceptual_pretrained = 'efficientnet_b0_ns.pth'
-
-        #self.Disc = model.EfficientNet('b0', num_classes=1)
-        #self.Disc_pretrained = 'efficientnet_b0_ns.pth'
-        #self.Disc_optimizer = torch.optim.Adam(self.Disc.parameters(), lr=p.learningRate)
+        self.E_Deco = model.DeNIQuA(featureExtractor = self.E_FE, inFeature=2)
+        self.E_Deco_optimizer = torch.optim.Adam(self.E_Deco.parameters(), lr=p.learningRate)
 
         self.initApexAMP()
         self.initDataparallel()
@@ -112,15 +86,15 @@ def trainStep(epoch, modelList, LRImages, HRImages):
 
     # loss
     mse_criterion = nn.MSELoss()
-    cpl_criterion = utils.CharbonnierLoss(eps=1e-3)
+    cpl_criterion = module.CharbonnierLoss(eps=1e-3)
     bce_criterion = nn.BCELoss()
     ssim_criterion = MS_SSIM(data_range=1, size_average=True, channel=3, nonnegative_ssim=False)
  
     # model
     #modelList.Entire.eval()
     #modelList.Face.eval()
-    modelList.E_FE.train()
-    #modelList.E_Deco.train()
+    modelList.E_FE.eval()
+    modelList.E_Deco.train()
     #modelList.Disc.train()
 
 
@@ -131,18 +105,27 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     # SR Processing
 
     with torch.no_grad():
-        #SRImages_Entire = modelList.Entire(LRImages)
+        SRImages_Entire = modelList.Entire(LRImages)
         #SRImages_Face   = modelList.Face(LRImages)
         pass
 
-    '''
+    
     gsklst = []
     for bb in range(batchSize):
-        gsklst.append(vision.GaussianSpray(LRImages.size(2), LRImages.size(3), 3, 10).repeat(1,3,1,1))
+        gsklst.append(torch.clamp(vision.GaussianSpray(HRImages.size(2), HRImages.size(3), 5, 10).repeat(1,3,1,1) - vision.GaussianSpray(HRImages.size(2), HRImages.size(3), 2, 7).repeat(1,3,1,1), 0, 1))
     gaussianSprayKernel = torch.cat(gsklst, 0)
 
-    bImage1 = LRImages * gaussianSprayKernel + HRImages * (1 - gaussianSprayKernel)
-    bImage2 = HRImages * gaussianSprayKernel + LRImages * (1 - gaussianSprayKernel)
+    bImageLH = HRImages * gaussianSprayKernel + F.interpolate(LRImages, scale_factor=p.scaleFactor, mode='bicubic') * (1 - gaussianSprayKernel)
+    bImageLS = SRImages_Entire * gaussianSprayKernel + F.interpolate(LRImages, scale_factor=p.scaleFactor, mode='bicubic')  * (1 - gaussianSprayKernel)
+    bImageSH = HRImages * gaussianSprayKernel + SRImages_Entire * (1 - gaussianSprayKernel)
+
+    gaussianSprayKernel = 1 - gaussianSprayKernel
+    bImageHL = HRImages * gaussianSprayKernel + F.interpolate(LRImages, scale_factor=p.scaleFactor, mode='bicubic') * (1 - gaussianSprayKernel)
+    bImageSL = SRImages_Entire * gaussianSprayKernel + F.interpolate(LRImages, scale_factor=p.scaleFactor, mode='bicubic')  * (1 - gaussianSprayKernel)
+    bImageHS = HRImages * gaussianSprayKernel + SRImages_Entire * (1 - gaussianSprayKernel)
+
+    gaussianSprayKernel = 1 - gaussianSprayKernel
+    '''
 
     if random.randint(0,1) == 1:
         t = bImage1 
@@ -169,7 +152,8 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     ####################################################### Ensemble. #######################################################
     '''
 
-    
+    '''
+    #SHIFT MODULE TEST CODE
     trI = Variable(torch.ones(batchSize,3,256,256), requires_grad=True).cuda()
     trI[:,:,1,1] = 0.
 
@@ -177,25 +161,52 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     gtI[:,:,2,2] = 0.
 
     trI = modelList.E_FE(trI)
+    '''
 
 
+    IQAMapSRHR = modelList.E_Deco([bImageSH, bImageHS])
+    IQAMapSRHRInv = modelList.E_Deco([bImageHS, bImageSH])
+    IQAMapSRHRIde = modelList.E_Deco([bImageSH, bImageSH])
 
-    #blendedImages = modelList.E_Deco(bImage1, bImage2)
+    IQAMapLRSR = modelList.E_Deco([bImageLS, bImageSL])
+    IQAMapLRSRInv = modelList.E_Deco([bImageSL, bImageLS])
+    IQAMapLRSRIde = modelList.E_Deco([bImageLS, bImageLS])
+
+    IQAMapLRSROri = modelList.E_Deco([F.interpolate(LRImages, scale_factor=p.scaleFactor, mode='bicubic'), SRImages_Entire])
+    IQAMapLRSROriInv = modelList.E_Deco([SRImages_Entire, F.interpolate(LRImages, scale_factor=p.scaleFactor, mode='bicubic')])
+
+    IQAMapSRHROri = modelList.E_Deco([SRImages_Entire, HRImages])
+    IQAMapSRHROriInv = modelList.E_Deco([HRImages, SRImages_Entire])
+
+    IQAMapLRHR = modelList.E_Deco([bImageLH, bImageHL])
+    IQAMapLRHRInv = modelList.E_Deco([bImageHL, bImageLH])
+    IQAMapLRHRIde = modelList.E_Deco([bImageLS, bImageLS])
+
     
 
-    #srAdversarialScore = modelList.Disc(SRImages_Ensembled)
 
-    #srPerceptureScore = modelList.Perceptual(SRImages_Ensembled)
-    #with torch.no_grad():
-    #    hrPerceptureScore = modelList.Perceptual(HRImages)
+    with torch.no_grad():
+        #IQAMapLRHROri = modelList.E_Deco([F.interpolate(LRImages, scale_factor=p.scaleFactor, mode='bicubic'), HRImages])
+        #IQAMapLRHROriInv = modelList.E_Deco([HRImages, F.interpolate(LRImages, scale_factor=p.scaleFactor, mode='bicubic')])
+        IQAMapTest = modelList.E_Deco([SRImages_Entire, bImageLS])
+        IQAMapTestInv = modelList.E_Deco([bImageLS, F.interpolate(LRImages, scale_factor=p.scaleFactor, mode='bicubic')])
 
-    #loss_perceptual = mse_criterion(srPerceptureScore * 100000, hrPerceptureScore * 100000) 
-    loss_pixelwise = mse_criterion(trI, gtI)
-    #loss_adversarial = bce_criterion(srAdversarialScore, torch.ones_like(srAdversarialScore))
+        IQAMapTest2 = modelList.E_Deco([SRImages_Entire, bImageSH])
+        IQAMapTest2Inv = modelList.E_Deco([bImageHS, F.interpolate(LRImages, scale_factor=p.scaleFactor, mode='bicubic')])
 
-    #print(loss_disc, loss_perceptual, loss_pixelwise, loss_adversarial)
+        IQAMapTest3 = modelList.E_Deco([SRImages_Entire, bImageLH])
+        IQAMapTest3Inv = modelList.E_Deco([bImageHL, F.interpolate(LRImages, scale_factor=p.scaleFactor, mode='bicubic')])
 
-    loss = loss_pixelwise# + loss_adversarial * 0.002
+
+    loss_Diff_SRHR = mse_criterion(IQAMapSRHR, gaussianSprayKernel) + mse_criterion(IQAMapSRHRInv, 1 - gaussianSprayKernel) 
+    loss_Diff_LRSR = mse_criterion(IQAMapLRSR, gaussianSprayKernel) + mse_criterion(IQAMapLRSRInv, 1 - gaussianSprayKernel) 
+    loss_Diff_LRHR = mse_criterion(IQAMapLRHR, gaussianSprayKernel) + mse_criterion(IQAMapLRHRInv, 1 - gaussianSprayKernel) 
+
+    loss_Identity = mse_criterion(IQAMapSRHRIde, torch.ones_like(IQAMapSRHRIde) / 2) + mse_criterion(IQAMapLRSRIde, torch.ones_like(IQAMapLRSRIde) / 2) + mse_criterion(IQAMapLRHRIde, torch.ones_like(IQAMapLRHRIde) / 2)
+
+    loss_Absolute = mse_criterion(IQAMapSRHROri, torch.ones_like(IQAMapSRHROri)) + mse_criterion(IQAMapSRHROriInv, torch.zeros_like(IQAMapSRHROriInv)) + mse_criterion(IQAMapLRSROri, torch.ones_like(IQAMapLRSROri)) + mse_criterion(IQAMapLRSROriInv, torch.zeros_like(IQAMapLRSROriInv)) 
+
+    loss = loss_Diff_SRHR + loss_Diff_LRSR + loss_Diff_LRHR + loss_Identity + loss_Absolute * 0.25  # + loss_adversarial * 0.002
 
 
     # Update All model weights
@@ -203,14 +214,19 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     # if modelNames is a String, updates one model
     # if modelNames is a List of string, updates those models.
     #backproagateAndWeightUpdate(modelList, loss, modelNames = "Ensemble")
-    backproagateAndWeightUpdate(modelList, loss, modelNames = ["E_FE"])
+    backproagateAndWeightUpdate(modelList, loss, modelNames = ["E_FE", "E_Deco"])
 
     # return losses
-    lossList = [loss_pixelwise]
+    lossList = [loss_Diff_SRHR, loss_Diff_LRSR, loss_Diff_LRHR, loss_Identity, loss_Absolute, loss]
     #lossList = [srAdversarialLoss, hrAdversarialLoss, loss_disc, loss_pixelwise, loss_adversarial, loss]
     # return List of Result Images (also you can add some intermediate results).
     #SRImagesList = [gaussianSprayKernel,bImage1,bImage2,blendedImages] 
-    SRImagesList = [trI,gtI]
+    SRImagesList = [SRImages_Entire,bImageSH,gaussianSprayKernel,
+                    IQAMapSRHR,IQAMapSRHRInv,IQAMapSRHRIde,
+                    IQAMapLRSR, IQAMapLRSRInv,IQAMapLRSRIde, 
+                    IQAMapLRSROri, IQAMapLRSROriInv, IQAMapSRHROri, IQAMapSRHROriInv,
+                    IQAMapTest, IQAMapTestInv, IQAMapTest2, IQAMapTest2Inv, IQAMapTest3, IQAMapTest3Inv
+                    ]
 
     
     return lossList, SRImagesList
@@ -221,7 +237,7 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     ############# Inference Example code (with GT)#############
     # loss
     mse_criterion = nn.MSELoss()
-    cpl_criterion = utils.CharbonnierLoss(eps=1e-3)
+    cpl_criterion = module.CharbonnierLoss(eps=1e-3)
  
     # model
     modelList.Entire.eval()
@@ -247,7 +263,7 @@ def validationStep(epoch, modelList, LRImages, HRImages):
    ############# Inference Example code (with GT)#############
     # loss
     mse_criterion = nn.MSELoss()
-    cpl_criterion = utils.CharbonnierLoss(eps=1e-3)
+    cpl_criterion = module.CharbonnierLoss(eps=1e-3)
  
     # model
     modelList.Entire.eval()
