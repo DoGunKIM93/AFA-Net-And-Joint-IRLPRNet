@@ -1,6 +1,7 @@
 '''
 all_new_data_loader.py
 '''
+version = "1.01.200716.1"
 
 
 #FROM Python LIBRARY
@@ -13,13 +14,14 @@ import inspect
 
 from PIL import Image
 from PIL import PngImagePlugin
+from typing import List, Dict, Tuple, Union
 
 
 #FROM PyTorch
 import torch
 
 from torch.utils.data import Dataset as torchDataset
-from torch.utils.data import DataLoader as torchDataLoader
+from torch.utils.data import DataLoader as torchDataLoaders
 from torchvision import transforms
 from torchvision import datasets
 from torchvision.datasets import ImageFolder
@@ -28,22 +30,9 @@ from torchvision.datasets import ImageFolder
 #FROM This Project
 import param as p
 import backbone.preprocessing
+from backbone.config import Config
 
 
-
-'''
-Standard Dataset Folder Structure
-
-<Dataset Main Path>
-├── <dataset name>
-    ├── _data
-│   └── members.yml
-├── _drafts
-│   ├── begin-with-the-crazy-ideas.md
-│   └── on-simplicity-in-technology.md
-
-
-'''
 
 
 # Prevent memory Error in PIL
@@ -58,34 +47,47 @@ PREPROCESSING_FUNCTION_DICT = dict(x for x in inspect.getmembers(backbone.prepro
 class DatasetConfig():
 
 
-    def __init__(self, name, yamlDict):
-        self.name = None
-        self.output = None
-        self.availableMode = None
-        self.classes = None
-        self.datasetSpecificPreprocessings = None
+    def __init__(self, 
+                 name: str, 
+                 origin : str = None, 
+                 dataType : List[str] = None, 
+                 labelType : List[str] = None, 
+                 availableMode : List[str] = None, 
+                 classes : List[str] = None, 
+                 datasetSpecificPreprocessings : List[str] = None,
+                 useDatasetConfig : bool = True):
+                 
+        self.name = name
 
-        self.getConfig(name, yamlDict)
+        self.origin = origin
+        self.dataType = dataType
+        self.labelType = labelType
+        self.availableMode = availableMode
+        self.classes = classes
+        self.datasetSpecificPreprocessings = datasetSpecificPreprocessings
+
+        self.useDatasetConfig = useDatasetConfig
+
+        if self.useDatasetConfig is True:
+            self.getDatasetConfig(Config.datasetConfigDict)
 
 
-
-    def strToList(self, str):
-        return str.replace(' ','').split(',')
+    @staticmethod
+    def strToList(inp : str):
+        return inp.replace(' ','').split(',')
     
 
 
-    def getConfig(self, name, yamlDict):
+    def getDatasetConfig(self, yamlDict):
 
-        yamlData = yamlDict[f'{name}']
+        yamlData = yamlDict[f'{self.name}']\
 
-        self.name = name
+        self.origin = str(yamlData['origin'])
 
-        self.output = self.strToList(str(yamlData['output']))
-
-        self.availableMode = str(yamlData['availableMode'])
-
+        self.dataType = list(map(str, yamlData['dataType']))
+        self.labelType = list(map(str, yamlData['labelType']))
+        self.availableMode = list(map(str, yamlData['availableMode']))
         self.classes = list(map(str, yamlData['classes']))
-
         self.datasetSpecificPreprocessings = list(map(str, yamlData['datasetSpecificPreprocessings']))
 
         
@@ -138,7 +140,7 @@ class DatasetComponent():
 
 #TODO: Distribution
 #TODO: On-memory Supply 
-class DatasetBase(torchDataset):
+class Dataset(torchDataset):
 
 
     def __init__(self, datasetComponentList:list):
@@ -205,6 +207,45 @@ class DatasetBase(torchDataset):
 
 
 class DataLoader(torchDataLoader):
-    def __init__(self):
-        pass
+    def __init__(self, dataLoaderName: str, fromParam : bool = True):
+
+        
+
+        self.name = dataLoaderName
+        self.datasetComponent = None
+        self.batchSize = None
+        self.samplingCount = None
+        self.sameOutputSize = None
+        self.valueRangeType = None
+        self.shuffle = None
+        self.preprocessing = None
+
+        self.fromParam = fromParam
+
+        if self.fromParam is True:
+            self.getDataloaderParams(Config.paramDict)
+
+
+        super().__init__(self, 
+                            batch_size = batchSize,
+                            shuffle = shuffle,
+                            num_workers = 16)
+    
+
+    def getDataloaderParams(self, yamlDict):
+
+        yamlData = yamlDict[f'{self.name}']
+
+        self.datasetComponent = list(map(str, yamlData['datasetComponent']))
+
+        self.batchSize = int(yamlData['batchSize'])
+        self.samplingCount = int(yamlData['samplingCount'])
+        self.sameOutputSize = bool(yamlData['sameOutputSize'])
+        self.valueRangeType = str(yamlData['valueRangeType'])
+        self.shuffle = str(yamlData['shuffle'])
+        self.preprocessing = yamlData['preprocessing'] #TODO: IS IT WORKS?
+
+
+
+    
 

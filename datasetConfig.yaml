@@ -1,9 +1,14 @@
 #DEFINE "FIXED" Dataset Config
-version : 1.0.200707
+version : 1.02.200716.1
 
-(dataset name):
-    output: image, image # image, imagesequence, string
-    availableMode: train, validation, test #train, validation, test
+DIV2K_SR:
+    origin: DIV2K
+    dataType: 2D-Float # nD-(Float,Int)
+    labelType: 2D-Float # image, imagesequence, string
+    availableMode: 
+        - train
+        - validation
+        - test #train, validation, test
     classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
         - scaleMethod
         - scaleFactor
@@ -14,3 +19,19 @@ version : 1.0.200707
         - HueAdjust
 
 
+DIV2K_AutoEncoder:
+    origin: DIV2K
+    dataType: 2D-Float
+    labelType: None # image, imagesequence, string
+    vailableMode: 
+        - train
+        - validation
+    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+        - sceneNumber
+    datasetSpecificPreprocessings: 
+        - RandomCrop
+        - HFlip
+        - VFlip
+        - HueAdjust
+
+        

@@ -16,16 +16,16 @@ data:
         datasetPath: /home/projSR/dataset/
         pretrainedPath: /home/projSR/dataset/pretrained/
     
-    dataset:
+    datasetComponent:
         DIV2K_train:
-            dataset: DIV2K
+            dataConfig: DIV2K
             mode: train # 'train' || 'validation' || 'test'.  # See above table
             classParameter:
                 scaleMethod: virtual
                 scaleFactor: 4
             colorMode: color  # 'color' || 'grayscale'
         REDS_train:
-            dataset: REDS
+            dataConfig: REDS
             mode: train
             classParameter:
                 scaleMethod: virtual
@@ -33,7 +33,7 @@ data:
             colorMode: color
             sequenceLength: 7 # Only for Image Sequence Dataset
         Vid4:
-            dataset: Vid4
+            dataConfig: Vid4
             mode: test
             classParameter:
                 scaleMethod: bicubic
@@ -44,23 +44,25 @@ data:
 
     dataLoader:
         train:
-            dataset: # Must be list
+            datasetComponent: # Must be list
                 - DIV2K_train
                 - REDS_train
             batchSize: 12
             samplingCount: 1
             sameOutputSize: False
             valueRangeType : -1~1
+            shuffle: True
             preprocessing: # Must be list of dict
                 - crop: 256, 256
                 - randomResizeMinMax: 1, 1
         validation:
-            dataset:
+            datasetComponent:
                 - Vid4
             batchSize: 1
             samplingCount: 1
             sameOutputSize: False
             valueRangeType : -1~1
+            shuffle: False
             preprocessing:
                 - resizeByMaxPixelCount: 590000
 

@@ -1,7 +1,7 @@
 '''
 param.py
 '''
-version = '1.0.200709'
+version = '1.01.200716'
 
 # Config file parser... hagishilta.. ha;..... mandulgi jonna shilta..
 
@@ -11,15 +11,20 @@ from munch import Munch, munchify
 class Config():
 
     param = None
+    paramDict = None
+    
     datasetConfig = None
+    datasetConfigDict = None
 
     @classmethod
     def readParam(cls, filename): 
         with open(filename) as yamlFile:
-            cls.param = munchify(yaml.full_load(yamlFile))
+            cls.paramDict = yaml.full_load(yamlFile)
+            cls.param = munchify(cls.paramDict)
     
     @classmethod
     def readDatasetConfig(cls, filename): 
         with open(filename) as yamlFile:
-            cls.datasetConfig = munchify(yaml.full_load(yamlFile))
+            cls.datasetConfigDict = yaml.full_load(yamlFile)
+            cls.datasetConfig = munchify(cls.datasetConfigDict)
 
