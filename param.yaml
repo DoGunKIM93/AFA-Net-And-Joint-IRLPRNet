@@ -1,7 +1,7 @@
 #################################################################################
 #                               *** param.yaml ***                              #
 #################################################################################
-version : 2.0.200708
+version : 2.01.200717
  
 
 
@@ -17,27 +17,34 @@ data:
         pretrainedPath: /home/projSR/dataset/pretrained/
     
     datasetComponent:
-        DIV2K_train:
-            dataConfig: DIV2K
+        DIV2K_SR_train:
+            dataConfig: DIV2K_SR
             mode: train # 'train' || 'validation' || 'test'.  # See above table
             classParameter:
-                scaleMethod: virtual
-                scaleFactor: 4
+                scaleMethod: 
+                    - bicubic
+                scaleFactor: 
+                    - 4
+                    - 8
             colorMode: color  # 'color' || 'grayscale'
         REDS_train:
             dataConfig: REDS
             mode: train
             classParameter:
-                scaleMethod: virtual
-                scaleFactor: 4
+                scaleMethod: 
+                    - virtual
+                scaleFactor: 
+                    - 4
             colorMode: color
             sequenceLength: 7 # Only for Image Sequence Dataset
         Vid4:
             dataConfig: Vid4
             mode: test
             classParameter:
-                scaleMethod: bicubic
-                scaleFactor: 4
+                scaleMethod: 
+                    - bicubic
+                scaleFactor: 
+                    - 4
             colorMode: color
             sequenceLength: 7
             #dataset Preprocessing is defined in dataConfig.yaml
@@ -45,7 +52,7 @@ data:
     dataLoader:
         train:
             datasetComponent: # Must be list
-                - DIV2K_train
+                - DIV2K_SR_train
                 - REDS_train
             batchSize: 12
             samplingCount: 1
@@ -84,6 +91,8 @@ train:
 
     method:
         mixedPrecision: False 
+
+    dataLoaderNumWorker: 16
 
 
 

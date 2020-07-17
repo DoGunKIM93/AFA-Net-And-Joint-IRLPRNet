@@ -1,7 +1,7 @@
 '''
 all_new_data_loader.py
 '''
-version = "1.01.200716.1"
+version = "1.03.200717"
 
 
 #FROM Python LIBRARY
@@ -11,6 +11,7 @@ import math
 import numpy as np
 import yaml 
 import inspect
+import itertools
 
 from PIL import Image
 from PIL import PngImagePlugin
@@ -69,7 +70,7 @@ class DatasetConfig():
         self.useDatasetConfig = useDatasetConfig
 
         if self.useDatasetConfig is True:
-            self.getDatasetConfig(Config.datasetConfigDict)
+            self.getDatasetConfig()
 
 
     @staticmethod
@@ -78,14 +79,16 @@ class DatasetConfig():
     
 
 
-    def getDatasetConfig(self, yamlDict):
+    def getDatasetConfig(self):
 
-        yamlData = yamlDict[f'{self.name}']\
+        yamlData = Config.datasetConfigDict[f'{self.name}']
 
         self.origin = str(yamlData['origin'])
 
-        self.dataType = list(map(str, yamlData['dataType']))
-        self.labelType = list(map(str, yamlData['labelType']))
+        self.dataType = yamlData['dataType']
+        self.labelType = yamlData['labelType']
+
+
         self.availableMode = list(map(str, yamlData['availableMode']))
         self.classes = list(map(str, yamlData['classes']))
         self.datasetSpecificPreprocessings = list(map(str, yamlData['datasetSpecificPreprocessings']))
@@ -100,28 +103,45 @@ class DatasetConfig():
 class DatasetComponent():
 
 
-    def __init__(self, config):
+    def __init__(self, datasetConfig, mode, classParameter):
 
-        self.config = config
-        self.name = config.name
+        self.datasetConfig = datasetConfig
+        self.name = datasetConfig.name
+
+        self.mode = mode
+        self.classParameter = classParameter
 
 
         self.dataFileList = None #same length (2-d List)
         self.labelFileList = None
-        self.dataClassCount = None
-        self.getDataList()
+        self.getDataFileList()
         
 
         self.preprocessingList = None
         self.makePreprocessingList()
     
-    def getDataList(self):
-        #TODO: get datalist from config
+    def getDataFileList(self):
 
-        path = 
+        #TODO: Call datalists that have different subclasses Number
 
-        self.dataClassCount = len(self.dataFileList)
-        pass
+        # get origin path
+        mainPath = Config.param.data.path.datasetPath
+        path = f"{self.datasetConfig['origin']}/{self.mode}/"
+
+        # dynamic construction of class path based on defined classes
+        for i in range(len(self.datasetConfig['classes'])):
+            classPathList = list(itertools.chain.from_iterable(list(map( lambda y : list(map(lambda x : str(x) if type(x) is int else x + '/' + str(y) if type(y) is int else y , classPathList)), self.classParameter[self.datasetConfig['classes'][i]])))) if i is not 0 else self.classParameter[self.datasetConfig['classes'][i]]
+            # Sorry for who read this
+
+        # add origin path in front of all elements of class path list
+        pathList = list(map( lambda x : path + x , classPathList))
+        
+        # construct all of readable file lists in class path lists
+        fileList = list(itertools.chain.from_iterable(list(map( lambda x :  list(map( lambda y : x + "/" + y, os.listdir(mainPath + x))) , pathList))))
+
+        # set dataFileList without main path
+        self.dataFileList = [ x for x in fileList if (x.endswith(".png") or x.endswith(".jpg") or x.endswith(".jpeg") or x.endswith(".bmp")) ]
+
 
 
     def makePreprocessingList(self):
@@ -210,7 +230,7 @@ class DataLoader(torchDataLoader):
     def __init__(self, dataLoaderName: str, fromParam : bool = True):
 
         
-
+        # INIT PARAMs #
         self.name = dataLoaderName
         self.datasetComponent = None
         self.batchSize = None
@@ -219,22 +239,26 @@ class DataLoader(torchDataLoader):
         self.valueRangeType = None
         self.shuffle = None
         self.preprocessing = None
+        self.numWorkers = None
 
         self.fromParam = fromParam
 
         if self.fromParam is True:
-            self.getDataloaderParams(Config.paramDict)
+            self.getDataloaderParams()
 
+        # CONSTRUCT DATASET #
+        self.constructDataset()
 
         super().__init__(self, 
-                            batch_size = batchSize,
-                            shuffle = shuffle,
-                            num_workers = 16)
+                         dataset = self.dataset,
+                         batch_size = self.batchSize,
+                         shuffle = self.shuffle,
+                         num_workers = self.numWorkers)
     
 
-    def getDataloaderParams(self, yamlDict):
+    def getDataloaderParams(self):
 
-        yamlData = yamlDict[f'{self.name}']
+        yamlData = Config.paramDict['data']['dataLoader'][f'{self.name}']
 
         self.datasetComponent = list(map(str, yamlData['datasetComponent']))
 
@@ -244,6 +268,14 @@ class DataLoader(torchDataLoader):
         self.valueRangeType = str(yamlData['valueRangeType'])
         self.shuffle = str(yamlData['shuffle'])
         self.preprocessing = yamlData['preprocessing'] #TODO: IS IT WORKS?
+        self.numWorkers = Config.param.train.dataLoaderNumWorkers
+
+    
+    def constrctDataset(self):
+        
+        dataset = Dataset(self.datasetComponent)
+        self.dataset = dataset
+
 
 
 

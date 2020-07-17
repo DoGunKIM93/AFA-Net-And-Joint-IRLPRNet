@@ -1,14 +1,15 @@
 #DEFINE "FIXED" Dataset Config
-version : 1.02.200716.1
+version : 1.03.200717
 
 DIV2K_SR:
     origin: DIV2K
-    dataType: 2D-Float # nD-(Float,Int)
-    labelType: 2D-Float # image, imagesequence, string
+    dataType: 
+        LR: 2D-Float # nD-(Float,Int)
+    labelType:
+        HR: 2D-Float # image, imagesequence, string
     availableMode: 
         - train
-        - validation
-        - test #train, validation, test
+        - validation #train, validation, test
     classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
         - scaleMethod
         - scaleFactor
@@ -21,8 +22,9 @@ DIV2K_SR:
 
 DIV2K_AutoEncoder:
     origin: DIV2K
-    dataType: 2D-Float
-    labelType: None # image, imagesequence, string
+    dataType: 
+        Image: 2D-Float
+    labelType:  # image, imagesequence, string
     vailableMode: 
         - train
         - validation
