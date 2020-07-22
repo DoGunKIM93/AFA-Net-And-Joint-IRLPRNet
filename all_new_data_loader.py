@@ -16,6 +16,7 @@ import itertools
 from PIL import Image
 from PIL import PngImagePlugin
 from typing import List, Dict, Tuple, Union
+from function import reduce
 
 
 #FROM PyTorch
@@ -31,7 +32,9 @@ from torchvision.datasets import ImageFolder
 #FROM This Project
 import param as p
 import backbone.preprocessing
+import backbone.utils as utils
 from backbone.config import Config
+
 
 
 
@@ -41,7 +44,8 @@ PngImagePlugin.MAX_TEXT_CHUNK = 100 * (1024**2)
 
 # Read Transforms from backbone.preprocessing automatically
 PREPROCESSING_FUNCTION_DICT = dict(x for x in inspect.getmembers(backbone.preprocessing) if (not x[0].startswith('__')) and (inspect.isclass(x[1])) )
-
+#TODO:
+AUGMENT_FUNCTION_DICT = dict(x for x in inspect.getmembers(backbone.preprocessing) if (not x[0].startswith('__')) and (inspect.isclass(x[1])) )
 
 
 
@@ -55,7 +59,7 @@ class DatasetConfig():
                  labelType : List[str] = None, 
                  availableMode : List[str] = None, 
                  classes : List[str] = None, 
-                 datasetSpecificPreprocessings : List[str] = None,
+                 preprocessings : List[str] = None,
                  useDatasetConfig : bool = True):
                  
         self.name = name
@@ -65,7 +69,7 @@ class DatasetConfig():
         self.labelType = labelType
         self.availableMode = availableMode
         self.classes = classes
-        self.datasetSpecificPreprocessings = datasetSpecificPreprocessings
+        self.preprocessings = preprocessings
 
         self.useDatasetConfig = useDatasetConfig
 
@@ -91,7 +95,7 @@ class DatasetConfig():
 
         self.availableMode = list(map(str, yamlData['availableMode']))
         self.classes = list(map(str, yamlData['classes']))
-        self.datasetSpecificPreprocessings = list(map(str, yamlData['datasetSpecificPreprocessings']))
+        self.preprocessings = list(map(str, yamlData['preprocessings']))
 
         
 
@@ -122,7 +126,8 @@ class DatasetComponent():
     
     def getDataFileList(self):
 
-        #TODO: Call datalists that have different subclasses Number
+        #TODO: LABEL
+        #TODO: SEQUENCE
 
         # get origin path
         mainPath = Config.param.data.path.datasetPath
@@ -149,8 +154,10 @@ class DatasetComponent():
         pass
 
 
+
+
     def __len__(self):
-        return len(dataFileList[0])
+        return len(dataFileList)
 
 
 
@@ -163,16 +170,46 @@ class DatasetComponent():
 class Dataset(torchDataset):
 
 
-    def __init__(self, datasetComponentList:list):
+    def __init__(self, datasetComponentList:list[DatasetComponent], batchSize: int, samplingCount:int, sameOutputSize:bool, valueRangeType:str, shuffle:bool, augmentation:list, numWorkers:int):
         self.datasetComponentList = datasetComponentList
         self.datasetComponentListIntegrityTest()
-         
+
+        self.batchSize = batchSize
+        self.samplingCount = samplingCount
+        self.sameOutputSize = sameOutputSize
+        self.valueRangeType = valueRangeType
+        self.shuffle = shuffle
+        self.augmentation = augmentation
+        self.numWorkers = numWorkers
+
         self.getDatasetRatio(datasetComponentList)
+
+        self.globalFileList = None
+        self.makeGlobalFileList(self.shuffle)
+
+
+    #TODO: 다시만들기
+    def makeGlobalFileList(self, shuffle):
+        gFL = [range(len(x)) for x in self.datasetComponentList]
+        if self.shuffle is True:
+            random.shuffle(gFL)
+        self.globalFileList = gFL
+
+    #TODO:
+    def popItemInGlobalFileListByIndex(self, index):
+        datasetComponentLengthList = list(map(len, datasetComponentList))
+
+        indexComponent = index % len(datasetComponentLengthList)
+        indexComponentFileList = ( index // len(datasetComponentLengthList) ) % datasetComponentLengthList[indexComponent]
+
+        return self.globalFileList[indexComponent][indexComponentFileList], self.datasetComponentList[indexComponent].preprocessingList
+
 
 
 
     def datasetComponentListIntegrityTest(self):
         # Test All dataComponents have same output type.
+        # TODO: SAME SHAPE (B , C ..)
         datasetComponentOutputList = self.datasetComponentList.config.output
         assert not datasetComponentOutputList or [datasetComponentOutputList[0]]*len(datasetComponentOutputList) == datasetComponentOutputList, 'data_loader.py :: All datasets in dataloader must have same output type.'
        
@@ -192,36 +229,133 @@ class Dataset(torchDataset):
         return rst
 
     
-    def getH2MSize(self):
-        pass
-    
-    def getM2VSize(self):
-        pass
+    def calculateMemorySizePerTensor(self, dtype:torch.dtype, expectedShape:list[int]): #WARN: EXCEPT BATCH SIIZEEEEEE!!!!!!!!!!!!!!!!!!!!!!!
+        sizeOfOneElementDict = {torch.float32 : 4,
+                                torch.float   : 4,
+                                torch.float64 : 8,
+                                torch.double  : 8,
+                                torch.float16 : 2,
+                                torch.half    : 2,
+                                torch.uint8   : 1,
+                                torch.int8    : 1,
+                                torch.int16   : 2,
+                                torch.short   : 2,
+                                torch.int32   : 4,
+                                torch.int     : 4,
+                                torch.int64   : 8,
+                                torch.long    : 8,
+                                torch.bool    : 2,
+                                }
+        elemSize = sizeOfOneElementDict(dtype)
 
+        totalSize = reduce(lambda x, y: x * y, expectedShape) * elemSize
+
+        return totalSize
+
+
+
+
+
+    
+
+    def torchvisionPreprocessing(self, pilImage, preProc):
+
+        x = pilImage
+
+        for preProcFunc in preProc:
+            x = preProcFunc(x)
+
+        return x
+
+    def GPUdataAugmentation(self, tnsr):
+        #TODO: make PP
+        return
+    
+
+    def loadPILImagesFromHDD(self, filePath):
+        return Image.open(Config.param.data.path.datapath + filePath)
+
+    def saveTensorsToHDD(self, tnsr, filePath):
+        utils.saveTensorToNPY(tnsr, filePath)
+
+    def loadTensorsFromHDDToGPU(self, filePath):
+        return utils.loadNPYToTensor(filePath).cuda()
+
+    def PIL2Tensor(self, pilImage):
+        return transforms.ToTensor()(pilImage)
+
+
+
+
+
+
+
+    def NPYMaker(self, filePath, preProc):
+        
+        PILImage = self.loadPILImagesFromHDD(filePath) #PIL
+        PPedPILImage = self.torchvisionPreprocessing(pilImage, preProc)
+        rstTensor = self.PIL2Tensor(PPedPILImage)
+
+        self.saveTensorsToHDD(rstTensor, filePath)
+
+
+    def methodNPYExists(self, filePath):
+
+        tnsr = self.loadTensorsFromHDDToGPU(filePath)
+        augedTensor = self.GPUdataAugmentation(tnsr)
+
+        return augedTensor
+
+    def methodNPYNotExists(self, filePath, preProc):
+
+        PILImage = self.loadPILImagesFromHDD(filePath)
+        PPedPILImage = self.torchvisionPreprocessing(PILImage, preProc)
+        tnsr = self.PIL2Tensor(PPedPILImage).cuda()
+
+        augedTensor = self.GPUdataAugmentation(tnsr)
+
+        return augedTensor
+
+
+
+
+
+
+    '''
     #Read File from HDD and store in memory
+    #3*1024*1024 -> about 5000 pics in 64GB
     def H2M(self):
+
+        #Calculate # of storable Batches
+        sizePerTensor = self.calculateMemorySizePerTensor()
+        cacheableMemorySize = Config.param.general.maxMemoryCachingSizeGB * 1024 * 1024 * 1024
+
+        cacheBatchCount = cacheableMemorySize // sizePerTensor
+
+        #Make Indexes
+        indexes = []
+
         pass
     
     #Transfer Image / Tensor from memory to V-memory
     def M2V(self):
         pass
+    '''
 
 
-
-    #TODO:
     def __getitem__(self, index):
-        
-        # HDD to Memory (H2Msize 만큼)
-        # STATIC P.P 
-        # Memory to V-memory (M2Vsize 만큼)
-        # Dinamic P.P
-        # Return
 
-        pass
+        filePath, preProc = self.popItemInGlobalFileListByIndex(index)
 
-    #TODO: define max length of Dataset
+        if NPY_EXISTS is True:
+            rst = self.methodNPYExists(filePath)
+        else:
+            rst = self.methodNPYNotExists(filePath, preProc)
+
+        return rst
+
     def __len__(self):
-        return max(self.datasetLengthList)
+        return max(list(map(len, datasetComponentList))) * len(datasetComponentList)
         
     
 
@@ -238,7 +372,7 @@ class DataLoader(torchDataLoader):
         self.sameOutputSize = None
         self.valueRangeType = None
         self.shuffle = None
-        self.preprocessing = None
+        self.augmentation = None
         self.numWorkers = None
 
         self.fromParam = fromParam
@@ -267,7 +401,7 @@ class DataLoader(torchDataLoader):
         self.sameOutputSize = bool(yamlData['sameOutputSize'])
         self.valueRangeType = str(yamlData['valueRangeType'])
         self.shuffle = str(yamlData['shuffle'])
-        self.preprocessing = yamlData['preprocessing'] #TODO: IS IT WORKS?
+        self.augmentation = yamlData['augmentation'] #TODO: IS IT WORKS?
         self.numWorkers = Config.param.train.dataLoaderNumWorkers
 
     

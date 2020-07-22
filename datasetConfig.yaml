@@ -13,7 +13,7 @@ DIV2K_SR:
     classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
         - scaleMethod
         - scaleFactor
-    datasetSpecificPreprocessings: 
+    preprocessings: 
         - RandomCrop
         - HFlip
         - VFlip
@@ -30,7 +30,7 @@ DIV2K_AutoEncoder:
         - validation
     classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
         - sceneNumber
-    datasetSpecificPreprocessings: 
+    preprocessings: 
         - RandomCrop
         - HFlip
         - VFlip

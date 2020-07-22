@@ -1,7 +1,7 @@
 '''
 utils.py
 '''
-version = "1.32.200708"
+version = "1.33.200721"
 
 
 #From Python
@@ -12,13 +12,13 @@ import apex.amp as amp
 import os
 import subprocess
 import psutil
+import dask.dataframe as dd
+import pandas as pd
+import feather
 
 from apex.parallel import DistributedDataParallel as DDP
-from collections import Counter
-from bisect import bisect_right
-from torch._six import inf
-from functools import wraps
 from shutil import copyfile
+from dask.delayed import delayed
 
 #From Pytorch
 import torch
@@ -37,67 +37,36 @@ from backbone.config import Config
 
 
 
+######################################################################################################################################################################## 
+
+# Logging
+
+######################################################################################################################################################################## 
 
 
+# 텐서보드 관련 초기화
+def initTensorboard(ver, subversion):
+    for proc in psutil.process_iter():
+        # check whether the process name matches
+        if proc.name() == "tensorboard":
+            proc.kill()
 
-#local function
-def to_var(x):
-    if torch.cuda.is_available():
-        x = x.cuda()
-    return Variable(x)
+    logdir = f'./data/{ ver }/log'
+    subprocess.Popen(["tensorboard","--logdir=" + logdir,"--port=6006"])
+    writer = SummaryWriter(f'{ logdir }/{ subversion }/')
 
-def denorm(x):
-    out = x
-    if p.valueRangeType == '-1~1':
-        out = (x + 1) / 2
-    
-    return out.clamp(0, 1)
+    # if (p.testDataset == 'REDS' or p.testDataset == 'Vid4'):
+    #     w4b = SummaryWriter(logdir + "/bicubic_X4_1Frames/")
+    #     w4EDVR = SummaryWriter(logdir + "/EDVR_X4_7Frames/")
+    # elif (p.testDataset == 'Set5'):
+    #     w2 = SummaryWriter(logdir + "/bicubic_X2/")
+    #     w3 = SummaryWriter(logdir + "/bicubic_X3/")
+    #     w4 = SummaryWriter(logdir + "/bicubic_X4/")
+    #     w8 = SummaryWriter(logdir + "/bicubic_X8/")
 
-
-def calculateImagePSNR(a, b):
-
-    pred = a.cpu().data[0].numpy().astype(np.float32)
-    gt = b.cpu().data[0].numpy().astype(np.float32)
-
-    np.nan_to_num(pred, copy=False)
-    np.nan_to_num(gt, copy=False)
-
-    if p.valueRangeType == '-1~1':
-        pred = (pred + 1)/2
-        gt = (gt + 1)/2
-
-    if p.colorMode == 'grayscale':
-        pred = np.round(pred * 219.)
-        pred[pred < 0] = 0
-        pred[pred > 219.] = 219.
-        pred = pred[0,:,:] + 16
-            
-        gt = np.round(gt * 219.)
-        gt[gt < 0] = 0
-        gt[gt > 219.] = 219.
-        gt = gt[0,:,:] + 16
-    elif p.colorMode == 'color':
-        pred = 16 + 65.481*pred[0:1,:,:] + 128.553*pred[1:2,:,:] + 24.966*pred[2:3,:,:]
-        pred[pred < 16.] = 16.
-        pred[pred > 235.] = 235.
-
-        gt = 16 + 65.481*gt[0:1,:,:] + 128.553*gt[1:2,:,:] + 24.966*gt[2:3,:,:]
-        gt[gt < 16.] = 16.
-        gt[gt > 235.] = 235.
-
-    
-
-    imdff = pred - gt
-    rmse = math.sqrt(np.mean(imdff ** 2))
-    if rmse == 0:
-        return 100
-    #print(20 * math.log10(255.0/ rmse), cv2.PSNR(gt, pred), cv2.PSNR(cv2.imread('sr.png'), cv2.imread('hr.png')))
-    return 20 * math.log10(255.0/ rmse)
-    
+    return writer
 
 
-def pSigmoid(input, c1):
-    return (1 / (1 + torch.exp(-1 * c1 * input)))
 
 def logValues(writer, valueTuple, iter):
     writer.add_scalar(valueTuple[0], valueTuple[1], iter)
@@ -106,6 +75,16 @@ def logImages(writer, imageTuple, iter):
     saveImages = torch.clamp(imageTuple[1], 0, 1)
     for i in range(imageTuple[1].size(0)):
         writer.add_image(imageTuple[0], imageTuple[1][i,:,:,:], iter)
+
+
+
+
+######################################################################################################################################################################## 
+
+# Saves & Loads
+
+######################################################################################################################################################################## 
+
 
 
 def loadModels(modelList, version, subversion, loadModelNum, isTest):
@@ -260,6 +239,40 @@ def saveModels(modelList, version, subversion, epoch, lastLoss, bestPSNR):
             if epoch % p.archiveStep == 0:
                 torch.save(saveData, './data/'+version+'/model/'+subversion+'/'+ mdlStr +'-%d.pth' % (epoch + 1))
 
+def saveTensorToNPY(tnsr, fileName):
+    np.save(fileName, tnsr.cpu().numpy())
+
+def loadNPYToTensor(fileName):
+    return torch.tensor(np.load(fileName, mmap_mode='w+'))
+
+
+
+
+
+
+
+######################################################################################################################################################################## 
+
+# Tensor Calculations
+
+######################################################################################################################################################################## 
+
+#local function
+def to_var(x):
+    if torch.cuda.is_available():
+        x = x.cuda()
+    return Variable(x)
+
+def denorm(x):
+    out = x
+    if p.valueRangeType == '-1~1':
+        out = (x + 1) / 2
+    
+    return out.clamp(0, 1)
+
+
+def pSigmoid(input, c1):
+    return (1 / (1 + torch.exp(-1 * c1 * input)))
 
 
 def backproagateAndWeightUpdate(modelList, loss, modelNames = None):
@@ -297,8 +310,57 @@ def backproagateAndWeightUpdate(modelList, loss, modelNames = None):
         optimizer.step()
 
 
-        
-                
+
+
+
+
+
+######################################################################################################################################################################## 
+
+# Etc.
+
+######################################################################################################################################################################## 
+
+
+def calculateImagePSNR(a, b):
+
+    pred = a.cpu().data[0].numpy().astype(np.float32)
+    gt = b.cpu().data[0].numpy().astype(np.float32)
+
+    np.nan_to_num(pred, copy=False)
+    np.nan_to_num(gt, copy=False)
+
+    if p.valueRangeType == '-1~1':
+        pred = (pred + 1)/2
+        gt = (gt + 1)/2
+
+    if p.colorMode == 'grayscale':
+        pred = np.round(pred * 219.)
+        pred[pred < 0] = 0
+        pred[pred > 219.] = 219.
+        pred = pred[0,:,:] + 16
+            
+        gt = np.round(gt * 219.)
+        gt[gt < 0] = 0
+        gt[gt > 219.] = 219.
+        gt = gt[0,:,:] + 16
+    elif p.colorMode == 'color':
+        pred = 16 + 65.481*pred[0:1,:,:] + 128.553*pred[1:2,:,:] + 24.966*pred[2:3,:,:]
+        pred[pred < 16.] = 16.
+        pred[pred > 235.] = 235.
+
+        gt = 16 + 65.481*gt[0:1,:,:] + 128.553*gt[1:2,:,:] + 24.966*gt[2:3,:,:]
+        gt[gt < 16.] = 16.
+        gt[gt > 235.] = 235.
+
+    
+
+    imdff = pred - gt
+    rmse = math.sqrt(np.mean(imdff ** 2))
+    if rmse == 0:
+        return 100
+    #print(20 * math.log10(255.0/ rmse), cv2.PSNR(gt, pred), cv2.PSNR(cv2.imread('sr.png'), cv2.imread('hr.png')))
+    return 20 * math.log10(255.0/ rmse)
 
 # 시작시 폴더와 파일들을 지정된 경로로 복사 (백업)
 def initFolderAndFiles(ver, subversion):
@@ -311,28 +373,6 @@ def initFolderAndFiles(ver, subversion):
 
     list(copyfile(f'./{x}', f'./data/{ver}/model/{subversion}/{x}') for x in os.listdir('.') if x.endswith('.py'))
     list(copyfile(f'./backbone/{x}', f'./data/{ver}/model/{subversion}/backbone/{x}') for x in os.listdir('./backbone') if x.endswith('.py'))
-
-# 텐서보드 관련 초기화
-def initTensorboard(ver, subversion):
-    for proc in psutil.process_iter():
-        # check whether the process name matches
-        if proc.name() == "tensorboard":
-            proc.kill()
-
-    logdir = f'./data/{ ver }/log'
-    subprocess.Popen(["tensorboard","--logdir=" + logdir,"--port=6006"])
-    writer = SummaryWriter(f'{ logdir }/{ subversion }/')
-
-    # if (p.testDataset == 'REDS' or p.testDataset == 'Vid4'):
-    #     w4b = SummaryWriter(logdir + "/bicubic_X4_1Frames/")
-    #     w4EDVR = SummaryWriter(logdir + "/EDVR_X4_7Frames/")
-    # elif (p.testDataset == 'Set5'):
-    #     w2 = SummaryWriter(logdir + "/bicubic_X2/")
-    #     w3 = SummaryWriter(logdir + "/bicubic_X3/")
-    #     w4 = SummaryWriter(logdir + "/bicubic_X4/")
-    #     w8 = SummaryWriter(logdir + "/bicubic_X8/")
-
-    return writer
 
 def initArgParser():
     parser = argparse.ArgumentParser()
@@ -351,12 +391,6 @@ def initArgParser():
 def readConfigs():
     Config.readParam("param.yaml")
     Config.readDatasetConfig("datasetConfig.yaml")
-
-
-
-
-
-
 
 
 def printirene():
