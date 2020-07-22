@@ -32,20 +32,22 @@ from torchvision.datasets import ImageFolder
 #FROM This Project
 import param as p
 import backbone.preprocessing
+import backbone.augmentation
 import backbone.utils as utils
 from backbone.config import Config
-
-
 
 
 
 # Prevent memory Error in PIL
 PngImagePlugin.MAX_TEXT_CHUNK = 100 * (1024**2)
 
-# Read Transforms from backbone.preprocessing automatically
-PREPROCESSING_FUNCTION_DICT = dict(x for x in inspect.getmembers(backbone.preprocessing) if (not x[0].startswith('__')) and (inspect.isclass(x[1])) )
-#TODO:
-AUGMENT_FUNCTION_DICT = dict(x for x in inspect.getmembers(backbone.preprocessing) if (not x[0].startswith('__')) and (inspect.isclass(x[1])) )
+# Read Preprocessings from backbone.preprocessing and Augmentations from backbone.augmentation automatically
+PREPROCESSING_DICT = dict(x for x in inspect.getmembers(backbone.preprocessing) if (not x[0].startswith('__')) and (inspect.isclass(x[1])) )
+AUGMENTATION_DICT = dict(x for x in inspect.getmembers(backbone.augmentation) if (not x[0].startswith('_')) and (inspect.isfunction(x[1])) )
+
+
+
+
 
 
 
@@ -150,7 +152,7 @@ class DatasetComponent():
 
 
     def makePreprocessingList(self):
-        self.preprocessingList = list(map((lambda x: PREPROCESSING_FUNCTION_DICT[x]), self.config.preprocessings))
+        self.preprocessingList = list(map((lambda x: PREPROCESSING_DICT[x]), self.config.preprocessings))
         pass
 
 
@@ -267,9 +269,15 @@ class Dataset(torchDataset):
 
         return x
 
-    def GPUdataAugmentation(self, tnsr):
-        #TODO: make PP
-        return
+    def GPUdataAugmentation(self, tnsr, augmentations):
+
+        x = tnsr
+
+        for augmentation in augmentations:
+            x = augmentation(x)
+
+        return x
+
     
 
     def loadPILImagesFromHDD(self, filePath):
