@@ -142,7 +142,7 @@ class DatasetComponent():
         fileList = list(itertools.chain.from_iterable(list(map( lambda x :  list(map( lambda y : x + "/" + y, os.listdir(mainPath + x))) , pathList))))
 
         # set dataFileList without main path
-        self.dataFileList = [ x for x in fileList if (x.endswith(".png") or x.endswith(".jpg") or x.endswith(".jpeg") or x.endswith(".bmp")) ]
+        self.dataFileList = [ x for x in fileList if (x.endswith(".png") or x.endswith(".jpg") or x.endswith(".jpeg") or x.endswith(".bmp"))  ]
 
 
 
@@ -159,7 +159,7 @@ class DatasetComponent():
 
 
 
-##
+
 
 
 #TODO: Distribution
