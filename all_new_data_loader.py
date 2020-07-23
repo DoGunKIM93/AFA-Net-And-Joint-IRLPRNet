@@ -152,7 +152,7 @@ class DatasetComponent():
 
 
     def makePreprocessingList(self):
-        self.preprocessingList = list(map((lambda x: PREPROCESSING_DICT[x]), self.config.preprocessings))
+        self.preprocessingList = list(map((lambda x: PREPROCESSING_DICT[x.split('(')[0]](*list(filter(lambda y : y != '', x.split('(')[1][:-1].replace(' ','').split(','))))), self.config.preprocessings))
         pass
 
 
@@ -172,7 +172,7 @@ class DatasetComponent():
 class Dataset(torchDataset):
 
 
-    def __init__(self, datasetComponentList:list[DatasetComponent], batchSize: int, samplingCount:int, sameOutputSize:bool, valueRangeType:str, shuffle:bool, augmentation:list, numWorkers:int):
+    def __init__(self, datasetComponentList:list[DatasetComponent], batchSize: int, samplingCount:int, sameOutputSize:bool, valueRangeType:str, shuffle:bool, augmentation:list[str], numWorkers:int):
         self.datasetComponentList = datasetComponentList
         self.datasetComponentListIntegrityTest()
 
@@ -190,21 +190,20 @@ class Dataset(torchDataset):
         self.makeGlobalFileList(self.shuffle)
 
 
-    #TODO: 다시만들기
+
     def makeGlobalFileList(self, shuffle):
-        gFL = [range(len(x)) for x in self.datasetComponentList]
-        if self.shuffle is True:
-            random.shuffle(gFL)
+        gFL = [x.dataFileList for x in self.datasetComponentList]
         self.globalFileList = gFL
 
-    #TODO:
+
+
     def popItemInGlobalFileListByIndex(self, index):
         datasetComponentLengthList = list(map(len, datasetComponentList))
 
         indexComponent = index % len(datasetComponentLengthList)
         indexComponentFileList = ( index // len(datasetComponentLengthList) ) % datasetComponentLengthList[indexComponent]
 
-        return self.globalFileList[indexComponent][indexComponentFileList], self.datasetComponentList[indexComponent].preprocessingList
+        return Config.param.data.path.datasetPath + self.globalFileList[indexComponent][indexComponentFileList], self.datasetComponentList[indexComponent].preprocessingList
 
 
 
@@ -258,6 +257,9 @@ class Dataset(torchDataset):
 
 
 
+
+
+
     
 
     def torchvisionPreprocessing(self, pilImage, preProc):
@@ -269,15 +271,36 @@ class Dataset(torchDataset):
 
         return x
 
-    def GPUdataAugmentation(self, tnsr, augmentations):
+    
+    def applyAugmentationFunction(self, tnsr, augmentation:str):
+
+        assert augmentation in AUGMENTATION_DICT.keys(), "data_loader.py :: invalid Augmentation Function!! chcek param.yaml."
+
+        augFunc = AUGMENTATION_DICT[augmentation.split['('][0]]
+        args = list(filter(lambda y : y != '', augmentation.split['('][1][:-1].replace(' ','').split(',') ))
+
+        tnsr = augFunc(tnsr, *args)
+
+        return tnsr
+
+
+
+
+    def dataAugmentation(self, tnsr, augmentations: list[str]):
 
         x = tnsr
 
         for augmentation in augmentations:
-            x = augmentation(x)
+            x = applyAugmentationFunction(x, augmentation)
 
         return x
 
+    def setTensorValueRange(self, tnsr, valueRangeType:str):
+
+        if valueRangeType == '-1~1':
+            tnsr = tnsr * 2 - 1
+
+        return tnsr
     
 
     def loadPILImagesFromHDD(self, filePath):
@@ -286,8 +309,8 @@ class Dataset(torchDataset):
     def saveTensorsToHDD(self, tnsr, filePath):
         utils.saveTensorToNPY(tnsr, filePath)
 
-    def loadTensorsFromHDDToGPU(self, filePath):
-        return utils.loadNPYToTensor(filePath).cuda()
+    def loadTensorsFromHDD(self, filePath):
+        return utils.loadNPYToTensor(filePath)
 
     def PIL2Tensor(self, pilImage):
         return transforms.ToTensor()(pilImage)
@@ -309,8 +332,8 @@ class Dataset(torchDataset):
 
     def methodNPYExists(self, filePath):
 
-        tnsr = self.loadTensorsFromHDDToGPU(filePath)
-        augedTensor = self.GPUdataAugmentation(tnsr)
+        tnsr = self.loadTensorsFromHDD(filePath).cuda()
+        augedTensor = self.dataAugmentation(tnsr, self.augmentation)
 
         return augedTensor
 
@@ -320,7 +343,7 @@ class Dataset(torchDataset):
         PPedPILImage = self.torchvisionPreprocessing(PILImage, preProc)
         tnsr = self.PIL2Tensor(PPedPILImage).cuda()
 
-        augedTensor = self.GPUdataAugmentation(tnsr)
+        augedTensor = self.dataAugmentation(tnsr, self.augmentation)
 
         return augedTensor
 
@@ -353,12 +376,15 @@ class Dataset(torchDataset):
 
     def __getitem__(self, index):
 
+        #popping File Path at GFL(self.globalFileList) by index
         filePath, preProc = self.popItemInGlobalFileListByIndex(index)
 
-        if NPY_EXISTS is True:
-            rst = self.methodNPYExists(filePath)
+        if os.path.isfile(filePath + '.npy') is True:
+            rst = self.methodNPYExists(filePath) #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
         else:
-            rst = self.methodNPYNotExists(filePath, preProc)
+            rst = self.methodNPYNotExists(filePath, preProc) #if .npy doesn't Exists, load Image File as PIL Image -> Preprocess PIL Image on CPU -> convert to Tensor -> load to GPU -> Augmentation on GPU -> return
+
+        rst = self.setTensorValueRange(rst)
 
         return rst
 
@@ -409,7 +435,7 @@ class DataLoader(torchDataLoader):
         self.sameOutputSize = bool(yamlData['sameOutputSize'])
         self.valueRangeType = str(yamlData['valueRangeType'])
         self.shuffle = str(yamlData['shuffle'])
-        self.augmentation = yamlData['augmentation'] #TODO: IS IT WORKS?
+        self.augmentation = yamlData['augmentation'] 
         self.numWorkers = Config.param.train.dataLoaderNumWorkers
 
     

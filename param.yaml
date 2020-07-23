@@ -23,7 +23,7 @@ general:
 #################################################################################
 data:
     path: 
-        z: /home/projSR/dataset/
+        datasetPath: /home/projSR/dataset/
         pretrainedPath: /home/projSR/dataset/pretrained/
     
     datasetComponent:
@@ -70,8 +70,8 @@ data:
             valueRangeType : -1~1
             shuffle: True
             augmentation: # Must be list of dict
-                - crop: 256, 256
-                - randomResizeMinMax: 1, 1
+                - crop(256, 256)
+                - randomResizeMinMax(1, 1)
         validation:
             datasetComponent:
                 - Vid4
@@ -81,7 +81,7 @@ data:
             valueRangeType : -1~1
             shuffle: False
             augmentation:
-                - resizeByMaxPixelCount: 590000
+                - resizeByMaxPixelCount(590000)
 
         
 

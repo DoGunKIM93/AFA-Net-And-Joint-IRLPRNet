@@ -13,11 +13,11 @@ DIV2K_SR:
     classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
         - scaleMethod
         - scaleFactor
-    preprocessings: 
-        - RandomCrop
-        - HFlip
-        - VFlip
-        - HueAdjust
+    preprocessings: # Must be list
+        - RandomCrop()
+        - HFlip()
+        - VFlip()
+        - HueAdjust()
 
 
 DIV2K_AutoEncoder:
@@ -31,9 +31,9 @@ DIV2K_AutoEncoder:
     classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
         - sceneNumber
     preprocessings: 
-        - RandomCrop
-        - HFlip
-        - VFlip
-        - HueAdjust
+        - RandomCrop()
+        - HFlip()
+        - VFlip()
+        - HueAdjust()
 
         
