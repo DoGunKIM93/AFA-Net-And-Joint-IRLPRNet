@@ -79,11 +79,6 @@ class DatasetConfig():
             self.getDatasetConfig()
 
 
-    @staticmethod
-    def strToList(inp : str):
-        return inp.replace(' ','').split(',')
-    
-
 
     def getDatasetConfig(self):
 
