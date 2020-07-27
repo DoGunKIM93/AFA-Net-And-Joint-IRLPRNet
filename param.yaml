@@ -69,6 +69,7 @@ data:
             sameOutputSize: False
             valueRangeType : -1~1
             shuffle: True
+            makePreprocessedFile: False
             augmentation: # Must be list of dict
                 - crop(256, 256)
                 - randomResizeMinMax(1, 1)
@@ -80,6 +81,7 @@ data:
             sameOutputSize: False
             valueRangeType : -1~1
             shuffle: False
+            makePreprocessedFile: False
             augmentation:
                 - resizeByMaxPixelCount(590000)
 

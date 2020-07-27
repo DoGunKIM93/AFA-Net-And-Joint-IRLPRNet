@@ -167,7 +167,16 @@ class DatasetComponent():
 class Dataset(torchDataset):
 
 
-    def __init__(self, datasetComponentList:list[DatasetComponent], batchSize: int, samplingCount:int, sameOutputSize:bool, valueRangeType:str, shuffle:bool, augmentation:list[str], numWorkers:int):
+    def __init__(self, 
+                 datasetComponentList:list[DatasetComponent], 
+                 batchSize: int, 
+                 samplingCount:int, 
+                 sameOutputSize:bool, 
+                 valueRangeType:str, 
+                 shuffle:bool, 
+                 augmentation:list[str], 
+                 numWorkers:int,
+                 makePreprocessedFile:bool):
         self.datasetComponentList = datasetComponentList
         self.datasetComponentListIntegrityTest()
 
@@ -178,6 +187,8 @@ class Dataset(torchDataset):
         self.shuffle = shuffle
         self.augmentation = augmentation
         self.numWorkers = numWorkers
+
+        self.makePreprocessedFile = makePreprocessedFile
 
         self.getDatasetRatio(datasetComponentList)
 
@@ -324,6 +335,10 @@ class Dataset(torchDataset):
 
         self.saveTensorsToHDD(rstTensor, filePath)
 
+        augedTensor = self.dataAugmentation(rstTensor.cuda(), self.augmentation)
+
+        return augedTensor
+
 
     def methodNPYExists(self, filePath):
 
@@ -377,7 +392,10 @@ class Dataset(torchDataset):
         if os.path.isfile(filePath + '.npy') is True:
             rst = self.methodNPYExists(filePath) #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
         else:
-            rst = self.methodNPYNotExists(filePath, preProc) #if .npy doesn't Exists, load Image File as PIL Image -> Preprocess PIL Image on CPU -> convert to Tensor -> load to GPU -> Augmentation on GPU -> return
+            if self.makePreprocessedFile is True:
+                rst = self.NPYMaker(filepath, preProc) # if .npy doesn't Exists and self.makePreprocessedFile is True, make .npy file and augmentating tensor and return
+            else:
+                rst = self.methodNPYNotExists(filePath, preProc) #if .npy doesn't Exists, load Image File as PIL Image -> Preprocess PIL Image on CPU -> convert to Tensor -> load to GPU -> Augmentation on GPU -> return
 
         rst = self.setTensorValueRange(rst)
 
@@ -390,12 +408,21 @@ class Dataset(torchDataset):
 
 
 class DataLoader(torchDataLoader):
-    def __init__(self, dataLoaderName: str, fromParam : bool = True):
+    def __init__(self, dataLoaderName: str, fromParam : bool = True, 
+                 datasetComponentList: list[DatasetComponent] = None,
+                 batchSize: int = None,
+                 samplingCount: int = None,
+                 sameOutputSize: bool = None,
+                 valueRangeType: str = None,
+                 shuffle: bool = None,
+                 augmentation: list(str) = None,
+                 numWorkers: int = None,
+                 makePreprocessedFile: bool = None):
 
         
         # INIT PARAMs #
         self.name = dataLoaderName
-        self.datasetComponent = None
+        self.datasetComponentList = None
         self.batchSize = None
         self.samplingCount = None
         self.sameOutputSize = None
@@ -403,6 +430,7 @@ class DataLoader(torchDataLoader):
         self.shuffle = None
         self.augmentation = None
         self.numWorkers = None
+        self.makePreprocessedFile = None
 
         self.fromParam = fromParam
 
@@ -423,7 +451,7 @@ class DataLoader(torchDataLoader):
 
         yamlData = Config.paramDict['data']['dataLoader'][f'{self.name}']
 
-        self.datasetComponent = list(map(str, yamlData['datasetComponent']))
+        self.datasetComponentList = list(map(str, yamlData['datasetComponent']))
 
         self.batchSize = int(yamlData['batchSize'])
         self.samplingCount = int(yamlData['samplingCount'])
@@ -432,6 +460,7 @@ class DataLoader(torchDataLoader):
         self.shuffle = str(yamlData['shuffle'])
         self.augmentation = yamlData['augmentation'] 
         self.numWorkers = Config.param.train.dataLoaderNumWorkers
+        self.makePreprocessedFile = yamlData['makePreprocessedFile'] 
 
     
     def constrctDataset(self):
