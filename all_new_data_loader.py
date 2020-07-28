@@ -12,11 +12,11 @@ import numpy as np
 import yaml 
 import inspect
 import itertools
+import glob
 
 from PIL import Image
 from PIL import PngImagePlugin
-from typing import List, Dict, Tuple, Union
-from function import reduce
+from typing import List, Dict, Tuple, Union, Optional
 
 
 #FROM PyTorch
@@ -130,9 +130,17 @@ class DatasetComponent():
         mainPath = Config.param.data.path.datasetPath
         path = f"{self.datasetConfig['origin']}/{self.mode}/"
 
+        # add label file path that independents about each label files (Without duplicate label)
+        self.labelFileList = [file for file in os.listdir(path) if (file.endswith(".txt"))]
+
+        if self.labelFileList is not None and self.classParameter[self.datasetConfig['classes']] == '$ALL':
+            datasetConfigClasses = list(filter(os.path.isdir, glob.glob(path+"*")))
+        else:
+            datasetConfigClasses = self.datasetConfig['classes']
+        
         # dynamic construction of class path based on defined classes
-        for i in range(len(self.datasetConfig['classes'])):
-            classPathList = list(itertools.chain.from_iterable(list(map( lambda y : list(map(lambda x : str(x) if type(x) is int else x + '/' + str(y) if type(y) is int else y , classPathList)), self.classParameter[self.datasetConfig['classes'][i]])))) if i is not 0 else self.classParameter[self.datasetConfig['classes'][i]]
+        for i in range(len(datasetConfigClasses)):
+            classPathList = list(itertools.chain.from_iterable(list(map( lambda y : list(map(lambda x : str(x) if type(x) is int else x + '/' + str(y) if type(y) is int else y , classPathList)), self.classParameter[datasetConfigClasses[i]])))) if i is not 0 else self.classParameter[datasetConfigClasses[i]]
             # Sorry for who read this
 
         # add origin path in front of all elements of class path list
@@ -168,13 +176,13 @@ class Dataset(torchDataset):
 
 
     def __init__(self, 
-                 datasetComponentList:list[DatasetComponent], 
+                 datasetComponentList:List[DatasetComponent], 
                  batchSize: int, 
                  samplingCount:int, 
                  sameOutputSize:bool, 
                  valueRangeType:str, 
                  shuffle:bool, 
-                 augmentation:list[str], 
+                 augmentation:List[str], 
                  numWorkers:int,
                  makePreprocessedFile:bool):
         self.datasetComponentList = datasetComponentList
@@ -195,12 +203,18 @@ class Dataset(torchDataset):
         self.globalFileList = None
         self.makeGlobalFileList(self.shuffle)
 
+        self.globalLabelList = None
+        self.makeGlobalLabelList(self.shuffle)
 
 
     def makeGlobalFileList(self, shuffle):
         gFL = [x.dataFileList for x in self.datasetComponentList]
         self.globalFileList = gFL
 
+    def makeGlobalLabelList(self, shuffle):
+        print("self.datasetComponentList : ", self.datasetComponentList)
+        gLL = [x.labelFileList for x in self.datasetComponentList]
+        self.globalLabelList = gLL
 
 
     def popItemInGlobalFileListByIndex(self, index):
@@ -211,6 +225,9 @@ class Dataset(torchDataset):
 
         return Config.param.data.path.datasetPath + self.globalFileList[indexComponent][indexComponentFileList], self.datasetComponentList[indexComponent].preprocessingList
 
+    # self.globalLabelList에 있는 내용 load 해서 dict 형식으로 만든 후 반환 --> 1 ## list [dict, dict, dict]
+    # init에서 한번 호출하는 방식으로 list [dict, dict, dict] 만들어 놓기
+    #def getItemInGlobalLabelDictByIndex(self, index):
 
 
 
@@ -236,7 +253,7 @@ class Dataset(torchDataset):
         return rst
 
     
-    def calculateMemorySizePerTensor(self, dtype:torch.dtype, expectedShape:list[int]): #WARN: EXCEPT BATCH SIIZEEEEEE!!!!!!!!!!!!!!!!!!!!!!!
+    def calculateMemorySizePerTensor(self, dtype:torch.dtype, expectedShape:List[int]): #WARN: EXCEPT BATCH SIIZEEEEEE!!!!!!!!!!!!!!!!!!!!!!!
         sizeOfOneElementDict = {torch.float32 : 4,
                                 torch.float   : 4,
                                 torch.float64 : 8,
@@ -292,7 +309,7 @@ class Dataset(torchDataset):
 
 
 
-    def dataAugmentation(self, tnsr, augmentations: list[str]):
+    def dataAugmentation(self, tnsr, augmentations: List[str]):
 
         x = tnsr
 
@@ -357,6 +374,7 @@ class Dataset(torchDataset):
 
         return augedTensor
 
+    #def LabelProcess(self, ):
 
 
 
@@ -388,7 +406,7 @@ class Dataset(torchDataset):
 
         #popping File Path at GFL(self.globalFileList) by index
         filePath, preProc = self.popItemInGlobalFileListByIndex(index)
-
+        ## 2. Dataset에서 init시 호출해서 생성한 dic에 filePath 중 filename 또는 그 상위 path만을 key로 해당하는 value 매칭
         if os.path.isfile(filePath + '.npy') is True:
             rst = self.methodNPYExists(filePath) #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
         else:
@@ -398,7 +416,7 @@ class Dataset(torchDataset):
                 rst = self.methodNPYNotExists(filePath, preProc) #if .npy doesn't Exists, load Image File as PIL Image -> Preprocess PIL Image on CPU -> convert to Tensor -> load to GPU -> Augmentation on GPU -> return
 
         rst = self.setTensorValueRange(rst)
-
+        ## 3. list of tensor (output) / dict of tensor
         return rst
 
     def __len__(self):
@@ -407,16 +425,18 @@ class Dataset(torchDataset):
     
 
 
-class DataLoader(torchDataLoader):
-    def __init__(self, dataLoaderName: str, fromParam : bool = True, 
-                 datasetComponentList: list[DatasetComponent] = None,
-                 batchSize: int = None,
-                 samplingCount: int = None,
+class DataLoader(torchDataLoaders):
+    def __init__(self, 
+                 dataLoaderName: str, 
+                 fromParam : bool = True, 
+                 datasetComponentList: List[DatasetComponent] = None,
+                 batchSize: Optional[int] = None,
+                 samplingCount: Optional[int] = None,
                  sameOutputSize: bool = None,
                  valueRangeType: str = None,
                  shuffle: bool = None,
-                 augmentation: list(str) = None,
-                 numWorkers: int = None,
+                 augmentation: List[str] = None,
+                 numWorkers: Optional[int] = None,
                  makePreprocessedFile: bool = None):
 
         
@@ -452,7 +472,6 @@ class DataLoader(torchDataLoader):
         yamlData = Config.paramDict['data']['dataLoader'][f'{self.name}']
 
         self.datasetComponentList = list(map(str, yamlData['datasetComponent']))
-
         self.batchSize = int(yamlData['batchSize'])
         self.samplingCount = int(yamlData['samplingCount'])
         self.sameOutputSize = bool(yamlData['sameOutputSize'])
@@ -463,9 +482,11 @@ class DataLoader(torchDataLoader):
         self.makePreprocessedFile = yamlData['makePreprocessedFile'] 
 
     
-    def constrctDataset(self):
+    def constructDataset(self):
         
-        dataset = Dataset(self.datasetComponent)
+        dataset = Dataset(self.datasetComponentList, self.batchSize, self.samplingCount, 
+        self.sameOutputSize, self.valueRangeType, self.shuffle, self.augmentation, self.numWorkers, self.makePreprocessedFile)
+
         self.dataset = dataset
 
 
