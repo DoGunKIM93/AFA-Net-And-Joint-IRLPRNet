@@ -4,9 +4,9 @@ version : 1.03.200717
 DIV2K_SR:
     origin: DIV2K
     dataType: 
-        LR: 2D-Float # nD-(Float,Int)
+        LR: Image-Float #  name: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
     labelType:
-        HR: 2D-Float # image, imagesequence, string
+        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
     availableMode: 
         - train
         - validation #train, validation, test
@@ -23,8 +23,8 @@ DIV2K_SR:
 DIV2K_AutoEncoder:
     origin: DIV2K
     dataType: 
-        Image: 2D-Float
-    labelType:  # image, imagesequence, string
+        Image: Image-Float
+    labelType:  # (Text/Image/ImageSequence)-(Float/Int)
     vailableMode: 
         - train
         - validation
@@ -36,4 +36,4 @@ DIV2K_AutoEncoder:
         - VFlip()
         - HueAdjust()
 
-        
+

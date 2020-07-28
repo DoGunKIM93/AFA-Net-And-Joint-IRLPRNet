@@ -1,21 +1,10 @@
 from functools import reduce
 
 
-def asd():
-    print("?")
+a = [[1,2,3], {'a':'b', 'c':'d'}]
 
+b = [{'c':'d', 'a':'b'}, [1,2,3]]
 
-x = "resize(,,)"
+c = [1,2,3,4]
 
-
-
-func = x.split('(')[0]
-#if '' in args : args.remove('')
-args = list(filter(lambda y : y != '', x.split('(')[1][:-1].replace(' ','').split(',')))
-
-#args = args.remove('5')
-
-print(func)
-print(args)
-
-asd(*args)
+print(a == b)

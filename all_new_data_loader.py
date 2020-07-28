@@ -57,8 +57,8 @@ class DatasetConfig():
     def __init__(self, 
                  name: str, 
                  origin : str = None, 
-                 dataType : List[str] = None, 
-                 labelType : List[str] = None, 
+                 dataType : Dict[str] = None, 
+                 labelType : Dict[str] = None, 
                  availableMode : List[str] = None, 
                  classes : List[str] = None, 
                  preprocessings : List[str] = None,
@@ -80,14 +80,22 @@ class DatasetConfig():
 
 
 
+    def splitDataType(self, dataType: Dict[str]):
+        #return form of {'LR': {'dataType': 'text', 'tensorType': 'int'}, 'HR': {'dataType': 'imageSequence', 'tensorType': 'double'}}
+
+        return dict([key, dict(zip(['dataType', 'tensorType'], dataType[key].split('-')))] for key in dataType if (dataType[key].split('-')[0] in ['text', 'image', 'imageSequence'] and dataType[key].split('-')[1] in ['float', 'int', 'long', 'double']))
+        
+
+
     def getDatasetConfig(self):
 
         yamlData = Config.datasetConfigDict[f'{self.name}']
 
         self.origin = str(yamlData['origin'])
 
-        self.dataType = yamlData['dataType']
-        self.labelType = yamlData['labelType']
+        self.dataType = self.splitDataType(yamlData['dataType'])
+
+        self.labelType = self.splitDataType(yamlData['labelType'])
 
 
         self.availableMode = list(map(str, yamlData['availableMode']))
@@ -229,13 +237,16 @@ class Dataset(torchDataset):
     # init에서 한번 호출하는 방식으로 list [dict, dict, dict] 만들어 놓기
     #def getItemInGlobalLabelDictByIndex(self, index):
 
-
-
     def datasetComponentListIntegrityTest(self):
-        # Test All dataComponents have same output type.
-        # TODO: SAME SHAPE (B , C ..)
-        datasetComponentOutputList = self.datasetComponentList.config.output
-        assert not datasetComponentOutputList or [datasetComponentOutputList[0]]*len(datasetComponentOutputList) == datasetComponentOutputList, 'data_loader.py :: All datasets in dataloader must have same output type.'
+        # Test All dataComponents have same 
+        # dataType
+        # TensorType
+        # name
+        datasetComponentdataTypeList =  [x.config.dataType for x in self.datasetComponentList]
+        assert [datasetComponentdataTypeList[0]] * len(datasetComponentdataTypeList) == datasetComponentdataTypeList, 'data_loader.py :: All datasets in dataloader must have same dataType.'
+
+        datasetComponentlabelTypeList =  [x.config.labelType for x in self.datasetComponentList]
+        assert [datasetComponentlabelTypeList[0]] * len(datasetComponentlabelTypeList) == datasetComponentlabelTypeList, 'data_loader.py :: All datasets in dataloader must have same tensorType.'
        
 
 
@@ -484,10 +495,12 @@ class DataLoader(torchDataLoaders):
     
     def constructDataset(self):
         
-        dataset = Dataset(self.datasetComponentList, self.batchSize, self.samplingCount, 
-        self.sameOutputSize, self.valueRangeType, self.shuffle, self.augmentation, self.numWorkers, self.makePreprocessedFile)
-
+        dataset = Dataset(self.datasetComponentList)
         self.dataset = dataset
+
+    def constructDatasetComponentFromName(self, name):
+
+        config = DatasetConfig(name)
 
 
 
