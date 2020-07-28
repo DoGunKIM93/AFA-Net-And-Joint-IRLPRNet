@@ -104,7 +104,7 @@ train:
     method:
         mixedPrecision: False 
 
-    dataLoaderNumWorker: 16
+    dataLoaderNumWorkers: 16
 
 
 
