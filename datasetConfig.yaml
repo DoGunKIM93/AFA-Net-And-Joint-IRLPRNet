@@ -14,10 +14,6 @@ DIV2K_SR:
         - scaleMethod
         - scaleFactor
     preprocessings: # Must be list
-        - RandomCrop()
-        - HFlip()
-        - VFlip()
-        - HueAdjust()
 
 
 DIV2K_AutoEncoder:

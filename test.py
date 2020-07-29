@@ -1,10 +1,7 @@
-from functools import reduce
+import torch
 
 
-a = [[1,2,3], {'a':'b', 'c':'d'}]
+tnsr = torch.tensor(range(10)).repeat(10,1)
 
-b = [{'c':'d', 'a':'b'}, [1,2,3]]
 
-c = [1,2,3,4]
-
-print(a == b)
+print(tnsr[...,2:4,2:5])

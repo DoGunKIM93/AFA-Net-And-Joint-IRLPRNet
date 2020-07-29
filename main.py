@@ -27,6 +27,8 @@ import backbone.utils as utils
 import backbone.module as module
 import backbone.structure as structure
 
+import all_new_data_loader as andl
+
 from data_loader import SRDataLoader
 from edit import editversion, version, subversion, trainStep, validationStep, ModelList, inferenceStep
 from backbone.config import Config

@@ -10,8 +10,9 @@ import random
 import math
 import numpy as np
 
-from PIL import Image
+from PIL import Image as PILImage
 from PIL import PngImagePlugin
+from typing import List, Dict, Tuple, Union, Optional
 
 
 #FROM PyTorch
@@ -50,11 +51,11 @@ from torchvision import datasets
 ######################################################################################################################################################################## 
 
 
-def adasd(x):
-    
-    mode = 'cpu' if x.get_device() is 'cpu' else 'gpu'
+def centerCrop(x: Union[torch.Tensor, PILImage], Height, Width):
 
-    x = _avvvxcv(x, mode)
+    _, cH, cW = _getSize(x)
+
+    x = _crop(x, (cH - Height) // 2, (cW - Width) // 2, Height, Width)
 
     return x
 
@@ -70,16 +71,26 @@ def adasd(x):
 ######################################################################################################################################################################## 
 
 
-def _avvvxcv(x, mode):
+def _getSize(x: Union[torch.Tensor, PILImage]): -> List[int] # C H W
 
-    assert mode in ['cpu','gpu']
+    if type(x) is PILImage: #CPU Implemenataion
+        sz = x.size
+        sz = [len(x.getbands()), sz[1], sz[0]] 
 
-    if mode == 'cpu':
+    elif type(x) is torch.Tensor: #GPU Implementation
+        sz = x.size().tolist()
+
+    return sz 
+
+def _crop(x: Union[torch.Tensor, PILImage], top: int, left: int, height: int, width: int):
+
+    if type(x) is PILImage: #CPU Implemenataion
         pass
-    elif mode == 'gpu':
-        pass
 
-    return
+    elif type(x) is torch.Tensor: #GPU Implementation
+        x = x[..., top:top+height, left:left+width]
+
+    return x
 
 
 

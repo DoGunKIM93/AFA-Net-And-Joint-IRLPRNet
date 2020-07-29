@@ -460,15 +460,15 @@ class DataLoader(torchDataLoaders):
         
         # INIT PARAMs #
         self.name = dataLoaderName
-        self.datasetComponentParamList = None
-        self.batchSize = None
-        self.samplingCount = None
-        self.sameOutputSize = None
-        self.valueRangeType = None
-        self.shuffle = None
-        self.augmentation = None
-        self.numWorkers = None
-        self.makePreprocessedFile = None
+        self.datasetComponentParamList = datasetComponentParamList
+        self.batchSize = batchSize
+        self.samplingCount = samplingCount
+        self.sameOutputSize = sameOutputSize
+        self.valueRangeType = valueRangeType
+        self.shuffle = shuffle
+        self.augmentation = augmentation
+        self.numWorkers = numWorkers
+        self.makePreprocessedFile = makePreprocessedFile
 
         self.fromParam = fromParam
 

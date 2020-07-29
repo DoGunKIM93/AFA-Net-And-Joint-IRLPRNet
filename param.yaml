@@ -35,7 +35,6 @@ data:
                     - bicubic
                 scaleFactor: 
                     - 4
-                    - 8
             colorMode: color  # 'color' || 'grayscale'
         REDS_train:
             dataConfig: REDS
@@ -63,7 +62,6 @@ data:
         train:
             datasetComponent: # Must be list
                 - DIV2K_SR_train
-                - REDS_train
             batchSize: 12
             samplingCount: 1
             sameOutputSize: False
@@ -71,8 +69,7 @@ data:
             shuffle: True
             makePreprocessedFile: False
             augmentation: # Must be list of dict
-                - crop(256, 256)
-                - randomResizeMinMax(1, 1)
+                - centerCrop(256, 256)
         validation:
             datasetComponent:
                 - Vid4
