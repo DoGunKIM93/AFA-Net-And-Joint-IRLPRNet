@@ -1,7 +1,7 @@
 '''
-all_new_data_loader.py
+data_loader.py
 '''
-version = "1.03.200717"
+version = "2.10.200729"
 
 
 #FROM Python LIBRARY
@@ -184,7 +184,7 @@ class Dataset(torchDataset):
 
 
     def __init__(self, 
-                 datasetComponentList:List[DatasetComponent], 
+                 datasetComponentParamList: List, 
                  batchSize: int, 
                  samplingCount:int, 
                  sameOutputSize:bool, 
@@ -193,7 +193,10 @@ class Dataset(torchDataset):
                  augmentation:List[str], 
                  numWorkers:int,
                  makePreprocessedFile:bool):
-        self.datasetComponentList = datasetComponentList
+        self.datasetComponentParamList = datasetComponentParamList
+
+        self.datasetComponentObjectList = None
+        self.constructDatasetComponents()
         self.datasetComponentListIntegrityTest()
 
         self.batchSize = batchSize
@@ -236,6 +239,10 @@ class Dataset(torchDataset):
     # self.globalLabelList에 있는 내용 load 해서 dict 형식으로 만든 후 반환 --> 1 ## list [dict, dict, dict]
     # init에서 한번 호출하는 방식으로 list [dict, dict, dict] 만들어 놓기
     #def getItemInGlobalLabelDictByIndex(self, index):
+
+
+    def constructDatasetComponents(self):
+        self.datasetComponentObjectList = [DatasetComponent(*x) for x in self.datasetComponentParamList]
 
     def datasetComponentListIntegrityTest(self):
         # Test All dataComponents have same 
@@ -440,7 +447,7 @@ class DataLoader(torchDataLoaders):
     def __init__(self, 
                  dataLoaderName: str, 
                  fromParam : bool = True, 
-                 datasetComponentList: List[DatasetComponent] = None,
+                 datasetComponentParamList: List[str] = None,
                  batchSize: Optional[int] = None,
                  samplingCount: Optional[int] = None,
                  sameOutputSize: bool = None,
@@ -453,7 +460,7 @@ class DataLoader(torchDataLoaders):
         
         # INIT PARAMs #
         self.name = dataLoaderName
-        self.datasetComponentList = None
+        self.datasetComponentParamList = None
         self.batchSize = None
         self.samplingCount = None
         self.sameOutputSize = None
@@ -482,7 +489,13 @@ class DataLoader(torchDataLoaders):
 
         yamlData = Config.paramDict['data']['dataLoader'][f'{self.name}']
 
-        self.datasetComponentList = list(map(str, yamlData['datasetComponent']))
+        datasetNameList = list(map(str, yamlData['datasetComponent']))
+        datasetModeList = list( Config.paramDict['data']['datasetComponent'][name]['mode'] for name in datasetNameList  )
+        datasetClassParameterList = list( Config.paramDict['data']['datasetComponent'][name]['classParameter'] for name in datasetNameList  )
+
+        self.datasetComponentParamList = zip(datasetNameList, datasetModeList, datasetClassParameterList)
+
+
         self.batchSize = int(yamlData['batchSize'])
         self.samplingCount = int(yamlData['samplingCount'])
         self.sameOutputSize = bool(yamlData['sameOutputSize'])
@@ -495,12 +508,15 @@ class DataLoader(torchDataLoaders):
     
     def constructDataset(self):
         
-        dataset = Dataset(self.datasetComponentList)
-        self.dataset = dataset
-
-    def constructDatasetComponentFromName(self, name):
-
-        config = DatasetConfig(name)
+        self.dataset = Dataset(datasetComponentParamList = self.datasetComponentParamList, 
+                               batchSize = self.batchSize, 
+                               samplingCount = self.samplingCount, 
+                               sameOutputSize = self.sameOutputSize, 
+                               valueRangeType = self.valueRangeType, 
+                               shuffle = self.shuffle, 
+                               augmentation = self.augmentation, 
+                               numWorkers = self.numWorkers,
+                               makePreprocessedFile = self.makePreprocessedFile)
 
 
 

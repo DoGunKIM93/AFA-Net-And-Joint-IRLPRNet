@@ -1,7 +1,7 @@
 '''
 param.py
 '''
-version = '1.01.200716'
+version = '1.02.200729'
 
 # Config file parser... hagishilta.. ha;..... mandulgi jonna shilta..
 

@@ -1,7 +1,7 @@
 '''
 model.py
 '''
-version = '1.3.200624'
+version = '1.4.200729'
 
 
 #from Python
