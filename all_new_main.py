@@ -61,7 +61,8 @@ utils.initFolderAndFiles(version, subversion)
 #read Configs
 utils.readConfigs()
 
-
+#for multiprocessing gpu augmentation in dataloader
+#if __name__ == '__main__':torch.multiprocessing.set_start_method('spawn')
 
 
 
@@ -78,7 +79,8 @@ print("")
 print("         -------- FRAMEWORK VERSIONs --------")
 
 #print module version
-pyModuleStrList = list(x[:-3] for x in os.listdir('.') if x != 'main.py' and x != 'edit.py' and x != 'all_new_data_loader.py' and x.endswith('.py')) + list(f'backbone.{x[:-3]}' for x in os.listdir('./backbone') if x.endswith('.py')) 
+exList = ['main.py', 'edit.py', 'all_new_data_loader.py', 'all_new_main.py', 'test.py']
+pyModuleStrList = list(x[:-3] for x in os.listdir('.') if x not in exList and x != 'all_new_data_loader.py' and x.endswith('.py')) + list(f'backbone.{x[:-3]}' for x in os.listdir('./backbone') if x.endswith('.py')) 
 pyModuleObjList = list(map(import_module, pyModuleStrList))
 
 versionDict = [['main', mainversion], ['edit', editversion]] + \

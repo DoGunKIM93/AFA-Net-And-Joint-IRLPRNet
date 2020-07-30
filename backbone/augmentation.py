@@ -51,7 +51,7 @@ from torchvision import datasets
 ######################################################################################################################################################################## 
 
 
-def centerCrop(x: Union[torch.Tensor, PILImage], Height, Width):
+def centerCrop(x: Union[torch.Tensor, PILImage.Image], Height, Width):
 
     _, cH, cW = _getSize(x)
 
@@ -71,9 +71,9 @@ def centerCrop(x: Union[torch.Tensor, PILImage], Height, Width):
 ######################################################################################################################################################################## 
 
 
-def _getSize(x: Union[torch.Tensor, PILImage]): -> List[int] # C H W
+def _getSize(x: Union[torch.Tensor, PILImage.Image]) -> List[int]:  # C H W
 
-    if type(x) is PILImage: #CPU Implemenataion
+    if type(x) is PILImage.Image: #CPU Implemenataion
         sz = x.size
         sz = [len(x.getbands()), sz[1], sz[0]] 
 
@@ -82,9 +82,9 @@ def _getSize(x: Union[torch.Tensor, PILImage]): -> List[int] # C H W
 
     return sz 
 
-def _crop(x: Union[torch.Tensor, PILImage], top: int, left: int, height: int, width: int):
+def _crop(x: Union[torch.Tensor, PILImage.Image], top: int, left: int, height: int, width: int) -> Union[torch.Tensor, PILImage.Image]:
 
-    if type(x) is PILImage: #CPU Implemenataion
+    if type(x) is PILImage.Image: #CPU Implemenataion
         pass
 
     elif type(x) is torch.Tensor: #GPU Implementation

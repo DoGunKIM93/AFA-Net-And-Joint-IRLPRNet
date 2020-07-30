@@ -72,7 +72,8 @@ data:
                 - centerCrop(256, 256)
         validation:
             datasetComponent:
-                - Vid4
+                - Vid4, REDS # PARALLEL TODO:
+                - Set5       # Serial with List
             batchSize: 1
             samplingCount: 1
             sameOutputSize: False

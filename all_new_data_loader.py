@@ -56,12 +56,12 @@ class DatasetConfig():
 
     def __init__(self, 
                  name: str, 
-                 origin : str = None, 
-                 dataType : Dict[str] = None, 
-                 labelType : Dict[str] = None, 
-                 availableMode : List[str] = None, 
-                 classes : List[str] = None, 
-                 preprocessings : List[str] = None,
+                 origin : Optional[str] = None, 
+                 dataType : Optional[Dict[str, str]] = None, 
+                 labelType : Optional[Dict[str, str]] = None, 
+                 availableMode : Optional[List[str]] = None, 
+                 classes : Optional[List[str]] = None, 
+                 preprocessings : Optional[List[str]] = None,
                  useDatasetConfig : bool = True):
                  
         self.name = name
@@ -80,11 +80,10 @@ class DatasetConfig():
 
 
 
-    def splitDataType(self, dataType: Dict[str]):
+    def splitDataType(self, dataType: Dict[str, str]):
         #return form of {'LR': {'dataType': 'text', 'tensorType': 'int'}, 'HR': {'dataType': 'imageSequence', 'tensorType': 'double'}}
 
-        return dict([key, dict(zip(['dataType', 'tensorType'], dataType[key].split('-')))] for key in dataType if (dataType[key].split('-')[0] in ['text', 'image', 'imageSequence'] and dataType[key].split('-')[1] in ['float', 'int', 'long', 'double']))
-        
+        return dict([key, dict(zip(['dataName', 'dataType', 'tensorType'], [key] + dataType[key].split('-') ))] for key in dataType if (dataType[key].split('-')[0] in ['text', 'image', 'imageSequence'] and dataType[key].split('-')[1] in ['float', 'int', 'long', 'double']))
 
 
     def getDatasetConfig(self):
@@ -100,7 +99,7 @@ class DatasetConfig():
 
         self.availableMode = list(map(str, yamlData['availableMode']))
         self.classes = list(map(str, yamlData['classes']))
-        self.preprocessings = list(map(str, yamlData['preprocessings']))
+        self.preprocessings = list(map(str, yamlData['preprocessings'])) if yamlData['preprocessings'] is not None else []
 
         
 
@@ -112,10 +111,13 @@ class DatasetConfig():
 class DatasetComponent():
 
 
-    def __init__(self, datasetConfig, mode, classParameter):
+    def __init__(self, name, mode, classParameter):
 
-        self.datasetConfig = datasetConfig
-        self.name = datasetConfig.name
+        self.name = name
+
+        self.datasetConfig = None
+        self.getDatasetConfigByComponentName()
+        
 
         self.mode = mode
         self.classParameter = classParameter
@@ -129,6 +131,9 @@ class DatasetComponent():
         self.preprocessingList = None
         self.makePreprocessingList()
     
+    def getDatasetConfigByComponentName(self):
+        self.datasetConfig = DatasetConfig(Config.paramDict['data']['datasetComponent'][self.name]['dataConfig'])
+
     def getDataFileList(self):
 
         #TODO: LABEL
@@ -136,16 +141,19 @@ class DatasetComponent():
 
         # get origin path
         mainPath = Config.param.data.path.datasetPath
-        path = f"{self.datasetConfig['origin']}/{self.mode}/"
+        path = f"{self.datasetConfig.origin}/{self.mode}/"
 
+        #TODO: PLZ DEBUG
+        '''
         # add label file path that independents about each label files (Without duplicate label)
-        self.labelFileList = [file for file in os.listdir(path) if (file.endswith(".txt"))]
+        self.labelFileList = [file for file in os.listdir(mainPath + path) if (file.endswith(".txt"))]
 
-        if self.labelFileList is not None and self.classParameter[self.datasetConfig['classes']] == '$ALL':
-            datasetConfigClasses = list(filter(os.path.isdir, glob.glob(path+"*")))
+        if self.labelFileList is not None and self.classParameter[self.datasetConfig.classes] == '$ALL':
+            datasetConfigClasses = list(filter(os.path.isdir, glob.glob(mainPath + path+"*"))) #TODO: TEST
         else:
-            datasetConfigClasses = self.datasetConfig['classes']
-        
+            datasetConfigClasses = self.datasetConfig.classes
+        '''
+        datasetConfigClasses = self.datasetConfig.classes
         # dynamic construction of class path based on defined classes
         for i in range(len(datasetConfigClasses)):
             classPathList = list(itertools.chain.from_iterable(list(map( lambda y : list(map(lambda x : str(x) if type(x) is int else x + '/' + str(y) if type(y) is int else y , classPathList)), self.classParameter[datasetConfigClasses[i]])))) if i is not 0 else self.classParameter[datasetConfigClasses[i]]
@@ -163,14 +171,14 @@ class DatasetComponent():
 
 
     def makePreprocessingList(self):
-        self.preprocessingList = list(map((lambda x: PREPROCESSING_DICT[x.split('(')[0]](*list(filter(lambda y : y != '', x.split('(')[1][:-1].replace(' ','').split(','))))), self.config.preprocessings))
+        self.preprocessingList = list(map((lambda x: PREPROCESSING_DICT[x.split('(')[0]](*list(filter(lambda y : y != '', x.split('(')[1][:-1].replace(' ','').split(','))))), self.datasetConfig.preprocessings))
         pass
 
 
 
 
     def __len__(self):
-        return len(dataFileList)
+        return len(self.dataFileList)
 
 
 
@@ -197,7 +205,7 @@ class Dataset(torchDataset):
 
         self.datasetComponentObjectList = None
         self.constructDatasetComponents()
-        self.datasetComponentListIntegrityTest()
+        self.datasetComponentObjectListIntegrityTest()
 
         self.batchSize = batchSize
         self.samplingCount = samplingCount
@@ -209,7 +217,7 @@ class Dataset(torchDataset):
 
         self.makePreprocessedFile = makePreprocessedFile
 
-        self.getDatasetRatio(datasetComponentList)
+        #self.getDatasetRatio(self.datasetComponentObjectList)
 
         self.globalFileList = None
         self.makeGlobalFileList(self.shuffle)
@@ -219,22 +227,25 @@ class Dataset(torchDataset):
 
 
     def makeGlobalFileList(self, shuffle):
-        gFL = [x.dataFileList for x in self.datasetComponentList]
+        gFL = [x.dataFileList for x in self.datasetComponentObjectList]
         self.globalFileList = gFL
 
     def makeGlobalLabelList(self, shuffle):
-        print("self.datasetComponentList : ", self.datasetComponentList)
-        gLL = [x.labelFileList for x in self.datasetComponentList]
+        print("self.datasetComponentObjectList : ", self.datasetComponentObjectList)
+        gLL = [x.labelFileList for x in self.datasetComponentObjectList]
         self.globalLabelList = gLL
 
 
     def popItemInGlobalFileListByIndex(self, index):
-        datasetComponentLengthList = list(map(len, datasetComponentList))
+        datasetComponentLengthList = list(map(len, self.datasetComponentObjectList))
 
         indexComponent = index % len(datasetComponentLengthList)
         indexComponentFileList = ( index // len(datasetComponentLengthList) ) % datasetComponentLengthList[indexComponent]
 
-        return Config.param.data.path.datasetPath + self.globalFileList[indexComponent][indexComponentFileList], self.datasetComponentList[indexComponent].preprocessingList
+        return {'filaPath':      Config.param.data.path.datasetPath + self.globalFileList[indexComponent][indexComponentFileList], 
+                'preprocessing': self.datasetComponentObjectList[indexComponent].preprocessingList, 
+                'dataType':      self.datasetComponentObjectList[indexComponent].datasetConfig.dataType,
+                'labelType':     self.datasetComponentObjectList[indexComponent].datasetConfig.labelType}
 
     # self.globalLabelList에 있는 내용 load 해서 dict 형식으로 만든 후 반환 --> 1 ## list [dict, dict, dict]
     # init에서 한번 호출하는 방식으로 list [dict, dict, dict] 만들어 놓기
@@ -244,21 +255,21 @@ class Dataset(torchDataset):
     def constructDatasetComponents(self):
         self.datasetComponentObjectList = [DatasetComponent(*x) for x in self.datasetComponentParamList]
 
-    def datasetComponentListIntegrityTest(self):
+    def datasetComponentObjectListIntegrityTest(self):
         # Test All dataComponents have same 
         # dataType
         # TensorType
         # name
-        datasetComponentdataTypeList =  [x.config.dataType for x in self.datasetComponentList]
+        datasetComponentdataTypeList =  [x.datasetConfig.dataType for x in self.datasetComponentObjectList]
         assert [datasetComponentdataTypeList[0]] * len(datasetComponentdataTypeList) == datasetComponentdataTypeList, 'data_loader.py :: All datasets in dataloader must have same dataType.'
 
-        datasetComponentlabelTypeList =  [x.config.labelType for x in self.datasetComponentList]
+        datasetComponentlabelTypeList =  [x.datasetConfig.labelType for x in self.datasetComponentObjectList]
         assert [datasetComponentlabelTypeList[0]] * len(datasetComponentlabelTypeList) == datasetComponentlabelTypeList, 'data_loader.py :: All datasets in dataloader must have same tensorType.'
        
 
 
-    def getDatasetRatio(self, datasetComponentList:list):
-        self.datasetLengthList = list(map(len, datasetComponentList))
+    def getDatasetRatio(self, datasetComponentObjectList:list):
+        self.datasetLengthList = list(map(len, datasetComponentObjectList))
         self.datasetRatio = list(map((lambda x : x / max(datasetLengthList)), datasetLengthList))
 
 
@@ -345,7 +356,7 @@ class Dataset(torchDataset):
     
 
     def loadPILImagesFromHDD(self, filePath):
-        return Image.open(Config.param.data.path.datapath + filePath)
+        return Image.open(filePath)
 
     def saveTensorsToHDD(self, tnsr, filePath):
         utils.saveTensorToNPY(tnsr, filePath)
@@ -370,27 +381,27 @@ class Dataset(torchDataset):
 
         self.saveTensorsToHDD(rstTensor, filePath)
 
-        augedTensor = self.dataAugmentation(rstTensor.cuda(), self.augmentation)
+        #augedTensor = self.dataAugmentation(rstTensor.cuda(), self.augmentation)
 
-        return augedTensor
+        return rstTensor
 
 
     def methodNPYExists(self, filePath):
 
-        tnsr = self.loadTensorsFromHDD(filePath).cuda()
-        augedTensor = self.dataAugmentation(tnsr, self.augmentation)
+        tnsr = self.loadTensorsFromHDD(filePath)
+        #augedTensor = self.dataAugmentation(tnsr, self.augmentation)
 
-        return augedTensor
+        return tnsr
 
     def methodNPYNotExists(self, filePath, preProc):
 
         PILImage = self.loadPILImagesFromHDD(filePath)
         PPedPILImage = self.torchvisionPreprocessing(PILImage, preProc)
-        tnsr = self.PIL2Tensor(PPedPILImage).cuda()
+        tnsr = self.PIL2Tensor(PPedPILImage)
 
-        augedTensor = self.dataAugmentation(tnsr, self.augmentation)
+        #augedTensor = self.dataAugmentation(tnsr, self.augmentation)
 
-        return augedTensor
+        return tnsr
 
     #def LabelProcess(self, ):
 
@@ -423,22 +434,26 @@ class Dataset(torchDataset):
     def __getitem__(self, index):
 
         #popping File Path at GFL(self.globalFileList) by index
-        filePath, preProc = self.popItemInGlobalFileListByIndex(index)
+        popped = self.popItemInGlobalFileListByIndex(index)
+        filePath = popped['filePath']
+        preProc = popped['preprocessing']
+        dataType = popped['dataType']
+        labelType = popped['labelType']
         ## 2. Dataset에서 init시 호출해서 생성한 dic에 filePath 중 filename 또는 그 상위 path만을 key로 해당하는 value 매칭
         if os.path.isfile(filePath + '.npy') is True:
             rst = self.methodNPYExists(filePath) #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
         else:
             if self.makePreprocessedFile is True:
-                rst = self.NPYMaker(filepath, preProc) # if .npy doesn't Exists and self.makePreprocessedFile is True, make .npy file and augmentating tensor and return
+                rst = self.NPYMaker(filePath, preProc) # if .npy doesn't Exists and self.makePreprocessedFile is True, make .npy file and augmentating tensor and return
             else:
                 rst = self.methodNPYNotExists(filePath, preProc) #if .npy doesn't Exists, load Image File as PIL Image -> Preprocess PIL Image on CPU -> convert to Tensor -> load to GPU -> Augmentation on GPU -> return
 
         rst = self.setTensorValueRange(rst)
         ## 3. list of tensor (output) / dict of tensor
-        return rst
+        return {dataType['dataName'] : rst}
 
     def __len__(self):
-        return max(list(map(len, datasetComponentList))) * len(datasetComponentList)
+        return max(list(map(len, self.datasetComponentObjectList))) * len(self.datasetComponentObjectList)
         
     
 
@@ -447,15 +462,15 @@ class DataLoader(torchDataLoaders):
     def __init__(self, 
                  dataLoaderName: str, 
                  fromParam : bool = True, 
-                 datasetComponentParamList: List[str] = None,
+                 datasetComponentParamList: Optional[List[str]] = None,
                  batchSize: Optional[int] = None,
                  samplingCount: Optional[int] = None,
-                 sameOutputSize: bool = None,
-                 valueRangeType: str = None,
-                 shuffle: bool = None,
-                 augmentation: List[str] = None,
+                 sameOutputSize: Optional[bool] = None,
+                 valueRangeType: Optional[str] = None,
+                 shuffle: Optional[bool] = None,
+                 augmentation: Optional[List[str]] = None,
                  numWorkers: Optional[int] = None,
-                 makePreprocessedFile: bool = None):
+                 makePreprocessedFile: Optional[bool] = None):
 
         
         # INIT PARAMs #
@@ -476,14 +491,23 @@ class DataLoader(torchDataLoaders):
             self.getDataloaderParams()
 
         # CONSTRUCT DATASET #
+        self.dataset = None
         self.constructDataset()
 
-        super().__init__(self, 
+        super(DataLoader, self).__init__(
                          dataset = self.dataset,
                          batch_size = self.batchSize,
                          shuffle = self.shuffle,
-                         num_workers = self.numWorkers)
+                         num_workers = self.numWorkers,
+                         collate_fn = self.GPUAugmentataionCollater)
     
+
+    def GPUAugmentataionCollater(self, samples):
+        rstDict = {}
+        for key in samples:
+            rstDict[key] = torch.stack([sample[key] for sample in samples])
+        return rstDict
+
 
     def getDataloaderParams(self):
 
