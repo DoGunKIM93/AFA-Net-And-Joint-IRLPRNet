@@ -8,6 +8,7 @@ import os
 import random
 import math
 import numpy as np
+import time
 
 from PIL import Image
 from PIL import PngImagePlugin
@@ -171,13 +172,16 @@ class SingleImageDataset(Dataset):
            
 
     def __getitem__(self, index):
+
+        a = time.perf_counter()
+
         dot = "" 
         for i in range(index%5):
             dot += "."
         print(f"preprocessing{dot}     ", end="\r")
         LRImageOri = Image.open(os.path.join(self.LRDatapath, self.LRImageFileNames[index]))
         HRImageOri = Image.open(os.path.join(self.HRDatapath, self.HRImageFileNames[index]))
-
+        b = time.perf_counter()
         if self.cropTransform == None:
             Images = self.commonTransform([LRImageOri, HRImageOri])
             LRImage = self.LRTransform(Images[0])
@@ -203,6 +207,7 @@ class SingleImageDataset(Dataset):
                     rst.append([LRImage, HRImage])
                 else:
                     rst.append([LRImage, HRImage])
+            print(b-a, time.perf_counter() - b)
             return rst  
 
     def __len__(self):
@@ -429,7 +434,7 @@ def SRDataset(dataset,
         if (datasetType == 'train') or (datasetType == 'valid'):
 
             LRDatapath += f'DIV2K/{datasetType}/'
-            HRDatapath += f'DIV2K/{datasetType}/'
+            HRDatapath += f'DIV2K/{datasetType}/GT/'
             
         else:
             print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")

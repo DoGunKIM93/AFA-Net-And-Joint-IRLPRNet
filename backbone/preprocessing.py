@@ -34,6 +34,15 @@ from torchvision import datasets
 
 from torchvision.transforms import ToTensor
 
+
+class Pass(object):
+
+    def __init__(self):
+        pass
+
+    def __call__(self, x):
+        return x
+
 class To1Channel(object):
 
     def __init__(self):

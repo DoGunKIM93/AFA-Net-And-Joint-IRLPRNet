@@ -259,7 +259,7 @@ else :
         for i, Imagepairs in enumerate(trainDataLoader):
 
             #if i == 200: break
-
+            '''
             LRImages = []
             HRImages = []
             for _LRi, _HRi in Imagepairs:
@@ -269,6 +269,9 @@ else :
             HRImages = torch.cat(HRImages, 0)
             LRImages = utils.to_var(LRImages)
             HRImages = utils.to_var(HRImages)
+            '''
+            LRImages = Imagepairs['LR']
+            HRImages = Imagepairs['HR']
             batchSize = LRImages.size(0)
                     
             ########### train STEP ############

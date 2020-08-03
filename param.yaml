@@ -62,14 +62,14 @@ data:
         train:
             datasetComponent: # Must be list
                 - DIV2K_SR_train
-            batchSize: 12
+            batchSize: 128
             samplingCount: 1
             sameOutputSize: False
             valueRangeType : -1~1
             shuffle: True
             makePreprocessedFile: False
             augmentation: # Must be list of dict
-                - centerCrop(256, 256)
+                - centerCrop(64, 64)
         validation:
             datasetComponent:
                 - Vid4, REDS # PARALLEL TODO:

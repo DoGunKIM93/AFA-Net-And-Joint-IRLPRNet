@@ -14,6 +14,8 @@ DIV2K_SR:
         - scaleMethod
         - scaleFactor
     preprocessings: # Must be list
+        - Pass()
+        - Pass()
 
 
 DIV2K_AutoEncoder:

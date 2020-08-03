@@ -13,6 +13,7 @@ import yaml
 import inspect
 import itertools
 import glob
+import time
 
 from PIL import Image
 from PIL import PngImagePlugin
@@ -22,8 +23,10 @@ from typing import List, Dict, Tuple, Union, Optional
 #FROM PyTorch
 import torch
 
+from torch._utils import ExceptionWrapper
 from torch.utils.data import Dataset as torchDataset
-from torch.utils.data import DataLoader as torchDataLoaders
+from torch.utils.data import DataLoader as torchDataLoader
+from torch.utils.data.dataloader import _BaseDataLoaderIter, _MultiProcessingDataLoaderIter, _DatasetKind
 from torchvision import transforms
 from torchvision import datasets
 from torchvision.datasets import ImageFolder
@@ -81,10 +84,20 @@ class DatasetConfig():
 
 
     def splitDataType(self, dataType: Dict[str, str]):
-        #return form of {'LR': {'dataType': 'text', 'tensorType': 'int'}, 'HR': {'dataType': 'imageSequence', 'tensorType': 'double'}}
+        #return form of {'dataName': 'LR', dataType': 'text', 'tensorType': 'int'}
+        
+        dataTypeList = ['Text', 'Image', 'IamgeSequence'] 
+        tensorTypeList = ['Float', 'Int', 'Long', 'Double']
 
-        return dict([key, dict(zip(['dataName', 'dataType', 'tensorType'], [key] + dataType[key].split('-') ))] for key in dataType if (dataType[key].split('-')[0] in ['text', 'image', 'imageSequence'] and dataType[key].split('-')[1] in ['float', 'int', 'long', 'double']))
 
+
+        if dataType is not None:
+            for key in dataType:
+                assert dataType[key].split('-')[0] in dataTypeList, f'data_loader.py :: dataset config {self.name} has invalid dataType.'
+                assert dataType[key].split('-')[1] in tensorTypeList, f'data_loader.py :: dataset config {self.name} has invalid tensorType.'
+            return dict(zip(['dataName', 'dataType', 'tensorType'], [key] + dataType[key].split('-') ))
+        else:
+            return {}
 
     def getDatasetConfig(self):
 
@@ -164,14 +177,16 @@ class DatasetComponent():
         pathList = list(map( lambda x : path + x , classPathList))
         
         # construct all of readable file lists in class path lists
-        dataFileLists = [ x for x in list(map( lambda x :  list(map( lambda y : x + "/" + y, os.listdir(mainPath + x))) , pathList)) if (x.endswith(".png") or x.endswith(".jpg") or x.endswith(".jpeg") or x.endswith(".bmp"))  ]
+        dataFileLists = [ x for x in list(map( lambda x :  list(filter( lambda x:(x.endswith(".png") or x.endswith(".jpg") or x.endswith(".jpeg") or x.endswith(".bmp")), list(map( lambda y : x + "/" + y, os.listdir(mainPath + x))) )), pathList))  ]
         assert [len(dataFileLists[0])] * len(dataFileLists) == list(map(len, dataFileLists)), f'data_loader.py :: ERROR! dataset {self.name} has NOT same count of data files for each classes.'
 
         
         #LABEL
-        if isLabel:
+        if len(self.datasetConfig.labelType) > 0:
             labelPath = f'{path}GT/'
-            labelFiles = os.listdir(mainPath + x)
+            labelFiles = list(filter( lambda x:(x.endswith(".png") or x.endswith(".jpg") or x.endswith(".jpeg") or x.endswith(".bmp")), os.listdir(mainPath + labelPath)))
+            # add origin path in front of all elements of label file list
+            labelFiles = list(map( lambda x : labelPath + x , labelFiles))
 
             if len(labelFiles) == 1:
                 #Label case .txt file
@@ -179,7 +194,8 @@ class DatasetComponent():
             else:
                 #Label case for same count of image files (GT)
                 assert [len(labelFiles)] * len(dataFileLists) == list(map(len, dataFileLists)), f'data_loader.py :: ERROR! label and data files should be had same count. (dataset {self.name})'
-
+                
+            
         else:
             labelFiles = [None] * len(dataFileLists[0])
 
@@ -194,8 +210,6 @@ class DatasetComponent():
 
     def makePreprocessingList(self):
         self.preprocessingList = list(map((lambda x: PREPROCESSING_DICT[x.split('(')[0]](*list(filter(lambda y : y != '', x.split('(')[1][:-1].replace(' ','').split(','))))), self.datasetConfig.preprocessings))
-        pass
-
 
 
 
@@ -247,6 +261,8 @@ class Dataset(torchDataset):
         self.globalLabelList = None
         self.makeGlobalLabelList(self.shuffle)
 
+        self.PILImageToTensorFunction = transforms.ToTensor()
+
 
     def makeGlobalFileList(self, shuffle):
         gFL = [x.dataFileList for x in self.datasetComponentObjectList]
@@ -265,10 +281,8 @@ class Dataset(torchDataset):
         indexComponentFileList = ( index // len(datasetComponentLengthList) ) % datasetComponentLengthList[indexComponent]
 
         return {'dataFilePath':  Config.param.data.path.datasetPath + self.globalFileList[indexComponent][indexComponentFileList]['dataFilePath'], 
-                'labelFilePath': Config.param.data.path.datasetPath + self.globalFileList[indexComponent][indexComponentFileList]['labelFilePath'], 
-                'preprocessing': self.datasetComponentObjectList[indexComponent].preprocessingList, 
-                'dataType':      self.datasetComponentObjectList[indexComponent].datasetConfig.dataType,
-                'labelType':     self.datasetComponentObjectList[indexComponent].datasetConfig.labelType}
+                'labelFilePath': Config.param.data.path.datasetPath + self.globalFileList[indexComponent][indexComponentFileList]['labelFilePath'] if self.globalFileList[indexComponent][indexComponentFileList]['labelFilePath'] is not None else None, 
+                }
 
     # self.globalLabelList에 있는 내용 load 해서 dict 형식으로 만든 후 반환 --> 1 ## list [dict, dict, dict]
     # init에서 한번 호출하는 방식으로 list [dict, dict, dict] 만들어 놓기
@@ -328,35 +342,18 @@ class Dataset(torchDataset):
 
         return totalSize
 
-
-
-
-
-
-
-
     
 
     def torchvisionPreprocessing(self, pilImage, preProc):
 
         x = pilImage
-
         for preProcFunc in preProc:
             x = preProcFunc(x)
 
         return x
 
     
-    def applyAugmentationFunction(self, tnsr, augmentation:str):
 
-        assert augmentation in AUGMENTATION_DICT.keys(), "data_loader.py :: invalid Augmentation Function!! chcek param.yaml."
-
-        augFunc = AUGMENTATION_DICT[augmentation.split['('][0]]
-        args = list(filter(lambda y : y != '', augmentation.split['('][1][:-1].replace(' ','').split(',') ))
-
-        tnsr = augFunc(tnsr, *args)
-
-        return tnsr
 
 
 
@@ -388,7 +385,8 @@ class Dataset(torchDataset):
         return utils.loadNPYToTensor(filePath)
 
     def PIL2Tensor(self, pilImage):
-        return transforms.ToTensor()(pilImage)
+        return self.PILImageToTensorFunction(pilImage)
+        #return torch.from_numpy(np.array(pilImage))
 
 
 
@@ -417,10 +415,14 @@ class Dataset(torchDataset):
         return tnsr
 
     def methodNPYNotExists(self, filePath, preProc):
-
+        #a = time.perf_counter()
         PILImage = self.loadPILImagesFromHDD(filePath)
+        #b = time.perf_counter()
         PPedPILImage = self.torchvisionPreprocessing(PILImage, preProc)
+        c = time.perf_counter()
         tnsr = self.PIL2Tensor(PPedPILImage)
+        print(time.perf_counter()-c)
+        #print(b-a, c-b, time.perf_counter()-c)
 
         #augedTensor = self.dataAugmentation(tnsr, self.augmentation)
 
@@ -456,39 +458,61 @@ class Dataset(torchDataset):
 
     def __getitem__(self, index):
 
+        #a = time.perf_counter()
         #popping File Path at GFL(self.globalFileList) by index
         popped = self.popItemInGlobalFileListByIndex(index)
-        dataFilePath = popped['filePath']
+        dataFilePath = popped['dataFilePath']
         labelFilePath = popped['labelFilePath']
-        preProc = popped['preprocessing']
-        dataType = popped['dataType']
-        labelType = popped['labelType']
 
-        rst = {}
+        componentIndex = index % len(self.datasetComponentObjectList)
+
+        preProc = self.datasetComponentObjectList[componentIndex].preprocessingList
+        dataType = self.datasetComponentObjectList[componentIndex].datasetConfig.dataType
+        labelType = self.datasetComponentObjectList[componentIndex].datasetConfig.labelType
+
+        rstDict = {}
 
         #
         # ADD DATA
         #
 
         ## 2. Dataset에서 init시 호출해서 생성한 dic에 filePath 중 filename 또는 그 상위 path만을 key로 해당하는 value 매칭
-        if os.path.isfile(filePath + '.npy') is True:
-            rst = self.methodNPYExists(filePath) #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
-        else:
-            if self.makePreprocessedFile is True:
-                rst = self.NPYMaker(filePath, preProc) # if .npy doesn't Exists and self.makePreprocessedFile is True, make .npy file and augmentating tensor and return
-            else:
-                rst = self.methodNPYNotExists(filePath, preProc) #if .npy doesn't Exists, load Image File as PIL Image -> Preprocess PIL Image on CPU -> convert to Tensor -> load to GPU -> Augmentation on GPU -> return
 
-        rst[dataType['dataName']] = self.setTensorValueRange(rst)
+        if dataType['dataType'] == 'Image':
+
+            if os.path.isfile(dataFilePath + '.npy') is True:
+                rst = self.methodNPYExists(filePath) #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
+            else:
+                if self.makePreprocessedFile is True:
+                    rst = self.NPYMaker(dataFilePath, preProc) # if .npy doesn't Exists and self.makePreprocessedFile is True, make .npy file and augmentating tensor and return
+                else:
+                    rst = self.methodNPYNotExists(dataFilePath, preProc) #if .npy doesn't Exists, load Image File as PIL Image -> Preprocess PIL Image on CPU -> convert to Tensor -> load to GPU -> Augmentation on GPU -> return
+
+            rstDict[dataType['dataName']] = self.setTensorValueRange(rst, self.valueRangeType)
 
         #
         # ADD LABEL
         #
 
-        rst[labelType['dataName']] = SOMETHING #TODO:
+        if labelFilePath is not None:
+
+            if labelType['dataType'] == 'Image':
+                if os.path.isfile(labelFilePath + '.npy') is True:
+                    rst = self.methodNPYExists(filePath) #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
+                else:
+                    if self.makePreprocessedFile is True:
+                        rst = self.NPYMaker(labelFilePath, preProc) # if .npy doesn't Exists and self.makePreprocessedFile is True, make .npy file and augmentating tensor and return
+                    else:
+                        rst = self.methodNPYNotExists(labelFilePath, preProc) #if .npy doesn't Exists, load Image File as PIL Image -> Preprocess PIL Image on CPU -> convert to Tensor -> load to GPU -> Augmentation on GPU -> return
+
+                rstDict[labelType['dataName']] = self.setTensorValueRange(rst, self.valueRangeType)
+        else:
+            pass
+
+        #print(time.perf_counter() - a)
 
         ## RETURN DICT OF 
-        return rst
+        return rstDict
 
     def __len__(self):
         return max(list(map(len, self.datasetComponentObjectList))) * len(self.datasetComponentObjectList)
@@ -496,7 +520,7 @@ class Dataset(torchDataset):
     
 
 
-class DataLoader(torchDataLoaders):
+class DataLoader(torchDataLoader):
     def __init__(self, 
                  dataLoaderName: str, 
                  fromParam : bool = True, 
@@ -537,13 +561,17 @@ class DataLoader(torchDataLoaders):
                          batch_size = self.batchSize,
                          shuffle = self.shuffle,
                          num_workers = self.numWorkers,
-                         collate_fn = self.GPUAugmentataionCollater)
+                         collate_fn = self.Collater)
     
 
-    def GPUAugmentataionCollater(self, samples):
+
+    def Collater(self, samples):
         rstDict = {}
-        for key in samples:
-            rstDict[key] = torch.stack([sample[key] for sample in samples])
+        
+        for key in samples[0]:
+            tnsrList = [sample[key] for sample in samples]
+            rstDict[key] = tnsrList
+
         return rstDict
 
 
@@ -581,7 +609,105 @@ class DataLoader(torchDataLoaders):
                                makePreprocessedFile = self.makePreprocessedFile)
 
 
+    def __iter__(self) -> '_BaseDataLoaderIter':
+        assert self.num_workers > 0, "data_loader.py :: Current Version of Data Loader Only Support more than one num_workers."
+        if self.num_workers == 0:
+            return _SingleProcessDataLoaderIter(self)
+        else:
+            return _MultiProcessingDataLoaderIterWithDataAugmentation(self, self.augmentation)
+
+
 
 
     
 
+
+
+class _MultiProcessingDataLoaderIterWithDataAugmentation(_MultiProcessingDataLoaderIter):
+
+    def __init__(self, loader, augmentation):
+        self.augmentation = augmentation
+        super(_MultiProcessingDataLoaderIterWithDataAugmentation, self).__init__(loader)
+
+
+    def _applyAugmentationFunction(self, tnsr, augmentationFuncStr:str):
+
+        assert augmentationFuncStr.split('(')[0] in AUGMENTATION_DICT.keys(), "data_loader.py :: invalid Augmentation Function!! chcek param.yaml."
+
+        augFunc = AUGMENTATION_DICT[augmentationFuncStr.split('(')[0]]
+        args = list( int(x) for x in list(filter(lambda y : y != '', augmentationFuncStr.split('(')[1][:-1].replace(' ','').split(',') )) )
+
+        tnsr = augFunc(tnsr, *args)
+
+        return tnsr
+
+
+    def _process_data(self, data):
+        self._rcvd_idx += 1
+        self._try_put_index()
+        if isinstance(data, ExceptionWrapper):
+            data.reraise()
+        
+        #a = time.perf_counter()
+        AugedTensor = {}
+
+        for key in data:
+
+            atnsrs = []
+            for tnsr in data[key]: 
+
+                tnsr = tnsr
+
+                for augFuncStr in self.augmentation:
+                    tnsr = self._applyAugmentationFunction(tnsr, augFuncStr)
+                atnsrs.append(tnsr)
+
+            AugedTensor[key] = torch.stack(atnsrs).cuda()
+        #print(time.perf_counter() - a)
+        return AugedTensor
+
+    def _next_data(self): 
+        while True:
+            # If the worker responsible for `self._rcvd_idx` has already ended
+            # and was unable to fulfill this task (due to exhausting an `IterableDataset`),
+            # we try to advance `self._rcvd_idx` to find the next valid index.
+            #
+            # This part needs to run in the loop because both the `self._get_data()`
+            # call and `_IterableDatasetStopIteration` check below can mark
+            # extra worker(s) as dead.
+            while self._rcvd_idx < self._send_idx:
+                info = self._task_info[self._rcvd_idx]
+                worker_id = info[0]
+                if len(info) == 2 or self._workers_status[worker_id]:  # has data or is still active
+                    break
+                del self._task_info[self._rcvd_idx]
+                self._rcvd_idx += 1
+            else:
+                # no valid `self._rcvd_idx` is found (i.e., didn't break)
+                self._shutdown_workers()
+                raise StopIteration
+
+            # Now `self._rcvd_idx` is the batch index we want to fetch
+
+            # Check if the next sample has already been generated
+            if len(self._task_info[self._rcvd_idx]) == 2:
+                data = self._task_info.pop(self._rcvd_idx)[1]
+                return self._process_data(data)
+
+            assert not self._shutdown and self._tasks_outstanding > 0
+            idx, data = self._get_data()
+            self._tasks_outstanding -= 1
+
+            if self._dataset_kind == _DatasetKind.Iterable:
+                # Check for _IterableDatasetStopIteration
+                if isinstance(data, _utils.worker._IterableDatasetStopIteration):
+                    self._shutdown_worker(data.worker_id)
+                    self._try_put_index()
+                    continue
+
+            if idx != self._rcvd_idx:
+                # store out-of-order samples
+                self._task_info[idx] += (data,)
+            else:
+                del self._task_info[idx] 
+                return self._process_data(data) #CUDA MULTIPROC ERROR HERE!!

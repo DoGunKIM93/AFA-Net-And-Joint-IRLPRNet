@@ -36,17 +36,17 @@ version = '1.34.200703'
 
 # data Set
 dataPath = '/home/projSR/dataset/'
-scaleFactor = 2
+scaleFactor = 4
 colorMode = 'color' # 'color' || 'grayscale'
 sequenceLength = 7 # Only for 'REDS' Dataset
 
 ### train
 trainDataset = 'DIV2K' # See above table
 trainDatasetType = 'train'  # 'train' || 'valid' || 'test'.  # See above table
-trainScaleMethod = 'virtual' # See above table
-batchSize = 12
+trainScaleMethod = 'bicubic' # See above table
+batchSize = 128
 samplingCount = 1 # Random Crop (samplingCount) per one Image.  Actual Batch Size = batchSize * samplingCount
-cropSize = [256, 256]  # HR Image cropping size. LR Image size: cropSize / scaleFactor. None -> No crop
+cropSize = [64, 64]  # HR Image cropping size. LR Image size: cropSize / scaleFactor. None -> No crop
 randomResizeMinMax = [1, 1]
 
 ### test
@@ -70,7 +70,7 @@ inferenceScaleMethod = 'virtual' # See above table
 ## None, 'simpleBlending', 'gaussianBlending', 'possionBlending'
 blendingMode = None
 
-sameOutputSize = False
+sameOutputSize = True
 
 valueRangeType = '-1~1' # '0~1' || '-1~1'
 

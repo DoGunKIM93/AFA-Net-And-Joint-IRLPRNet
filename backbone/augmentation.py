@@ -54,9 +54,11 @@ from torchvision import datasets
 def centerCrop(x: Union[torch.Tensor, PILImage.Image], Height, Width):
 
     _, cH, cW = _getSize(x)
-
     x = _crop(x, (cH - Height) // 2, (cW - Width) // 2, Height, Width)
+    _, cH2, cW2 = _getSize(x)
 
+    #if cH2 < 200 or cW2 < 200:
+    #    print(cH, cW, cH2, cW2)
     return x
 
 
@@ -78,7 +80,7 @@ def _getSize(x: Union[torch.Tensor, PILImage.Image]) -> List[int]:  # C H W
         sz = [len(x.getbands()), sz[1], sz[0]] 
 
     elif type(x) is torch.Tensor: #GPU Implementation
-        sz = x.size().tolist()
+        sz = list(x.size())
 
     return sz 
 
