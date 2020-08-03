@@ -173,7 +173,7 @@ class SingleImageDataset(Dataset):
 
     def __getitem__(self, index):
 
-        a = time.perf_counter()
+        #a = time.perf_counter()
 
         dot = "" 
         for i in range(index%5):
@@ -181,7 +181,7 @@ class SingleImageDataset(Dataset):
         print(f"preprocessing{dot}     ", end="\r")
         LRImageOri = Image.open(os.path.join(self.LRDatapath, self.LRImageFileNames[index]))
         HRImageOri = Image.open(os.path.join(self.HRDatapath, self.HRImageFileNames[index]))
-        b = time.perf_counter()
+        #b = time.perf_counter()
         if self.cropTransform == None:
             Images = self.commonTransform([LRImageOri, HRImageOri])
             LRImage = self.LRTransform(Images[0])
@@ -196,6 +196,7 @@ class SingleImageDataset(Dataset):
                 return [[LRImage, HRImage]]
         else:
             rst = []
+            c = time.perf_counter() 
             for LRImage, HRImage in self.cropTransform([LRImageOri, HRImageOri]):
                 Images = self.commonTransform([LRImage, HRImage])
                 LRImage = self.LRTransform(Images[0])
@@ -207,7 +208,8 @@ class SingleImageDataset(Dataset):
                     rst.append([LRImage, HRImage])
                 else:
                     rst.append([LRImage, HRImage])
-            print(b-a, time.perf_counter() - b)
+            print(c - time.perf_counter())
+            #print(b-a, time.perf_counter() - b)
             return rst  
 
     def __len__(self):

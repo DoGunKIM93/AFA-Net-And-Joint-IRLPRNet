@@ -363,7 +363,7 @@ class Dataset(torchDataset):
         x = tnsr
 
         for augmentation in augmentations:
-            x = applyAugmentationFunction(x, augmentation)
+            x = self.applyAugmentationFunction(x, augmentation)
 
         return x
 
@@ -379,6 +379,7 @@ class Dataset(torchDataset):
         return Image.open(filePath)
 
     def saveTensorsToHDD(self, tnsr, filePath):
+        print(f'Write Tensor to {filePath}.npy...')
         utils.saveTensorToNPY(tnsr, filePath)
 
     def loadTensorsFromHDD(self, filePath):
@@ -389,7 +390,16 @@ class Dataset(torchDataset):
         #return torch.from_numpy(np.array(pilImage))
 
 
+    def applyAugmentationFunction(self, tnsr, augmentationFuncStr:str):
 
+        assert augmentationFuncStr.split('(')[0] in AUGMENTATION_DICT.keys(), "data_loader.py :: invalid Augmentation Function!! chcek param.yaml."
+
+        augFunc = AUGMENTATION_DICT[augmentationFuncStr.split('(')[0]]
+        args = list( int(x) for x in list(filter(lambda y : y != '', augmentationFuncStr.split('(')[1][:-1].replace(' ','').split(',') )) )
+
+        tnsr = augFunc(tnsr, *args)
+
+        return tnsr
 
 
 
@@ -397,7 +407,7 @@ class Dataset(torchDataset):
     def NPYMaker(self, filePath, preProc):
         
         PILImage = self.loadPILImagesFromHDD(filePath) #PIL
-        PPedPILImage = self.torchvisionPreprocessing(pilImage, preProc)
+        PPedPILImage = self.torchvisionPreprocessing(PILImage, preProc)
         rstTensor = self.PIL2Tensor(PPedPILImage)
 
         self.saveTensorsToHDD(rstTensor, filePath)
@@ -408,25 +418,25 @@ class Dataset(torchDataset):
 
 
     def methodNPYExists(self, filePath):
-
+        a = time.perf_counter()
         tnsr = self.loadTensorsFromHDD(filePath)
-        #augedTensor = self.dataAugmentation(tnsr, self.augmentation)
-
-        return tnsr
+        augedTensor = self.dataAugmentation(tnsr, self.augmentation)
+        print(time.perf_counter() - a)
+        return augedTensor
 
     def methodNPYNotExists(self, filePath, preProc):
         #a = time.perf_counter()
         PILImage = self.loadPILImagesFromHDD(filePath)
         #b = time.perf_counter()
         PPedPILImage = self.torchvisionPreprocessing(PILImage, preProc)
-        c = time.perf_counter()
-        tnsr = self.PIL2Tensor(PPedPILImage)
-        print(time.perf_counter()-c)
+        #c = time.perf_counter()
+        tnsr = self.PIL2Tensor(PPedPILImage) #TODO: CROP AFTER P2T
+        #print(time.perf_counter()-c)
         #print(b-a, c-b, time.perf_counter()-c)
 
-        #augedTensor = self.dataAugmentation(tnsr, self.augmentation)
+        augedTensor = self.dataAugmentation(tnsr, self.augmentation)
 
-        return tnsr
+        return augedTensor
 
     #def LabelProcess(self, ):
 
@@ -478,10 +488,12 @@ class Dataset(torchDataset):
 
         ## 2. Dataset에서 init시 호출해서 생성한 dic에 filePath 중 filename 또는 그 상위 path만을 key로 해당하는 value 매칭
 
+        #print(labelFilePath, dataFilePath) #TODO: MATCH DATA & LABEL
+
         if dataType['dataType'] == 'Image':
 
             if os.path.isfile(dataFilePath + '.npy') is True:
-                rst = self.methodNPYExists(filePath) #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
+                rst = self.methodNPYExists(dataFilePath + '.npy') #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
             else:
                 if self.makePreprocessedFile is True:
                     rst = self.NPYMaker(dataFilePath, preProc) # if .npy doesn't Exists and self.makePreprocessedFile is True, make .npy file and augmentating tensor and return
@@ -498,7 +510,7 @@ class Dataset(torchDataset):
 
             if labelType['dataType'] == 'Image':
                 if os.path.isfile(labelFilePath + '.npy') is True:
-                    rst = self.methodNPYExists(filePath) #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
+                    rst = self.methodNPYExists(labelFilePath + '.npy') #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
                 else:
                     if self.makePreprocessedFile is True:
                         rst = self.NPYMaker(labelFilePath, preProc) # if .npy doesn't Exists and self.makePreprocessedFile is True, make .npy file and augmentating tensor and return
@@ -652,7 +664,7 @@ class _MultiProcessingDataLoaderIterWithDataAugmentation(_MultiProcessingDataLoa
         AugedTensor = {}
 
         for key in data:
-
+            '''
             atnsrs = []
             for tnsr in data[key]: 
 
@@ -661,8 +673,8 @@ class _MultiProcessingDataLoaderIterWithDataAugmentation(_MultiProcessingDataLoa
                 for augFuncStr in self.augmentation:
                     tnsr = self._applyAugmentationFunction(tnsr, augFuncStr)
                 atnsrs.append(tnsr)
-
-            AugedTensor[key] = torch.stack(atnsrs).cuda()
+            '''
+            AugedTensor[key] = torch.stack(data[key]).cuda()
         #print(time.perf_counter() - a)
         return AugedTensor
 

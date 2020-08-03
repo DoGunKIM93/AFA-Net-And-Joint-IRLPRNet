@@ -236,10 +236,12 @@ def saveModels(modelList, version, subversion, epoch, lastLoss, bestPSNR):
                 torch.save(saveData, './data/'+version+'/model/'+subversion+'/'+ mdlStr +'-%d.pth' % (epoch + 1))
 
 def saveTensorToNPY(tnsr, fileName):
+    #print(tnsr.cpu().numpy())
     np.save(fileName, tnsr.cpu().numpy())
 
 def loadNPYToTensor(fileName):
-    return torch.tensor(np.load(fileName, mmap_mode='w+'))
+    #print(np.load(fileName, mmap_mode='r+'))
+    return torch.tensor(np.load(fileName, mmap_mode='r+'))
 
 
 

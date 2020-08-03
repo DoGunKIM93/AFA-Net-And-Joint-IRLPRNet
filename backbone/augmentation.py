@@ -52,7 +52,6 @@ from torchvision import datasets
 
 
 def centerCrop(x: Union[torch.Tensor, PILImage.Image], Height, Width):
-
     _, cH, cW = _getSize(x)
     x = _crop(x, (cH - Height) // 2, (cW - Width) // 2, Height, Width)
     _, cH2, cW2 = _getSize(x)
