@@ -240,8 +240,8 @@ class Dataset(torchDataset):
         self.datasetComponentParamList = datasetComponentParamList
 
         self.datasetComponentObjectList = None
-        self.constructDatasetComponents()
-        self.datasetComponentObjectListIntegrityTest()
+        self._constructDatasetComponents()
+        self._datasetComponentObjectListIntegrityTest()
 
         self.batchSize = batchSize
         self.samplingCount = samplingCount
@@ -253,28 +253,18 @@ class Dataset(torchDataset):
 
         self.makePreprocessedFile = makePreprocessedFile
 
-        #self.getDatasetRatio(self.datasetComponentObjectList)
-
         self.globalFileList = None
-        self.makeGlobalFileList(self.shuffle)
+        self._makeGlobalFileList(self.shuffle)
 
-        self.globalLabelList = None
-        self.makeGlobalLabelList(self.shuffle)
-
-        self.PILImageToTensorFunction = transforms.ToTensor()
+        self.PILImageToTensorFunction = backbone.augmentation.toTensor #transforms.ToTensor()
 
 
-    def makeGlobalFileList(self, shuffle):
+    def _makeGlobalFileList(self, shuffle):
         gFL = [x.dataFileList for x in self.datasetComponentObjectList]
         self.globalFileList = gFL
 
-    def makeGlobalLabelList(self, shuffle):
-        print("self.datasetComponentObjectList : ", self.datasetComponentObjectList)
-        gLL = [x.labelFileList for x in self.datasetComponentObjectList]
-        self.globalLabelList = gLL
 
-
-    def popItemInGlobalFileListByIndex(self, index):
+    def _popItemInGlobalFileListByIndex(self, index):
         datasetComponentLengthList = list(map(len, self.datasetComponentObjectList))
 
         indexComponent = index % len(datasetComponentLengthList)
@@ -284,15 +274,12 @@ class Dataset(torchDataset):
                 'labelFilePath': Config.param.data.path.datasetPath + self.globalFileList[indexComponent][indexComponentFileList]['labelFilePath'] if self.globalFileList[indexComponent][indexComponentFileList]['labelFilePath'] is not None else None, 
                 }
 
-    # self.globalLabelList에 있는 내용 load 해서 dict 형식으로 만든 후 반환 --> 1 ## list [dict, dict, dict]
-    # init에서 한번 호출하는 방식으로 list [dict, dict, dict] 만들어 놓기
-    #def getItemInGlobalLabelDictByIndex(self, index):
 
 
-    def constructDatasetComponents(self):
+    def _constructDatasetComponents(self):
         self.datasetComponentObjectList = [DatasetComponent(*x) for x in self.datasetComponentParamList]
 
-    def datasetComponentObjectListIntegrityTest(self):
+    def _datasetComponentObjectListIntegrityTest(self):
         # Test All dataComponents have same 
         # dataType
         # TensorType
@@ -305,21 +292,8 @@ class Dataset(torchDataset):
        
 
 
-    def getDatasetRatio(self, datasetComponentObjectList:list):
-        self.datasetLengthList = list(map(len, datasetComponentObjectList))
-        self.datasetRatio = list(map((lambda x : x / max(datasetLengthList)), datasetLengthList))
-
-
-
-    def preprocessing(self, batchInput, preprocessings:list):
-        rst = batchInput
-        for preprocessingFunction in preprocessings:
-            rst = preprocessingFunction(rst)
-
-        return rst
-
     
-    def calculateMemorySizePerTensor(self, dtype:torch.dtype, expectedShape:List[int]): #WARN: EXCEPT BATCH SIIZEEEEEE!!!!!!!!!!!!!!!!!!!!!!!
+    def _calculateMemorySizePerTensor(self, dtype:torch.dtype, expectedShape:List[int]): #WARN: EXCEPT BATCH SIIZEEEEEE!!!!!!!!!!!!!!!!!!!!!!!
         sizeOfOneElementDict = {torch.float32 : 4,
                                 torch.float   : 4,
                                 torch.float64 : 8,
@@ -344,7 +318,7 @@ class Dataset(torchDataset):
 
     
 
-    def torchvisionPreprocessing(self, pilImage, preProc):
+    def _torchvisionPreprocessing(self, pilImage, preProc):
 
         x = pilImage
         for preProcFunc in preProc:
@@ -356,41 +330,7 @@ class Dataset(torchDataset):
 
 
 
-
-
-    def dataAugmentation(self, tnsr, augmentations: List[str]):
-
-        x = tnsr
-
-        for augmentation in augmentations:
-            x = self.applyAugmentationFunction(x, augmentation)
-
-        return x
-
-    def setTensorValueRange(self, tnsr, valueRangeType:str):
-
-        if valueRangeType == '-1~1':
-            tnsr = tnsr * 2 - 1
-
-        return tnsr
-    
-
-    def loadPILImagesFromHDD(self, filePath):
-        return Image.open(filePath)
-
-    def saveTensorsToHDD(self, tnsr, filePath):
-        print(f'Write Tensor to {filePath}.npy...')
-        utils.saveTensorToNPY(tnsr, filePath)
-
-    def loadTensorsFromHDD(self, filePath):
-        return utils.loadNPYToTensor(filePath)
-
-    def PIL2Tensor(self, pilImage):
-        return self.PILImageToTensorFunction(pilImage)
-        #return torch.from_numpy(np.array(pilImage))
-
-
-    def applyAugmentationFunction(self, tnsr, augmentationFuncStr:str):
+    def _applyAugmentationFunction(self, tnsr, augmentationFuncStr:str):
 
         assert augmentationFuncStr.split('(')[0] in AUGMENTATION_DICT.keys(), "data_loader.py :: invalid Augmentation Function!! chcek param.yaml."
 
@@ -401,40 +341,84 @@ class Dataset(torchDataset):
 
         return tnsr
 
+    # DATA AUGMENTATION ON CPU - Multiprocessing with Forked Worker processes - 
+    # Before toTensor() Augmentation
+    # CROP OPERATION usually be here
+    # Make Sure that ALL output Size (C, H, W) are same.
+    def _dataAugmentation(self, tnsr, augmentations: List[str]):
+
+        x = tnsr
+
+        for augmentation in augmentations:
+            x = self._applyAugmentationFunction(x, augmentation)
+            #print(augmentation)
+            if augmentation == 'toTensor()':
+                break
+
+        return x
+
+    def _setTensorValueRange(self, tnsr, valueRangeType:str):
+
+        if valueRangeType == '-1~1':
+            tnsr = tnsr * 2 - 1
+
+        return tnsr
+    
+
+    def _loadPILImagesFromHDD(self, filePath):
+        return Image.open(filePath)
+
+    def _saveTensorsToHDD(self, tnsr, filePath):
+        print(f'Write Tensor to {filePath}.npy...')
+        utils.saveTensorToNPY(tnsr, filePath)
+
+    def _loadTensorsFromHDD(self, filePath):
+        return utils.loadNPYToTensor(filePath)
+
+    def _loadNPArrayFromHDD(self, filePath):
+        return utils.loadNPY(filePath)
+
+    def _PIL2Tensor(self, pilImage):
+        return self.PILImageToTensorFunction(pilImage)
+        #return torch.from_numpy(np.array(pilImage))
 
 
 
-    def NPYMaker(self, filePath, preProc):
+
+
+
+    def _NPYMaker(self, filePath, preProc):
         
-        PILImage = self.loadPILImagesFromHDD(filePath) #PIL
-        PPedPILImage = self.torchvisionPreprocessing(PILImage, preProc)
-        rstTensor = self.PIL2Tensor(PPedPILImage)
+        PILImage = self._loadPILImagesFromHDD(filePath) #PIL
+        PPedPILImage = self._torchvisionPreprocessing(PILImage, preProc)
+        rstTensor = self._PIL2Tensor(PPedPILImage)
 
-        self.saveTensorsToHDD(rstTensor, filePath)
+        self._saveTensorsToHDD(rstTensor, filePath)
 
-        #augedTensor = self.dataAugmentation(rstTensor.cuda(), self.augmentation)
+        augedTensor = self._dataAugmentation(rstTensor, self.augmentation)
 
-        return rstTensor
-
-
-    def methodNPYExists(self, filePath):
-        a = time.perf_counter()
-        tnsr = self.loadTensorsFromHDD(filePath)
-        augedTensor = self.dataAugmentation(tnsr, self.augmentation)
-        print(time.perf_counter() - a)
         return augedTensor
 
-    def methodNPYNotExists(self, filePath, preProc):
+
+    def _methodNPYExists(self, filePath):
+        #tnsr = self._loadTensorsFromHDD(filePath)
+        #augedTensor = self._dataAugmentation(tnsr, self.augmentation)
+        npa = self._loadNPArrayFromHDD(filePath)
+        augedTensor = self._dataAugmentation(npa, self.augmentation) # Final operation of Augmentation is toTensor()
+        return augedTensor
+
+
+    def _methodNPYNotExists(self, filePath, preProc):
         #a = time.perf_counter()
-        PILImage = self.loadPILImagesFromHDD(filePath)
+        PILImage = self._loadPILImagesFromHDD(filePath)
         #b = time.perf_counter()
-        PPedPILImage = self.torchvisionPreprocessing(PILImage, preProc)
+        PPedPILImage = self._torchvisionPreprocessing(PILImage, preProc)
         #c = time.perf_counter()
-        tnsr = self.PIL2Tensor(PPedPILImage) #TODO: CROP AFTER P2T
+        #tnsr = self._PIL2Tensor(PPedPILImage)
         #print(time.perf_counter()-c)
         #print(b-a, c-b, time.perf_counter()-c)
 
-        augedTensor = self.dataAugmentation(tnsr, self.augmentation)
+        augedTensor = self._dataAugmentation(PPedPILImage, self.augmentation)
 
         return augedTensor
 
@@ -470,7 +454,7 @@ class Dataset(torchDataset):
 
         #a = time.perf_counter()
         #popping File Path at GFL(self.globalFileList) by index
-        popped = self.popItemInGlobalFileListByIndex(index)
+        popped = self._popItemInGlobalFileListByIndex(index)
         dataFilePath = popped['dataFilePath']
         labelFilePath = popped['labelFilePath']
 
@@ -493,14 +477,14 @@ class Dataset(torchDataset):
         if dataType['dataType'] == 'Image':
 
             if os.path.isfile(dataFilePath + '.npy') is True:
-                rst = self.methodNPYExists(dataFilePath + '.npy') #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
+                rst = self._methodNPYExists(dataFilePath + '.npy') #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
             else:
                 if self.makePreprocessedFile is True:
-                    rst = self.NPYMaker(dataFilePath, preProc) # if .npy doesn't Exists and self.makePreprocessedFile is True, make .npy file and augmentating tensor and return
+                    rst = self._NPYMaker(dataFilePath, preProc) # if .npy doesn't Exists and self.makePreprocessedFile is True, make .npy file and augmentating tensor and return
                 else:
-                    rst = self.methodNPYNotExists(dataFilePath, preProc) #if .npy doesn't Exists, load Image File as PIL Image -> Preprocess PIL Image on CPU -> convert to Tensor -> load to GPU -> Augmentation on GPU -> return
+                    rst = self._methodNPYNotExists(dataFilePath, preProc) #if .npy doesn't Exists, load Image File as PIL Image -> Preprocess PIL Image on CPU -> convert to Tensor -> load to GPU -> Augmentation on GPU -> return
 
-            rstDict[dataType['dataName']] = self.setTensorValueRange(rst, self.valueRangeType)
+            rstDict[dataType['dataName']] = self._setTensorValueRange(rst, self.valueRangeType)
 
         #
         # ADD LABEL
@@ -510,14 +494,14 @@ class Dataset(torchDataset):
 
             if labelType['dataType'] == 'Image':
                 if os.path.isfile(labelFilePath + '.npy') is True:
-                    rst = self.methodNPYExists(labelFilePath + '.npy') #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
+                    rst = self._methodNPYExists(labelFilePath + '.npy') #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
                 else:
                     if self.makePreprocessedFile is True:
-                        rst = self.NPYMaker(labelFilePath, preProc) # if .npy doesn't Exists and self.makePreprocessedFile is True, make .npy file and augmentating tensor and return
+                        rst = self._NPYMaker(labelFilePath, preProc) # if .npy doesn't Exists and self.makePreprocessedFile is True, make .npy file and augmentating tensor and return
                     else:
-                        rst = self.methodNPYNotExists(labelFilePath, preProc) #if .npy doesn't Exists, load Image File as PIL Image -> Preprocess PIL Image on CPU -> convert to Tensor -> load to GPU -> Augmentation on GPU -> return
+                        rst = self._methodNPYNotExists(labelFilePath, preProc) #if .npy doesn't Exists, load Image File as PIL Image -> Preprocess PIL Image on CPU -> convert to Tensor -> load to GPU -> Augmentation on GPU -> return
 
-                rstDict[labelType['dataName']] = self.setTensorValueRange(rst, self.valueRangeType)
+                rstDict[labelType['dataName']] = self._setTensorValueRange(rst, self.valueRangeType)
         else:
             pass
 
@@ -654,6 +638,19 @@ class _MultiProcessingDataLoaderIterWithDataAugmentation(_MultiProcessingDataLoa
         return tnsr
 
 
+    def _GPUDataAugmentation(self, tnsr, augmentations: List[str]):
+
+        x = tnsr
+
+        augmentationsAfterToTensor = augmentations[augmentations.index('toTensor()') + 1:]
+
+        for augmentation in augmentationsAfterToTensor:
+            x = self._applyAugmentationFunction(x, augmentation)
+
+        return x
+
+
+
     def _process_data(self, data):
         self._rcvd_idx += 1
         self._try_put_index()
@@ -664,17 +661,10 @@ class _MultiProcessingDataLoaderIterWithDataAugmentation(_MultiProcessingDataLoa
         AugedTensor = {}
 
         for key in data:
-            '''
-            atnsrs = []
-            for tnsr in data[key]: 
+            
+            tnsr = torch.stack(data[key]).cuda()
+            AugedTensor[key] = self._GPUDataAugmentation(tnsr, self.augmentation)
 
-                tnsr = tnsr
-
-                for augFuncStr in self.augmentation:
-                    tnsr = self._applyAugmentationFunction(tnsr, augFuncStr)
-                atnsrs.append(tnsr)
-            '''
-            AugedTensor[key] = torch.stack(data[key]).cuda()
         #print(time.perf_counter() - a)
         return AugedTensor
 

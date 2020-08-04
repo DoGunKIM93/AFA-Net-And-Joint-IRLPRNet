@@ -8,8 +8,8 @@ import torch
 from torch.autograd import Variable
 import argparse
 
-import apex.amp as amp
-from apex.parallel import DistributedDataParallel as DDP
+#import apex.amp as amp
+#from apex.parallel import DistributedDataParallel as DDP
 
 import param as p
 
@@ -33,7 +33,7 @@ class ModelListBase():
 
         for mdlStr in mdlStrLst:
             setattr(self, mdlStr, nn.DataParallel(getattr(self, mdlStr)))
-
+    '''
     def initApexAMP(self):
         if p.mixedPrecision is True:
             opt_level = 'O0' if p.mixedPrecision is False else 'O1'
@@ -49,6 +49,7 @@ class ModelListBase():
                     mdlObj, mdlOpt = amp.initialize(mdlObj.to('cuda'), mdlOpt, opt_level = opt_level)
                     setattr(self, mdlStr, mdlObj)
                     setattr(self, mdlStr + "_optimizer", mdlOpt)
+    '''
 
     def getList(self):
         return [attr for attr in vars(self) if not attr.startswith("__") and not attr.endswith("_optimizer") and not attr.endswith("_scheduler") and not attr.endswith("_pretrained")]

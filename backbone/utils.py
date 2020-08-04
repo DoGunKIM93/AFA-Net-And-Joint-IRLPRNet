@@ -8,12 +8,12 @@ version = "1.33.200721"
 import argparse
 import math
 import numpy as np
-import apex.amp as amp
+#import apex.amp as amp
 import os
 import subprocess
 import psutil
 
-from apex.parallel import DistributedDataParallel as DDP
+#from apex.parallel import DistributedDataParallel as DDP
 from shutil import copyfile
 
 #From Pytorch
@@ -192,7 +192,8 @@ def loadModels(modelList, version, subversion, loadModelNum, isTest):
 
             try:
                 if p.mixedPrecision is True:
-                    amp.load_state_dict(checkpoint['amp'])
+                    pass
+                    #amp.load_state_dict(checkpoint['amp'])
             except:
                 pass
 
@@ -227,7 +228,8 @@ def saveModels(modelList, version, subversion, epoch, lastLoss, bestPSNR):
             saveData.update({'lastLoss': lastLoss})
             saveData.update({'bestPSNR': bestPSNR})
             if p.mixedPrecision is True:
-                saveData.update({'amp': amp.state_dict()})
+                pass
+                #saveData.update({'amp': amp.state_dict()})
             saveData.update({'epoch': epoch + 1})
 
 
@@ -242,6 +244,10 @@ def saveTensorToNPY(tnsr, fileName):
 def loadNPYToTensor(fileName):
     #print(np.load(fileName, mmap_mode='r+'))
     return torch.tensor(np.load(fileName, mmap_mode='r+'))
+
+def loadNPY(fileName):
+    #print(np.load(fileName, mmap_mode='r+'))
+    return np.load(fileName, mmap_mode='r+')
 
 
 
@@ -300,8 +306,9 @@ def backproagateAndWeightUpdate(modelList, loss, modelNames = None):
     if p.mixedPrecision == False:
         loss.backward()
     else:
-        with amp.scale_loss(loss, optimizers) as scaled_loss:
-            scaled_loss.backward()
+        pass
+        #with amp.scale_loss(loss, optimizers) as scaled_loss:
+            #scaled_loss.backward()
 
     #weight update
     for optimizer in optimizers:

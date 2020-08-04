@@ -67,9 +67,10 @@ data:
             sameOutputSize: False
             valueRangeType : -1~1
             shuffle: True
-            makePreprocessedFile: False
-            augmentation: # Must be list of dict
+            makePreprocessedFile: True
+            augmentation: # Must be list of dict   /   toTensor() Must be here
                 - centerCrop(64, 64)
+                - toTensor()
         validation:
             datasetComponent:
                 - Vid4, REDS # PARALLEL TODO:

@@ -12,6 +12,7 @@ import numpy as np
 
 from PIL import Image as PILImage
 from PIL import PngImagePlugin
+from PIL.PngImagePlugin import PngImageFile
 from typing import List, Dict, Tuple, Union, Optional
 
 
@@ -20,6 +21,7 @@ import torch
 
 from torchvision import transforms
 from torchvision import datasets
+from torchvision.transforms import functional as vF
 
 
 
@@ -50,8 +52,11 @@ from torchvision import datasets
 
 ######################################################################################################################################################################## 
 
+def toTensor(x):
+    return _toTensor(x)
 
-def centerCrop(x: Union[torch.Tensor, PILImage.Image], Height, Width):
+
+def centerCrop(x: Union[torch.Tensor, PngImageFile, PILImage.Image, np.memmap], Height, Width):
     _, cH, cW = _getSize(x)
     x = _crop(x, (cH - Height) // 2, (cW - Width) // 2, Height, Width)
     _, cH2, cW2 = _getSize(x)
@@ -72,23 +77,52 @@ def centerCrop(x: Union[torch.Tensor, PILImage.Image], Height, Width):
 ######################################################################################################################################################################## 
 
 
-def _getSize(x: Union[torch.Tensor, PILImage.Image]) -> List[int]:  # C H W
+def _getSize(x: Union[torch.Tensor, PngImageFile, PILImage.Image, np.memmap]) -> List[int]:  # C H W
+    #print(type(x))
+    assert type(x) in [torch.Tensor, PngImageFile, PILImage.Image, np.memmap]
 
-    if type(x) is PILImage.Image: #CPU Implemenataion
+    if type(x) in [PngImageFile, PILImage.Image]: #PIL Implemenataion
         sz = x.size
         sz = [len(x.getbands()), sz[1], sz[0]] 
 
-    elif type(x) is torch.Tensor: #GPU Implementation
+    elif type(x) is torch.Tensor: #Tensor Implementation
         sz = list(x.size())
+
+    elif type(x) is np.memmap:
+        sz = list(x.shape)
 
     return sz 
 
-def _crop(x: Union[torch.Tensor, PILImage.Image], top: int, left: int, height: int, width: int) -> Union[torch.Tensor, PILImage.Image]:
 
-    if type(x) is PILImage.Image: #CPU Implemenataion
+
+
+def _toTensor(x: Union[torch.Tensor, PngImageFile, PILImage.Image, np.memmap]) -> torch.Tensor:
+
+    assert type(x) in [torch.Tensor, PngImageFile, PILImage.Image, np.memmap]
+
+    if type(x) in [PngImageFile, PILImage.Image]: #PIL Implemenataion
+        x = vF.to_tensor(x)
+
+    elif type(x) is np.memmap:
+        x = torch.tensor(x)
+
+    elif type(x) is torch.Tensor: #Tensor Implementation
         pass
 
-    elif type(x) is torch.Tensor: #GPU Implementation
+    return x 
+
+
+
+
+
+def _crop(x: Union[torch.Tensor, PngImageFile, PILImage.Image, np.memmap], top: int, left: int, height: int, width: int) -> Union[torch.Tensor, PngImageFile, PILImage.Image, np.memmap]:
+
+    assert type(x) in [torch.Tensor, PngImageFile, PILImage.Image, np.memmap]
+
+    if type(x) in [PngImageFile, PILImage.Image, torch.Tensor]: #PIL & Tensor Implemenataion
+        x = vF.crop(x, top, left, height, width)
+
+    elif type(x) is np.memmap: #Tensor Implementation
         x = x[..., top:top+height, left:left+width]
 
     return x

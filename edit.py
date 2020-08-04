@@ -72,7 +72,7 @@ class ModelList(structure.ModelListBase):
         self.NET_optimizer = torch.optim.Adam(self.NET.parameters(), lr=0.0003)
 
 
-        self.initApexAMP()
+        #self.initApexAMP() #TODO: migration to Pytorch Native AMP
         self.initDataparallel()
 
 
