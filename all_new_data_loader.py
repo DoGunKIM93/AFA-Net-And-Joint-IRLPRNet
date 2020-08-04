@@ -177,14 +177,15 @@ class DatasetComponent():
         pathList = list(map( lambda x : path + x , classPathList))
         
         # construct all of readable file lists in class path lists
-        dataFileLists = [ x for x in list(map( lambda x :  list(filter( lambda x:(x.endswith(".png") or x.endswith(".jpg") or x.endswith(".jpeg") or x.endswith(".bmp")), list(map( lambda y : x + "/" + y, os.listdir(mainPath + x))) )), pathList))  ]
+        dataFileLists = [ x for x in list(map( lambda x :  list(filter( lambda x:(x.endswith(".png") or x.endswith(".jpg") or x.endswith(".jpeg") or x.endswith(".bmp")), list(map( lambda y : x + "/" + y, sorted(os.listdir(mainPath + x)))) )), pathList))  ]
         assert [len(dataFileLists[0])] * len(dataFileLists) == list(map(len, dataFileLists)), f'data_loader.py :: ERROR! dataset {self.name} has NOT same count of data files for each classes.'
 
-        
+        #print(dataFileLists)
         #LABEL
         if len(self.datasetConfig.labelType) > 0:
             labelPath = f'{path}GT/'
-            labelFiles = list(filter( lambda x:(x.endswith(".png") or x.endswith(".jpg") or x.endswith(".jpeg") or x.endswith(".bmp")), os.listdir(mainPath + labelPath)))
+            labelFiles = sorted(list(filter( lambda x:(x.endswith(".png") or x.endswith(".jpg") or x.endswith(".jpeg") or x.endswith(".bmp")), os.listdir(mainPath + labelPath))))
+            
             # add origin path in front of all elements of label file list
             labelFiles = list(map( lambda x : labelPath + x , labelFiles))
 
@@ -261,6 +262,7 @@ class Dataset(torchDataset):
 
     def _makeGlobalFileList(self, shuffle):
         gFL = [x.dataFileList for x in self.datasetComponentObjectList]
+        print(gFL)
         self.globalFileList = gFL
 
 
