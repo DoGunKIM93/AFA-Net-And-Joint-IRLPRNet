@@ -262,7 +262,7 @@ class Dataset(torchDataset):
 
     def _makeGlobalFileList(self, shuffle):
         gFL = [x.dataFileList for x in self.datasetComponentObjectList]
-        print(gFL)
+        #print(gFL)
         self.globalFileList = gFL
 
 

@@ -56,7 +56,7 @@ def toTensor(x):
     return _toTensor(x)
 
 
-def centerCrop(x: Union[torch.Tensor, PngImageFile, PILImage.Image, np.memmap], Height, Width):
+def centerCrop(x, Height, Width):
     _, cH, cW = _getSize(x)
     x = _crop(x, (cH - Height) // 2, (cW - Width) // 2, Height, Width)
     _, cH2, cW2 = _getSize(x)
@@ -77,18 +77,30 @@ def centerCrop(x: Union[torch.Tensor, PngImageFile, PILImage.Image, np.memmap], 
 ######################################################################################################################################################################## 
 
 
-def _getSize(x: Union[torch.Tensor, PngImageFile, PILImage.Image, np.memmap]) -> List[int]:  # C H W
-    #print(type(x))
-    assert type(x) in [torch.Tensor, PngImageFile, PILImage.Image, np.memmap]
 
-    if type(x) in [PngImageFile, PILImage.Image]: #PIL Implemenataion
+def _getType(x) -> str:
+
+    TYPEDICT = {
+                PngImageFile : 'PIL',
+                PILImage.Image : 'PIL',
+                np.memmap : 'NPARRAY',
+                torch.Tensor : 'TENSOR',
+                }
+    
+    return TYPEDICT[type(x)]
+
+
+
+def _getSize(x) -> List[int]:  # C H W
+
+    if _getType(x) == 'PIL': #PIL Implemenataion
         sz = x.size
         sz = [len(x.getbands()), sz[1], sz[0]] 
 
-    elif type(x) is torch.Tensor: #Tensor Implementation
+    elif _getType(x) == 'TENSOR': #Tensor Implementation
         sz = list(x.size())
 
-    elif type(x) is np.memmap:
+    elif _getType(x) == 'NPARRAY':
         sz = list(x.shape)
 
     return sz 
@@ -96,17 +108,15 @@ def _getSize(x: Union[torch.Tensor, PngImageFile, PILImage.Image, np.memmap]) ->
 
 
 
-def _toTensor(x: Union[torch.Tensor, PngImageFile, PILImage.Image, np.memmap]) -> torch.Tensor:
+def _toTensor(x) -> torch.Tensor:
 
-    assert type(x) in [torch.Tensor, PngImageFile, PILImage.Image, np.memmap]
-
-    if type(x) in [PngImageFile, PILImage.Image]: #PIL Implemenataion
+    if _getType(x) == 'PIL': #PIL Implemenataion
         x = vF.to_tensor(x)
 
-    elif type(x) is np.memmap:
+    elif _getType(x) == 'NPARRAY':
         x = torch.tensor(x)
 
-    elif type(x) is torch.Tensor: #Tensor Implementation
+    elif _getType(x) == 'TENSOR': #Tensor Implementation
         pass
 
     return x 
@@ -115,14 +125,12 @@ def _toTensor(x: Union[torch.Tensor, PngImageFile, PILImage.Image, np.memmap]) -
 
 
 
-def _crop(x: Union[torch.Tensor, PngImageFile, PILImage.Image, np.memmap], top: int, left: int, height: int, width: int) -> Union[torch.Tensor, PngImageFile, PILImage.Image, np.memmap]:
+def _crop(x, top: int, left: int, height: int, width: int):
 
-    assert type(x) in [torch.Tensor, PngImageFile, PILImage.Image, np.memmap]
-
-    if type(x) in [PngImageFile, PILImage.Image, torch.Tensor]: #PIL & Tensor Implemenataion
+    if _getType(x) in ['PIL', 'TENSOR']: #PIL & Tensor Implemenataion
         x = vF.crop(x, top, left, height, width)
 
-    elif type(x) is np.memmap: #Tensor Implementation
+    elif _getType(x) is 'NPARRAY': #Tensor Implementation
         x = x[..., top:top+height, left:left+width]
 
     return x
