@@ -21,8 +21,10 @@ import torch
 
 from torchvision import transforms
 from torchvision import datasets
-from torchvision.transforms import functional as vF
 
+
+#from THIS Project
+from backbone.torchvision_injected import functional as vF
 
 
 
@@ -61,11 +63,12 @@ def toTensor(xList: list):
     return [_toTensor(xList[0]), _toTensor(xList[1])]
 
 
-def sizeMatch(xList: list):
+def sizeMatch(xList: list, interpolation = 2, matchIndex = 1):
     '''
     match data size to LABEL
     '''
-    pass
+    _, h, w = _getSize(xList[matchIndex])
+    return [ _resize(x, h, w, interpolation) if i != matchIndex else x for i, x in enumerate(xList) ]
 
 
 
@@ -127,6 +130,7 @@ def _getType(x) -> str:
                 PngImageFile : 'PIL',
                 PILImage.Image : 'PIL',
                 np.memmap : 'NPARRAY',
+                np.ndarray : 'NPARRAY',
                 torch.Tensor : 'TENSOR',
                 }
     
@@ -141,7 +145,7 @@ def _getSize(x) -> List[int]:  # C H W
         sz = [len(x.getbands()), sz[1], sz[0]] 
 
     elif _getType(x) == 'TENSOR': #Tensor Implementation
-        sz = list(x.size())
+        sz = list(x.size())[-3:]
 
     elif _getType(x) == 'NPARRAY':
         sz = list(x.shape)
@@ -170,7 +174,10 @@ def _toTensor(x) -> torch.Tensor:
 
 def _crop(x, top: int, left: int, height: int, width: int):
 
-    if _getType(x) in ['PIL', 'TENSOR']: #PIL & Tensor Implemenataion
+    if _getType(x) in ['PIL']: #PIL & Tensor Implemenataion
+        x = vF.crop(x, top, left, height, width)
+
+    elif _getType(x) in ['TENSOR']: #PIL & Tensor Implemenataion
         x = vF.crop(x, top, left, height, width)
 
     elif _getType(x) is 'NPARRAY': #Tensor Implementation
@@ -180,10 +187,32 @@ def _crop(x, top: int, left: int, height: int, width: int):
 
 
 
-def _centerCrop(x, Height, Width):
+def _centerCrop(x, height, width):
     _, cH, cW = _getSize(x)
-    x = _crop(x, (cH - Height) // 2, (cW - Width) // 2, Height, Width)
+    x = _crop(x, (cH - height) // 2, (cW - width) // 2, height, width)
     return x
+
+
+def _resize(x, height, width, interpolation=2):
+    '''
+    interpolation
+    0 : Nearest neighbour
+    2 : Bilinear
+    3 : Bicubic
+
+    숫자가 커질수록 품질이 좋고 속도가 느려짐
+    '''
+    if _getType(x) in ['PIL', 'TENSOR']: #PIL & Tensor Implemenataion
+        x = vF.resize(x, [height, width], interpolation=interpolation)
+
+    elif _getType(x) is 'NPARRAY': #Tensor Implementation
+        x = torch.tensor(x)
+        x = vF.resize(x, [height, width], interpolation=interpolation)
+        x = x.numpy()
+
+    return x
+
+    
 
 
 

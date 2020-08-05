@@ -255,7 +255,7 @@ class Dataset(torchDataset):
         self.globalFileList = None
         self._makeGlobalFileList(self.shuffle)
 
-        self.PILImageToTensorFunction = backbone.augmentation.toTensor #transforms.ToTensor()
+        self.PILImageToTensorFunction = transforms.ToTensor()
 
 
     def _makeGlobalFileList(self, shuffle):
@@ -397,7 +397,7 @@ class Dataset(torchDataset):
 
         
 
-        return augedTensor
+        return rstTensor
 
 
     def _methodNPYExists(self, filePath):
@@ -636,9 +636,9 @@ class _MultiProcessingDataLoaderIterWithDataAugmentation(_MultiProcessingDataLoa
         return tnsr
 
 
-    def _GPUDataAugmentation(self, tnsr, augmentations: List[str]):
+    def _GPUDataAugmentation(self, tnsrList, augmentations: List[str]):
 
-        x = tnsr
+        x = tnsrList
 
         augmentationsAfterToTensor = augmentations[augmentations.index('toTensor()') + 1:]
 
@@ -657,11 +657,10 @@ class _MultiProcessingDataLoaderIterWithDataAugmentation(_MultiProcessingDataLoa
         
         #a = time.perf_counter()
         AugedTensor = {}
-
-        for key in data:
-            
-            tnsr = torch.stack(data[key]).cuda()
-            AugedTensor[key] = self._GPUDataAugmentation(tnsr, self.augmentation)
+        AugedTList = self._GPUDataAugmentation( [ torch.stack(data[key]).cuda() for key in data ], self.augmentation )
+        
+        for i, key in enumerate(data):
+            AugedTensor[key] = AugedTList[i]
 
         #print(time.perf_counter() - a)
         return AugedTensor

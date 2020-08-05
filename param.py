@@ -44,7 +44,7 @@ sequenceLength = 7 # Only for 'REDS' Dataset
 trainDataset = 'DIV2K' # See above table
 trainDatasetType = 'train'  # 'train' || 'valid' || 'test'.  # See above table
 trainScaleMethod = 'bicubic' # See above table
-batchSize = 256
+batchSize = 128
 samplingCount = 1 # Random Crop (samplingCount) per one Image.  Actual Batch Size = batchSize * samplingCount
 cropSize = [64, 64]  # HR Image cropping size. LR Image size: cropSize / scaleFactor. None -> No crop
 randomResizeMinMax = [1, 1]
@@ -95,6 +95,6 @@ mixedPrecision = False # Reduce memory size i.e,.
 archiveStep = 100
 
 # GPU
-GPUNum = '0' # 0~7
+GPUNum = '1' # 0~7
 
 ############################################

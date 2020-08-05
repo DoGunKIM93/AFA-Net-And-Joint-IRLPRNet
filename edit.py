@@ -100,7 +100,7 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     # if modelNames is a String, updates one model
     # if modelNames is a List of string, updates those models.
     #backproagateAndWeightUpdate(modelList, loss, modelNames = "Ensemble")
-    backproagateAndWeightUpdate(modelList, loss, modelNames = ["E_FE", "E_Deco"])
+    backproagateAndWeightUpdate(modelList, loss, modelNames = "NET")
 
     # return losses
     lossList = [loss]

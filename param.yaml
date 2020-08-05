@@ -34,7 +34,7 @@ data:
                 scaleMethod: 
                     - bicubic
                 scaleFactor: 
-                    - 4
+                    - 2
             colorMode: color  # 'color' || 'grayscale'
         REDS_train:
             dataConfig: REDS
@@ -62,13 +62,14 @@ data:
         train:
             datasetComponent: # Must be list
                 - DIV2K_SR_train
-            batchSize: 256
+            batchSize: 32
             samplingCount: 1
             valueRangeType : -1~1
             shuffle: True
             makePreprocessedFile: True
             augmentation: # Must be list of dict   /   toTensor() Must be here
-                - centerCrop(64, 64)
+                - centerCrop(128, 128)
+                - sizeMatch()
                 - toTensor()
         validation:
             datasetComponent:

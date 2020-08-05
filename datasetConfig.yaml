@@ -1,6 +1,7 @@
 #DEFINE "FIXED" Dataset Config
 version : 1.04.200729
 
+#TODO: SUPPORT VIRTUAL
 DIV2K_SR:
     origin: DIV2K
     dataType: 
@@ -17,21 +18,20 @@ DIV2K_SR:
         - Pass()
         - Pass()
 
-
-DIV2K_AutoEncoder:
-    origin: DIV2K
+291_SR:
+    origin: 291
     dataType: 
-        Image: Image-Float
-    labelType:  # (Text/Image/ImageSequence)-(Float/Int) 
-    vailableMode: 
+        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
+    labelType:
+        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
+    availableMode: 
         - train
-        - validation
+        - validation #train, validation, test
     classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
-        - sceneNumber
-    preprocessings: 
-        - RandomCrop()
-        - HFlip()
-        - VFlip()
-        - HueAdjust()
+        - scaleMethod
+        - scaleFactor
+    preprocessings: # Must be list
+        - Pass()
+        - Pass()
 
 

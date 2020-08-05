@@ -1,3 +1,0 @@
-# ninja log v5
-0	27187	1596532356693528098	/home/projSR/jin/IRENE/backbone/dcn_cuda11/build/temp.linux-x86_64-3.6/src/deform_conv_cuda.o	92ea7712ce14411c
-3	21356	1596532530369537525	/home/projSR/jin/IRENE/backbone/dcn_cuda11/build/temp.linux-x86_64-3.6/src/deform_conv_cuda_kernel.o	da312e0fcd63cddb

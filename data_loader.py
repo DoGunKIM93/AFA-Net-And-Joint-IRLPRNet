@@ -196,7 +196,6 @@ class SingleImageDataset(Dataset):
                 return [[LRImage, HRImage]]
         else:
             rst = []
-            c = time.perf_counter() 
             for LRImage, HRImage in self.cropTransform([LRImageOri, HRImageOri]):
                 Images = self.commonTransform([LRImage, HRImage])
                 LRImage = self.LRTransform(Images[0])
@@ -208,7 +207,6 @@ class SingleImageDataset(Dataset):
                     rst.append([LRImage, HRImage])
                 else:
                     rst.append([LRImage, HRImage])
-            print(c - time.perf_counter())
             #print(b-a, time.perf_counter() - b)
             return rst  
 
