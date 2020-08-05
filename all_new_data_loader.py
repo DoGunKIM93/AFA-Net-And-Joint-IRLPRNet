@@ -1,7 +1,7 @@
 '''
 data_loader.py
 '''
-version = "2.10.200729"
+version = "2.20.200805"
 
 
 #FROM Python LIBRARY
@@ -232,7 +232,6 @@ class Dataset(torchDataset):
                  datasetComponentParamList: List, 
                  batchSize: int, 
                  samplingCount:int, 
-                 sameOutputSize:bool, 
                  valueRangeType:str, 
                  shuffle:bool, 
                  augmentation:List[str], 
@@ -246,7 +245,6 @@ class Dataset(torchDataset):
 
         self.batchSize = batchSize
         self.samplingCount = samplingCount
-        self.sameOutputSize = sameOutputSize
         self.valueRangeType = valueRangeType
         self.shuffle = shuffle
         self.augmentation = augmentation
@@ -347,9 +345,9 @@ class Dataset(torchDataset):
     # Before toTensor() Augmentation
     # CROP OPERATION usually be here
     # Make Sure that ALL output Size (C, H, W) are same.
-    def _dataAugmentation(self, tnsr, augmentations: List[str]):
+    def _dataAugmentation(self, tnsrList, augmentations: List[str]):
 
-        x = tnsr
+        x = tnsrList
 
         for augmentation in augmentations:
             x = self._applyAugmentationFunction(x, augmentation)
@@ -397,7 +395,7 @@ class Dataset(torchDataset):
 
         self._saveTensorsToHDD(rstTensor, filePath)
 
-        augedTensor = self._dataAugmentation(rstTensor, self.augmentation)
+        
 
         return augedTensor
 
@@ -406,8 +404,8 @@ class Dataset(torchDataset):
         #tnsr = self._loadTensorsFromHDD(filePath)
         #augedTensor = self._dataAugmentation(tnsr, self.augmentation)
         npa = self._loadNPArrayFromHDD(filePath)
-        augedTensor = self._dataAugmentation(npa, self.augmentation) # Final operation of Augmentation is toTensor()
-        return augedTensor
+        
+        return npa
 
 
     def _methodNPYNotExists(self, filePath, preProc):
@@ -420,11 +418,8 @@ class Dataset(torchDataset):
         #print(time.perf_counter()-c)
         #print(b-a, c-b, time.perf_counter()-c)
 
-        augedTensor = self._dataAugmentation(PPedPILImage, self.augmentation)
+        return PPedPILImage
 
-        return augedTensor
-
-    #def LabelProcess(self, ):
 
 
 
@@ -486,7 +481,7 @@ class Dataset(torchDataset):
                 else:
                     rst = self._methodNPYNotExists(dataFilePath, preProc) #if .npy doesn't Exists, load Image File as PIL Image -> Preprocess PIL Image on CPU -> convert to Tensor -> load to GPU -> Augmentation on GPU -> return
 
-            rstDict[dataType['dataName']] = self._setTensorValueRange(rst, self.valueRangeType)
+            rstDict[dataType['dataName']] = rst#self._setTensorValueRange(rst, self.valueRangeType)
 
         #
         # ADD LABEL
@@ -503,11 +498,16 @@ class Dataset(torchDataset):
                     else:
                         rst = self._methodNPYNotExists(labelFilePath, preProc) #if .npy doesn't Exists, load Image File as PIL Image -> Preprocess PIL Image on CPU -> convert to Tensor -> load to GPU -> Augmentation on GPU -> return
 
-                rstDict[labelType['dataName']] = self._setTensorValueRange(rst, self.valueRangeType)
+                rstDict[labelType['dataName']] = rst#self._setTensorValueRange(rst, self.valueRangeType)
         else:
-            pass
+            rstDict[labelType['dataName']] = None
 
-        #print(time.perf_counter() - a)
+        # Data Augmentation
+
+        rstDict[dataType['dataName']], rstDict[labelType['dataName']] = self._dataAugmentation( [rstDict[dataType['dataName']], rstDict[labelType['dataName']]], self.augmentation )
+        
+        rstDict[dataType['dataName']] = self._setTensorValueRange(rstDict[dataType['dataName']], self.valueRangeType)
+        rstDict[labelType['dataName']] = self._setTensorValueRange(rstDict[labelType['dataName']], self.valueRangeType)
 
         ## RETURN DICT OF 
         return rstDict
@@ -525,7 +525,6 @@ class DataLoader(torchDataLoader):
                  datasetComponentParamList: Optional[List[str]] = None,
                  batchSize: Optional[int] = None,
                  samplingCount: Optional[int] = None,
-                 sameOutputSize: Optional[bool] = None,
                  valueRangeType: Optional[str] = None,
                  shuffle: Optional[bool] = None,
                  augmentation: Optional[List[str]] = None,
@@ -538,7 +537,6 @@ class DataLoader(torchDataLoader):
         self.datasetComponentParamList = datasetComponentParamList
         self.batchSize = batchSize
         self.samplingCount = samplingCount
-        self.sameOutputSize = sameOutputSize
         self.valueRangeType = valueRangeType
         self.shuffle = shuffle
         self.augmentation = augmentation
@@ -586,7 +584,6 @@ class DataLoader(torchDataLoader):
 
         self.batchSize = int(yamlData['batchSize'])
         self.samplingCount = int(yamlData['samplingCount'])
-        self.sameOutputSize = bool(yamlData['sameOutputSize'])
         self.valueRangeType = str(yamlData['valueRangeType'])
         self.shuffle = str(yamlData['shuffle'])
         self.augmentation = yamlData['augmentation'] 
@@ -599,7 +596,6 @@ class DataLoader(torchDataLoader):
         self.dataset = Dataset(datasetComponentParamList = self.datasetComponentParamList, 
                                batchSize = self.batchSize, 
                                samplingCount = self.samplingCount, 
-                               sameOutputSize = self.sameOutputSize, 
                                valueRangeType = self.valueRangeType, 
                                shuffle = self.shuffle, 
                                augmentation = self.augmentation, 

@@ -62,9 +62,8 @@ data:
         train:
             datasetComponent: # Must be list
                 - DIV2K_SR_train
-            batchSize: 128
+            batchSize: 256
             samplingCount: 1
-            sameOutputSize: False
             valueRangeType : -1~1
             shuffle: True
             makePreprocessedFile: True
@@ -77,7 +76,6 @@ data:
                 - Set5       # Serial with List
             batchSize: 1
             samplingCount: 1
-            sameOutputSize: False
             valueRangeType : -1~1
             shuffle: False
             makePreprocessedFile: False

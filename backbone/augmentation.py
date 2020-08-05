@@ -1,7 +1,7 @@
 '''
 augmentation.py
 '''
-version = '1.01.200729'
+version = '1.10.200805'
 
 
 #FROM Python LIBRARY
@@ -50,20 +50,63 @@ from torchvision.transforms import functional as vF
 
 # *** Input Must be 1st arg
 
+# *** Input Must be [ data , label ]  -> List
+
 ######################################################################################################################################################################## 
 
-def toTensor(x):
-    return _toTensor(x)
+def toTensor(xList: list):
+    '''
+    Paired toTensor Function
+    '''
+    return [_toTensor(xList[0]), _toTensor(xList[1])]
 
 
-def centerCrop(x, Height, Width):
-    _, cH, cW = _getSize(x)
-    x = _crop(x, (cH - Height) // 2, (cW - Width) // 2, Height, Width)
-    _, cH2, cW2 = _getSize(x)
+def sizeMatch(xList: list):
+    '''
+    match data size to LABEL
+    '''
+    pass
 
-    #if cH2 < 200 or cW2 < 200:
-    #    print(cH, cW, cH2, cW2)
-    return x
+
+
+def centerCrop(xList: list, outputLabelHeight, outputLabelWidth):
+    '''
+    Paired Center Crop Function
+
+    - Args
+    1. xList : list ( data, label ) -> image, ndarray, tensor
+    2. outputLabelHeight(Width) : output height(width) of label data
+
+    - Behavior
+    레이블을 주어진 인자대로 센터 크롭
+    데이터를 레이블과 동일한 비율로 센터 크롭
+    ex) Label(500x500) -> 100x100 Center Cropped
+    Data (250x250) -> 50x50 Center Cropped  
+
+    * 레이블 없을 시 데이터만 주어진 인자대로 센터 크롭
+    '''
+    
+    xData = xList[0]
+    xLabel = xList[1]
+
+    if xLabel is not None:
+
+        _, dH, dW = _getSize(xData)
+        _, lH, lW = _getSize(xLabel)
+
+        ratio = dH / lH
+
+        outputDataHeight = math.ceil(ratio * outputLabelHeight)
+        outputDataWidth = math.ceil(ratio * outputLabelWidth)
+
+        xData = _centerCrop(xData, outputDataHeight, outputDataWidth)
+        xLabel = _centerCrop(xLabel, outputLabelHeight, outputLabelWidth)
+
+        return [xData, xLabel]
+
+    else:
+
+        return [_centerCrop(xData, outputLabelHeight, outputLabelWidth), None]
 
 
 
@@ -133,6 +176,13 @@ def _crop(x, top: int, left: int, height: int, width: int):
     elif _getType(x) is 'NPARRAY': #Tensor Implementation
         x = x[..., top:top+height, left:left+width]
 
+    return x
+
+
+
+def _centerCrop(x, Height, Width):
+    _, cH, cW = _getSize(x)
+    x = _crop(x, (cH - Height) // 2, (cW - Width) // 2, Height, Width)
     return x
 
 
