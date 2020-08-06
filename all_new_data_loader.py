@@ -156,16 +156,7 @@ class DatasetComponent():
         mainPath = Config.param.data.path.datasetPath
         path = f"{self.datasetConfig.origin}/{self.mode}/"
 
-        #TODO: PLZ DEBUG
-        '''
-        # add label file path that independents about each label files (Without duplicate label)
-        self.labelFileList = [file for file in os.listdir(mainPath + path) if (file.endswith(".txt"))]
 
-        if self.labelFileList is not None and self.classParameter[self.datasetConfig.classes] == '$ALL':
-            datasetConfigClasses = list(filter(os.path.isdir, glob.glob(mainPath + path+"*"))) #TODO: TEST
-        else:
-            datasetConfigClasses = self.datasetConfig.classes
-        '''
 
         datasetConfigClasses = self.datasetConfig.classes
         # dynamic construction of class path based on defined classes
@@ -175,25 +166,52 @@ class DatasetComponent():
 
         # add origin path in front of all elements of class path list
         pathList = list(map( lambda x : path + x , classPathList))
-        
-        # construct all of readable file lists in class path lists
-        dataFileLists = [ x for x in list(map( lambda x :  list(filter( lambda x:(x.endswith(".png") or x.endswith(".jpg") or x.endswith(".jpeg") or x.endswith(".bmp")), list(map( lambda y : x + "/" + y, sorted(os.listdir(mainPath + x)))) )), pathList))  ]
-        assert [len(dataFileLists[0])] * len(dataFileLists) == list(map(len, dataFileLists)), f'data_loader.py :: ERROR! dataset {self.name} has NOT same count of data files for each classes.'
 
-        #print(dataFileLists)
-        #LABEL
+
+
+        if self.datasetConfig.dataType['dataType'] == 'Text':
+            # construct all of readable file lists in class path lists
+            dataFileLists = [ x for x in list(map( lambda x :  list(filter( lambda x:(x.endswith(".txt")), list(map( lambda y : x + "/" + y, sorted(os.listdir(mainPath + x)))) )), pathList))  ]
+
+        elif self.datasetConfig.dataType['dataType'] == 'Image':
+            # construct all of readable file lists in class path lists
+            dataFileLists = [ x for x in list(map( lambda x :  list(filter( lambda x:(x.endswith(".png") or x.endswith(".jpg") or x.endswith(".jpeg") or x.endswith(".bmp")), list(map( lambda y : x + "/" + y, sorted(os.listdir(mainPath + x)))) )), pathList))  ]
+
+        elif self.datasetConfig.dataType['dataType'] == 'ImageSequence':
+            # construct all of sequence folders in class path lists
+            dataFileLists = [ x for x in list(map( lambda x : list(map( lambda y : x + "/" + y, sorted(os.listdir(mainPath + x)) )), pathList))  ]
+
+
+
+        
+        #if label Exists
         if len(self.datasetConfig.labelType) > 0:
+
             labelPath = f'{path}GT/'
-            labelFiles = sorted(list(filter( lambda x:(x.endswith(".png") or x.endswith(".jpg") or x.endswith(".jpeg") or x.endswith(".bmp")), os.listdir(mainPath + labelPath))))
+            
+            if self.datasetConfig.labelType['dataType'] == 'Text':
+                # construct all of readable file lists in class path lists
+                labelFiles = sorted(list(filter( lambda x:(x.endswith(".txt")), os.listdir(mainPath + labelPath))))
+
+            elif self.datasetConfig.labelType['dataType'] == 'Image':
+                # construct all of readable file lists in class path lists
+                labelFiles = sorted(list(filter( lambda x:(x.endswith(".png") or x.endswith(".jpg") or x.endswith(".jpeg") or x.endswith(".bmp")), os.listdir(mainPath + labelPath))))
+
+            elif self.datasetConfig.labelType['dataType'] == 'ImageSequence':
+                # construct all of sequence folders in class path lists
+                labelFiles = sorted(os.listdir(mainPath + labelPath))
+
+
             
             # add origin path in front of all elements of label file list
             labelFiles = list(map( lambda x : labelPath + x , labelFiles))
 
             if len(labelFiles) == 1:
-                #Label case .txt file
+                #Label case ex (.txt file)
                 labelFiles = labelFiles * len(dataFileLists[0])
             else:
                 #Label case for same count of image files (GT)
+                assert [len(dataFileLists[0])] * len(dataFileLists) == list(map(len, dataFileLists)), f'data_loader.py :: ERROR! dataset {self.name} has NOT same count of data files for each classes.'
                 assert [len(labelFiles)] * len(dataFileLists) == list(map(len, dataFileLists)), f'data_loader.py :: ERROR! label and data files should be had same count. (dataset {self.name})'
                 
             
@@ -380,7 +398,6 @@ class Dataset(torchDataset):
 
     def _PIL2Tensor(self, pilImage):
         return self.PILImageToTensorFunction(pilImage)
-        #return torch.from_numpy(np.array(pilImage))
 
 
 
@@ -388,35 +405,24 @@ class Dataset(torchDataset):
 
 
     def _NPYMaker(self, filePath, preProc):
-        
         PILImage = self._loadPILImagesFromHDD(filePath) #PIL
         PPedPILImage = self._torchvisionPreprocessing(PILImage, preProc)
         rstTensor = self._PIL2Tensor(PPedPILImage)
 
         self._saveTensorsToHDD(rstTensor, filePath)
 
-        
-
         return rstTensor
 
 
     def _methodNPYExists(self, filePath):
-        #tnsr = self._loadTensorsFromHDD(filePath)
-        #augedTensor = self._dataAugmentation(tnsr, self.augmentation)
         npa = self._loadNPArrayFromHDD(filePath)
         
         return npa
 
 
     def _methodNPYNotExists(self, filePath, preProc):
-        #a = time.perf_counter()
         PILImage = self._loadPILImagesFromHDD(filePath)
-        #b = time.perf_counter()
         PPedPILImage = self._torchvisionPreprocessing(PILImage, preProc)
-        #c = time.perf_counter()
-        #tnsr = self._PIL2Tensor(PPedPILImage)
-        #print(time.perf_counter()-c)
-        #print(b-a, c-b, time.perf_counter()-c)
 
         return PPedPILImage
 
@@ -424,32 +430,8 @@ class Dataset(torchDataset):
 
 
 
-
-    '''
-    #Read File from HDD and store in memory
-    #3*1024*1024 -> about 5000 pics in 64GB
-    def H2M(self):
-
-        #Calculate # of storable Batches
-        sizePerTensor = self.calculateMemorySizePerTensor()
-        cacheableMemorySize = Config.param.general.maxMemoryCachingSizeGB * 1024 * 1024 * 1024
-
-        cacheBatchCount = cacheableMemorySize // sizePerTensor
-
-        #Make Indexes
-        indexes = []
-
-        pass
-    
-    #Transfer Image / Tensor from memory to V-memory
-    def M2V(self):
-        pass
-    '''
-
-
     def __getitem__(self, index):
 
-        #a = time.perf_counter()
         #popping File Path at GFL(self.globalFileList) by index
         popped = self._popItemInGlobalFileListByIndex(index)
         dataFilePath = popped['dataFilePath']
@@ -463,46 +445,61 @@ class Dataset(torchDataset):
 
         rstDict = {}
 
-        #
-        # ADD DATA
-        #
 
-        ## 2. Dataset에서 init시 호출해서 생성한 dic에 filePath 중 filename 또는 그 상위 path만을 key로 해당하는 value 매칭
+        filePathList = [dataFilePath, labelFilePath]
+        typeList = [dataType, labelType]
 
-        #print(labelFilePath, dataFilePath) #TODO: MATCH DATA & LABEL
 
-        if dataType['dataType'] == 'Image':
+        ###################################################################################
+        # ADD DATA & LABEL
+        ###################################################################################
 
-            if os.path.isfile(dataFilePath + '.npy') is True:
-                rst = self._methodNPYExists(dataFilePath + '.npy') #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
-            else:
-                if self.makePreprocessedFile is True:
-                    rst = self._NPYMaker(dataFilePath, preProc) # if .npy doesn't Exists and self.makePreprocessedFile is True, make .npy file and augmentating tensor and return
-                else:
-                    rst = self._methodNPYNotExists(dataFilePath, preProc) #if .npy doesn't Exists, load Image File as PIL Image -> Preprocess PIL Image on CPU -> convert to Tensor -> load to GPU -> Augmentation on GPU -> return
 
-            rstDict[dataType['dataName']] = rst#self._setTensorValueRange(rst, self.valueRangeType)
+        for Type, FilePath in zip(typeList, filePathList):
 
-        #
-        # ADD LABEL
-        #
+            # data information defined in config
+            if FilePath is not None:
+                if Type['dataType'] == 'Text':
+                    pass
 
-        if labelFilePath is not None:
+                elif Type['dataType'] == 'Image':
 
-            if labelType['dataType'] == 'Image':
-                if os.path.isfile(labelFilePath + '.npy') is True:
-                    rst = self._methodNPYExists(labelFilePath + '.npy') #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
-                else:
-                    if self.makePreprocessedFile is True:
-                        rst = self._NPYMaker(labelFilePath, preProc) # if .npy doesn't Exists and self.makePreprocessedFile is True, make .npy file and augmentating tensor and return
+                    if os.path.isfile(FilePath + '.npy') is True:
+                        rst = self._methodNPYExists(FilePath + '.npy') #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
                     else:
-                        rst = self._methodNPYNotExists(labelFilePath, preProc) #if .npy doesn't Exists, load Image File as PIL Image -> Preprocess PIL Image on CPU -> convert to Tensor -> load to GPU -> Augmentation on GPU -> return
+                        if self.makePreprocessedFile is True:
+                            rst = self._NPYMaker(FilePath, preProc) # if .npy doesn't Exists and self.makePreprocessedFile is True, make .npy file and augmentating tensor and return
+                        else:
+                            rst = self._methodNPYNotExists(FilePath, preProc) #if .npy doesn't Exists, load Image File as PIL Image -> Preprocess PIL Image on CPU -> convert to Tensor -> load to GPU -> Augmentation on GPU -> return
 
-                rstDict[labelType['dataName']] = rst#self._setTensorValueRange(rst, self.valueRangeType)
-        else:
-            rstDict[labelType['dataName']] = None
+                elif Type['dataType'] == 'ImageSequence':
 
-        # Data Augmentation
+                    seqFileList = sorted(os.listdir(FilePath))
+                    rstList = []
+
+                    for seqFile in seqFileList:
+                        if os.path.isfile(FilePath + '.npy') is True:
+                            rst = self._methodNPYExists(FilePath + '.npy') #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
+                        else:
+                            if self.makePreprocessedFile is True:
+                                rst = self._NPYMaker(FilePath, preProc) # if .npy doesn't Exists and self.makePreprocessedFile is True, make .npy file and augmentating tensor and return
+                            else:
+                                rst = self._methodNPYNotExists(FilePath, preProc) #if .npy doesn't Exists, load Image File as PIL Image -> Preprocess PIL Image on CPU -> convert to Tensor -> load to GPU -> Augmentation on GPU -> return
+                        rstList.append(rst)
+
+                    rst = rstList
+                
+                rstDict[Type['dataName']] = rst#self._setTensorValueRange(rst, self.valueRangeType)
+
+            # data information not defined in config
+            else:
+                rstDict[Type['dataName']] = None
+
+
+
+
+
+        # Data Augmentation #TODO: 
 
         rstDict[dataType['dataName']], rstDict[labelType['dataName']] = self._dataAugmentation( [rstDict[dataType['dataName']], rstDict[labelType['dataName']]], self.augmentation )
         
