@@ -1311,7 +1311,7 @@ class VDSR(nn.Module):
         out = self.residual_layer(out)
         out = self.output(out)
         out = torch.add(out,residual)
-        return 0*out + residual
+        return out + residual
 
 
 

@@ -474,8 +474,8 @@ def SRDataset(dataset,
     
     elif (dataset == '291'):
         # mode
-        LRDatapath += '291/'
-        HRDatapath += '291/GT/'
+        LRDatapath += '291/train/'
+        HRDatapath += '291/train/GT/'
     
         if (datasetType != 'train'):
             print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")

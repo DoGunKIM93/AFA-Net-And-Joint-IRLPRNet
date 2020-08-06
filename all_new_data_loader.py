@@ -532,8 +532,12 @@ class DataLoader(torchDataLoader):
                  makePreprocessedFile: Optional[bool] = None):
 
         
+        
+
         # INIT PARAMs #
         self.name = dataLoaderName
+        print(f"Preparing Dataloader {self.name}... ")
+
         self.datasetComponentParamList = datasetComponentParamList
         self.batchSize = batchSize
         self.samplingCount = samplingCount
@@ -548,6 +552,7 @@ class DataLoader(torchDataLoader):
         if self.fromParam is True:
             self.getDataloaderParams()
 
+
         # CONSTRUCT DATASET #
         self.dataset = None
         self.constructDataset()
@@ -558,6 +563,9 @@ class DataLoader(torchDataLoader):
                          shuffle = self.shuffle,
                          num_workers = self.numWorkers,
                          collate_fn = self.Collater)
+
+        print(f"Data prepared : {len(self.dataset)} data")
+        
     
 
 

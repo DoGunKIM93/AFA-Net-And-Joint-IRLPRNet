@@ -71,6 +71,19 @@ def sizeMatch(xList: list, interpolation = 2, matchIndex = 1):
     return [ _resize(x, h, w, interpolation) if i != matchIndex else x for i, x in enumerate(xList) ]
 
 
+def virtualScaling(xList: list, scale:int, interpolation = 2):
+    '''
+    make virturally downscaled image
+
+    recommended input : [ GT, GT ]
+    '''
+
+    xData = xList[0]
+    xLabel = xList[1]
+    _, h, w = _getSize(xData)
+
+    return [ _resize(xData, h//scale, w//scale, interpolation), xLabel ]
+
 
 def centerCrop(xList: list, outputLabelHeight, outputLabelWidth):
     '''

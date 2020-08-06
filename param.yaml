@@ -34,32 +34,29 @@ data:
                 scaleMethod: 
                     - bicubic
                 scaleFactor: 
-                    - 2
+                    - 4
             colorMode: color  # 'color' || 'grayscale'
-        REDS_train:
-            dataConfig: REDS
+
+        DIV2K_SR_train_virtual:
+            dataConfig: DIV2K_SR_V
+            mode: train # 'train' || 'validation' || 'test'.  # See above table
+            classParameter:
+                class: 
+                    - GT
+            colorMode: color  # 'color' || 'grayscale'
+
+        291_SR_train:
+            dataConfig: 291_SR
             mode: train
             classParameter:
-                scaleMethod: 
-                    - virtual
-                scaleFactor: 
-                    - 4
+                class: 
+                    - GT
             colorMode: color
-            sequenceLength: 7 # Only for Image Sequence Dataset
-        Vid4:
-            dataConfig: Vid4
-            mode: test
-            classParameter:
-                scaleMethod: 
-                    - bicubic
-                scaleFactor: 
-                    - 4
-            colorMode: color
-            sequenceLength: 7
-            #dataset Preprocessing is defined in dataConfig.yaml
+            #sequenceLength: 7 # Only for Image Sequence Dataset
+
 
     dataLoader:
-        train:
+        train_x:
             datasetComponent: # Must be list
                 - DIV2K_SR_train
             batchSize: 32
@@ -68,7 +65,21 @@ data:
             shuffle: True
             makePreprocessedFile: True
             augmentation: # Must be list of dict   /   toTensor() Must be here
-                - centerCrop(128, 128)
+                - centerCrop(96, 96)
+                - sizeMatch()
+                - toTensor()
+        train:
+            datasetComponent: # Must be list
+                - 291_SR_train
+                - DIV2K_SR_train_virtual
+            batchSize: 30
+            samplingCount: 1
+            valueRangeType : -1~1
+            shuffle: True
+            makePreprocessedFile: True
+            augmentation: # Must be list of dict   /   toTensor() Must be here
+                - centerCrop(96, 96)
+                - virtualScaling(4)
                 - sizeMatch()
                 - toTensor()
         validation:

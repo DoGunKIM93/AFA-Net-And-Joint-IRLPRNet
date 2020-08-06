@@ -41,12 +41,12 @@ colorMode = 'color' # 'color' || 'grayscale'
 sequenceLength = 7 # Only for 'REDS' Dataset
 
 ### train
-trainDataset = 'DIV2K' # See above table
+trainDataset = '291' # See above table
 trainDatasetType = 'train'  # 'train' || 'valid' || 'test'.  # See above table
-trainScaleMethod = 'bicubic' # See above table
-batchSize = 128
+trainScaleMethod = 'virtual' # See above table
+batchSize = 30
 samplingCount = 1 # Random Crop (samplingCount) per one Image.  Actual Batch Size = batchSize * samplingCount
-cropSize = [64, 64]  # HR Image cropping size. LR Image size: cropSize / scaleFactor. None -> No crop
+cropSize = [96, 96]  # HR Image cropping size. LR Image size: cropSize / scaleFactor. None -> No crop
 randomResizeMinMax = [1, 1]
 
 ### test
