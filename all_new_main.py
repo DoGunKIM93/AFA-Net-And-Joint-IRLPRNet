@@ -175,7 +175,7 @@ if args.inferenceTest == True :
             with torch.no_grad():
                 LRImages = []
                 for _LRi in Imagepairs:
-                    LRImages.append(_LRi)
+                    LRImages.append(_LRi0)
                 LRImages = torch.cat(LRImages, 0)
                 LRImages = utils.to_var(LRImages)
 

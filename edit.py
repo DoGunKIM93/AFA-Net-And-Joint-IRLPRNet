@@ -68,7 +68,7 @@ class ModelList(structure.ModelListBase):
 
         
 
-        self.NET = model.VDSR()
+        self.NET = model.VESPCN()
         self.NET_optimizer = torch.optim.Adam(self.NET.parameters(), lr=0.0003)
 
 

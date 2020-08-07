@@ -47,3 +47,19 @@ DIV2K_SR_V:
         - Pass()
 
 
+REDS_SR:
+    origin: REDS
+    dataType: 
+        LR: ImageSequence-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
+    labelType:
+        HR: ImageSequence-Float # (Text/Image/ImageSequence)-(Float/Int)
+    availableMode: 
+        - train
+        - validation #train, validation, test
+        - test
+    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+        - degradationMethod
+        - scaleFactor
+    preprocessings: # Must be list
+        - Pass()
+

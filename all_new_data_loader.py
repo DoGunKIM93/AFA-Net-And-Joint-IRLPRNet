@@ -86,7 +86,7 @@ class DatasetConfig():
     def splitDataType(self, dataType: Dict[str, str]):
         #return form of {'dataName': 'LR', dataType': 'text', 'tensorType': 'int'}
         
-        dataTypeList = ['Text', 'Image', 'IamgeSequence'] 
+        dataTypeList = ['Text', 'Image', 'ImageSequence'] 
         tensorTypeList = ['Float', 'Int', 'Long', 'Double']
 
 
@@ -365,15 +365,30 @@ class Dataset(torchDataset):
     # Make Sure that ALL output Size (C, H, W) are same.
     def _dataAugmentation(self, tnsrList, augmentations: List[str]):
 
-        x = tnsrList
+        # If input is a list of two tensors -> make it to list of list of two tensors
+        # The standard Input type is list of list of two tensors -> [  [data_1, label_1], ... , [data_N, label_N]  ]
+        if not isinstance(tnsrList[0], list):
+            xList = [tnsrList]
+        else:
+            xList = tnsrList
 
-        for augmentation in augmentations:
-            x = self._applyAugmentationFunction(x, augmentation)
-            #print(augmentation)
-            if augmentation == 'toTensor()':
-                break
+        augedXList = []
 
-        return x
+        for x in xList:
+            for augmentation in augmentations:
+                x = self._applyAugmentationFunction(x, augmentation)
+                #print(augmentation)
+                if augmentation == 'toTensor()':
+                    break
+            augedXList.append(x)
+
+        #TRANSPOSE
+        augedXList = list(map(list, zip(*augedXList)))
+
+        augedXTensorList = [torch.stack(x) for x in augedXList]
+
+        return augedXTensorList
+
 
     def _setTensorValueRange(self, tnsr, valueRangeType:str):
 
@@ -389,9 +404,6 @@ class Dataset(torchDataset):
     def _saveTensorsToHDD(self, tnsr, filePath):
         print(f'Write Tensor to {filePath}.npy...')
         utils.saveTensorToNPY(tnsr, filePath)
-
-    def _loadTensorsFromHDD(self, filePath):
-        return utils.loadNPYToTensor(filePath)
 
     def _loadNPArrayFromHDD(self, filePath):
         return utils.loadNPY(filePath)
@@ -430,6 +442,63 @@ class Dataset(torchDataset):
 
 
 
+    
+    def _readItem(self, Type, FilePath, preProc):
+        # data information defined in config
+        if FilePath is not None:
+
+
+            ###################################################################################
+            # CASE TEXT
+            ###################################################################################
+            if Type['dataType'] == 'Text':
+                pass
+
+
+            ###################################################################################
+            # CASE IMAGE
+            ###################################################################################
+            elif Type['dataType'] == 'Image':
+
+                if os.path.isfile(FilePath + '.npy') is True:
+                    rst = self._methodNPYExists(FilePath + '.npy') #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
+                else:
+                    if self.makePreprocessedFile is True:
+                        rst = self._NPYMaker(FilePath, preProc) # if .npy doesn't Exists and self.makePreprocessedFile is True, make .npy file and augmentating tensor and return
+                    else:
+                        rst = self._methodNPYNotExists(FilePath, preProc) #if .npy doesn't Exists, load Image File as PIL Image -> Preprocess PIL Image on CPU -> convert to Tensor -> load to GPU -> Augmentation on GPU -> return
+
+
+            ###################################################################################
+            # CASE IMAGESEQUENCE
+            ###################################################################################
+            elif Type['dataType'] == 'ImageSequence':
+
+                seqFileList = sorted(os.listdir(FilePath))
+                rstList = []
+
+                for seqFile in seqFileList:
+                    seqFilePath = FilePath + '/' + seqFile
+                    if os.path.isfile(seqFilePath + '.npy') is True:
+                        rst = self._methodNPYExists(seqFilePath + '.npy') #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
+                    else:
+                        if self.makePreprocessedFile is True:
+                            rst = self._NPYMaker(seqFilePath, preProc) # if .npy doesn't Exists and self.makePreprocessedFile is True, make .npy file and augmentating tensor and return
+                        else:
+                            rst = self._methodNPYNotExists(seqFilePath, preProc) #if .npy doesn't Exists, load Image File as PIL Image -> Preprocess PIL Image on CPU -> convert to Tensor -> load to GPU -> Augmentation on GPU -> return
+                    rstList.append(rst)
+                rst = rstList
+            
+        # data information not defined in config
+        else:
+            rst = None
+
+        return rst
+
+
+
+
+
     def __getitem__(self, index):
 
         #popping File Path at GFL(self.globalFileList) by index
@@ -456,55 +525,54 @@ class Dataset(torchDataset):
 
 
         for Type, FilePath in zip(typeList, filePathList):
-
-            # data information defined in config
-            if FilePath is not None:
-                if Type['dataType'] == 'Text':
-                    pass
-
-                elif Type['dataType'] == 'Image':
-
-                    if os.path.isfile(FilePath + '.npy') is True:
-                        rst = self._methodNPYExists(FilePath + '.npy') #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
-                    else:
-                        if self.makePreprocessedFile is True:
-                            rst = self._NPYMaker(FilePath, preProc) # if .npy doesn't Exists and self.makePreprocessedFile is True, make .npy file and augmentating tensor and return
-                        else:
-                            rst = self._methodNPYNotExists(FilePath, preProc) #if .npy doesn't Exists, load Image File as PIL Image -> Preprocess PIL Image on CPU -> convert to Tensor -> load to GPU -> Augmentation on GPU -> return
-
-                elif Type['dataType'] == 'ImageSequence':
-
-                    seqFileList = sorted(os.listdir(FilePath))
-                    rstList = []
-
-                    for seqFile in seqFileList:
-                        if os.path.isfile(FilePath + '.npy') is True:
-                            rst = self._methodNPYExists(FilePath + '.npy') #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
-                        else:
-                            if self.makePreprocessedFile is True:
-                                rst = self._NPYMaker(FilePath, preProc) # if .npy doesn't Exists and self.makePreprocessedFile is True, make .npy file and augmentating tensor and return
-                            else:
-                                rst = self._methodNPYNotExists(FilePath, preProc) #if .npy doesn't Exists, load Image File as PIL Image -> Preprocess PIL Image on CPU -> convert to Tensor -> load to GPU -> Augmentation on GPU -> return
-                        rstList.append(rst)
-
-                    rst = rstList
-                
-                rstDict[Type['dataName']] = rst#self._setTensorValueRange(rst, self.valueRangeType)
-
-            # data information not defined in config
-            else:
-                rstDict[Type['dataName']] = None
+            rstDict[Type['dataName']] = self._readItem(Type, FilePath, preProc)
 
 
 
 
 
-        # Data Augmentation #TODO: 
+
+        ###################################################################################
+        # Data Augmentation
+        ###################################################################################
 
         rstDict[dataType['dataName']], rstDict[labelType['dataName']] = self._dataAugmentation( [rstDict[dataType['dataName']], rstDict[labelType['dataName']]], self.augmentation )
         
         rstDict[dataType['dataName']] = self._setTensorValueRange(rstDict[dataType['dataName']], self.valueRangeType)
+
         rstDict[labelType['dataName']] = self._setTensorValueRange(rstDict[labelType['dataName']], self.valueRangeType)
+
+
+
+
+
+
+        ###################################################################################
+        # Data Demension Align
+        ###################################################################################
+
+
+        if dataType['dataType'] == 'Text':
+            pass
+        elif dataType['dataType'] == 'Image':
+            assert len(rstDict[dataType['dataName']].size()) == 4
+            rstDict[dataType['dataName']] = rstDict[dataType['dataName']].squeeze(0)
+        elif dataType['dataType'] == 'ImageSequence':
+            assert len(rstDict[dataType['dataName']].size()) == 4
+
+
+        if labelType['dataType'] == 'Text':
+            pass
+        elif labelType['dataType'] == 'Image':
+            assert len(rstDict[labelType['dataName']].size()) == 4
+            rstDict[labelType['dataName']] = rstDict[labelType['dataName']].squeeze(0)
+        elif labelType['dataType'] == 'ImageSequence':
+            assert len(rstDict[labelType['dataName']].size()) == 4
+
+
+
+
+
 
         ## RETURN DICT OF 
         return rstDict

@@ -54,8 +54,30 @@ data:
             colorMode: color
             #sequenceLength: 7 # Only for Image Sequence Dataset
 
+        REDS_SR_train:
+            dataConfig: REDS_SR
+            mode: train
+            classParameter:
+                degradationMethod:
+                    - sharp_bicubic
+                scaleFactor:
+                    - 4
+            colorMode: color
+
 
     dataLoader:
+        train:
+            datasetComponent:
+                - REDS_SR_train
+            batchSize: 8
+            samplingCount: 1
+            valueRangeType : -1~1
+            shuffle: True
+            makePreprocessedFile: False
+            augmentation: # Must be list of dict   /   toTensor() Must be here
+                - centerCrop(96, 96)
+                - sizeMatch()
+                - toTensor()
         train_x:
             datasetComponent: # Must be list
                 - DIV2K_SR_train
@@ -68,7 +90,7 @@ data:
                 - centerCrop(96, 96)
                 - sizeMatch()
                 - toTensor()
-        train:
+        train_y:
             datasetComponent: # Must be list
                 - 291_SR_train
                 - DIV2K_SR_train_virtual
