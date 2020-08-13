@@ -13,6 +13,7 @@ import numpy as np
 from PIL import Image as PILImage
 from PIL import PngImagePlugin
 from PIL.PngImagePlugin import PngImageFile
+from PIL.JpegImagePlugin import JpegImageFile
 from typing import List, Dict, Tuple, Union, Optional
 
 
@@ -69,6 +70,19 @@ def sizeMatch(xList: list, interpolation = 2, matchIndex = 1):
     '''
     _, h, w = _getSize(xList[matchIndex])
     return [ _resize(x, h, w, interpolation) if i != matchIndex else x for i, x in enumerate(xList) ]
+
+
+def resize(xList: list, outputLabelHeight, outputLabelWidth, interpolation = 2, option = 1):
+    '''
+    option
+    0 : Image Image
+    1 : Image Label
+    '''
+
+    if option == 0:
+        return [ _resize(xList[0], outputLabelHeight, outputLabelWidth, interpolation), _resize(xList[0], outputLabelHeight, outputLabelWidth, interpolation)]
+    elif option == 1:
+        return [ _resize(xList[0], outputLabelHeight, outputLabelWidth, interpolation), _resizeLabel(xList, outputLabelHeight, outputLabelWidth)]
 
 
 def virtualScaling(xList: list, scale:int, interpolation = 2):
@@ -143,6 +157,7 @@ def _getType(x) -> str:
 
     TYPEDICT = {
                 PngImageFile : 'PIL',
+                JpegImageFile : 'PIL',
                 PILImage.Image : 'PIL',
                 np.memmap : 'NPARRAY',
                 np.ndarray : 'NPARRAY',
@@ -228,7 +243,26 @@ def _resize(x, height, width, interpolation=2):
     return x
 
     
+def _resizeLabel(xList: list, outputLabelHeight, outputLabelWidth):
+    xData = xList[0] 
+    xLabel = xList[1]
 
+    _, h, w = _getSize(xData)
+    h_ratio, w_ratio = outputLabelHeight/h, outputLabelWidth/w
+
+    boxes = xLabel[:, :4].clone()
+    labels = xLabel[:, -1].clone()
+    landm = xLabel[:, 4:-1].clone()
+
+    boxes[:, 0::2] *= h_ratio
+    boxes[:, 1::2] *= w_ratio
+    landm[:, 0::2] *= h_ratio
+    landm[:, 1::2] *= w_ratio
+    labels = np.expand_dims(labels, 1)
+
+    xLabel = np.hstack((boxes, landm, labels))
+    
+    return xLabel
 
 
 
