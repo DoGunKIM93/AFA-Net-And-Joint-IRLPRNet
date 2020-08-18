@@ -371,8 +371,8 @@ class MultiImageDataset(Dataset):
                 HRImageSeq = []
 
                 for LRImage, HRImage in ImagesSeq:
-                    LRImage = transforms.Resize(size=p.trainSize,interpolation=3)(LRImage)
-                    HRImage = transforms.Resize(size=p.trainSize,interpolation=3)(HRImage)
+                    #LRImage = transforms.Resize(size=p.trainSize,interpolation=3)(LRImage)
+                    #HRImage = transforms.Resize(size=p.trainSize,interpolation=3)(HRImage)
                     LRImage = self.LRTransform(LRImage)
                     HRImage = self.HRTransform(HRImage)
 
@@ -512,6 +512,9 @@ def SRDataset(dataset,
         elif (scaleMethod == 'blur_comp'):
             LRDatapath += 'blur_comp/1/'
             HRDatapath += 'GT/'
+        elif (scaleMethod == 'bicubic'):
+            LRDatapath += 'sharp_bicubic/4/'
+            HRDatapath += 'GT/'
         elif (scaleMethod == 'virtual'):
             if (datasetType == 'test' or datasetType == 'inference'):
                 print(f"data_loader.py :: ERROR : {dataset}:{datasetType} doesn't provide \"virtual\" scaling method ")
@@ -519,7 +522,7 @@ def SRDataset(dataset,
             LRDatapath += 'GT/'
             HRDatapath += 'GT/'
         else:
-            print(f"data_loader.py :: ERROR : {dataset} only provide \"virtual\" scaling method ")
+            print(f"data_loader.py :: ERROR : {dataset} doesn't provide {scaleMethod} scaling method ")
             return   
     
     elif (dataset == 'Vid4'):

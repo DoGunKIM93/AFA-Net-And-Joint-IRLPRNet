@@ -1,7 +1,7 @@
 '''
 augmentation.py
 '''
-version = '1.10.200805'
+version = '1.11.200806'
 
 
 #FROM Python LIBRARY
@@ -115,7 +115,7 @@ def centerCrop(xList: list, outputLabelHeight, outputLabelWidth):
 
     * 레이블 없을 시 데이터만 주어진 인자대로 센터 크롭
     '''
-    
+    #print(xList)
     xData = xList[0]
     xLabel = xList[1]
 

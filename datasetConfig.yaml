@@ -1,5 +1,5 @@
 #DEFINE "FIXED" Dataset Config
-version : 1.04.200729
+version : 1.05.200806
 
 DIV2K_SR:
     origin: DIV2K
@@ -63,3 +63,16 @@ REDS_SR:
     preprocessings: # Must be list
         - Pass()
 
+VID4_SR:
+    origin: Vid4
+    dataType: 
+        LR: ImageSequence-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
+    labelType:
+        HR: ImageSequence-Float # (Text/Image/ImageSequence)-(Float/Int)
+    availableMode: 
+        - test
+    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+        - degradationMethod
+        - scaleFactor
+    preprocessings: # Must be list
+        - Pass()

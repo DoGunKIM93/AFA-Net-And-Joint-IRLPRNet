@@ -1,7 +1,7 @@
 '''
 data_loader.py
 '''
-version = "2.20.200805"
+version = "2.22.200814"
 
 
 #FROM Python LIBRARY
@@ -79,11 +79,11 @@ class DatasetConfig():
         self.useDatasetConfig = useDatasetConfig
 
         if self.useDatasetConfig is True:
-            self.getDatasetConfig()
+            self._getDatasetConfig()
 
 
 
-    def splitDataType(self, dataType: Dict[str, str]):
+    def _splitDataType(self, dataType: Dict[str, str]):
         #return form of {'dataName': 'LR', dataType': 'text', 'tensorType': 'int'}
         
         dataTypeList = ['Text', 'Image', 'ImageSequence'] 
@@ -99,15 +99,15 @@ class DatasetConfig():
         else:
             return {}
 
-    def getDatasetConfig(self):
+    def _getDatasetConfig(self):
 
         yamlData = Config.datasetConfigDict[f'{self.name}']
 
         self.origin = str(yamlData['origin'])
 
-        self.dataType = self.splitDataType(yamlData['dataType'])
+        self.dataType = self._splitDataType(yamlData['dataType'])
 
-        self.labelType = self.splitDataType(yamlData['labelType'])
+        self.labelType = self._splitDataType(yamlData['labelType'])
 
 
         self.availableMode = list(map(str, yamlData['availableMode']))
@@ -124,33 +124,30 @@ class DatasetConfig():
 class DatasetComponent():
 
 
-    def __init__(self, name, mode, classParameter):
+    def __init__(self, name, mode, classParameter, sequenceLength):
 
         self.name = name
 
         self.datasetConfig = None
-        self.getDatasetConfigByComponentName()
+        self._getDatasetConfigByComponentName()
         
 
         self.mode = mode
         self.classParameter = classParameter
+        self.sequenceLength = sequenceLength
 
-
-        self.dataFileList = None #same length (2-d List)
+        self.dataFileList = None 
         self.labelFileList = None
-        self.getDataFileList()
+        self._getDataFileList()
         
 
         self.preprocessingList = None
-        self.makePreprocessingList()
+        self._makePreprocessingList()
     
-    def getDatasetConfigByComponentName(self):
+    def _getDatasetConfigByComponentName(self):
         self.datasetConfig = DatasetConfig(Config.paramDict['data']['datasetComponent'][self.name]['dataConfig'])
 
-    def getDataFileList(self):
-
-        #TODO: LABEL
-        #TODO: SEQUENCE
+    def _getDataFileList(self):
 
         # get origin path
         mainPath = Config.param.data.path.datasetPath
@@ -171,16 +168,15 @@ class DatasetComponent():
 
         if self.datasetConfig.dataType['dataType'] == 'Text':
             # construct all of readable file lists in class path lists
-            dataFileLists = [ x for x in list(map( lambda x :  list(filter( lambda x:(x.endswith(".txt")), list(map( lambda y : x + "/" + y, sorted(os.listdir(mainPath + x)))) )), pathList))  ]
+            dataFileLists = list(map( lambda x :  list(filter( lambda x:(x.endswith(".txt")), list(map( lambda y : x + "/" + y, sorted(os.listdir(mainPath + x)))) )), pathList))
 
         elif self.datasetConfig.dataType['dataType'] == 'Image':
             # construct all of readable file lists in class path lists
-            dataFileLists = [ x for x in list(map( lambda x :  list(filter( lambda x:(x.endswith(".png") or x.endswith(".jpg") or x.endswith(".jpeg") or x.endswith(".bmp")), list(map( lambda y : x + "/" + y, sorted(os.listdir(mainPath + x)))) )), pathList))  ]
-
+            dataFileLists = list(map( lambda x :  list(filter( lambda x:(x.endswith(".png") or x.endswith(".jpg") or x.endswith(".jpeg") or x.endswith(".bmp")), list(map( lambda y : x + "/" + y, sorted(os.listdir(mainPath + x)))) )), pathList))
         elif self.datasetConfig.dataType['dataType'] == 'ImageSequence':
             # construct all of sequence folders in class path lists
-            dataFileLists = [ x for x in list(map( lambda x : list(map( lambda y : x + "/" + y, sorted(os.listdir(mainPath + x)) )), pathList))  ]
-
+            dataFileLists = list(map( lambda x : list(map( lambda y : x + "/" + y, sorted(os.listdir(mainPath + x)) )), pathList))
+            dataFileLists = [ list(map(lambda x : [ x + '/' + z for z in list(filter(lambda y : (y.endswith(".png") or y.endswith(".jpg") or y.endswith(".jpeg") or y.endswith(".bmp")), sorted(os.listdir(mainPath + x)))) ] , xlist)) for xlist in dataFileLists ]
 
 
         
@@ -192,19 +188,24 @@ class DatasetComponent():
             if self.datasetConfig.labelType['dataType'] == 'Text':
                 # construct all of readable file lists in class path lists
                 labelFiles = sorted(list(filter( lambda x:(x.endswith(".txt")), os.listdir(mainPath + labelPath))))
+                # add origin path in front of all elements of label file list
+                labelFiles = list(map( lambda x : labelPath + x , labelFiles))
 
             elif self.datasetConfig.labelType['dataType'] == 'Image':
                 # construct all of readable file lists in class path lists
                 labelFiles = sorted(list(filter( lambda x:(x.endswith(".png") or x.endswith(".jpg") or x.endswith(".jpeg") or x.endswith(".bmp")), os.listdir(mainPath + labelPath))))
+                # add origin path in front of all elements of label file list
+                labelFiles = list(map( lambda x : labelPath + x , labelFiles))
 
             elif self.datasetConfig.labelType['dataType'] == 'ImageSequence':
                 # construct all of sequence folders in class path lists
                 labelFiles = sorted(os.listdir(mainPath + labelPath))
+                labelFiles = list(map(lambda x : [ labelPath + x + '/' + z for z in list(filter(lambda y : (y.endswith(".png") or y.endswith(".jpg") or y.endswith(".jpeg") or y.endswith(".bmp")), sorted(os.listdir(mainPath + labelPath + x)))) ] , labelFiles))
 
+                #print(labelFiles)
 
             
-            # add origin path in front of all elements of label file list
-            labelFiles = list(map( lambda x : labelPath + x , labelFiles))
+
 
             if len(labelFiles) == 1:
                 #Label case ex (.txt file)
@@ -227,13 +228,20 @@ class DatasetComponent():
 
 
 
-    def makePreprocessingList(self):
+    def _makePreprocessingList(self):
         self.preprocessingList = list(map((lambda x: PREPROCESSING_DICT[x.split('(')[0]](*list(filter(lambda y : y != '', x.split('(')[1][:-1].replace(' ','').split(','))))), self.datasetConfig.preprocessings))
 
 
+    def _getSeqDataLen(self):
+        cnt = 0
+        for seqFileDict in self.dataFileList:
+            #for key in seqFileDict:
+            cnt += len(seqFileDict[list(seqFileDict.keys())[0]]) - (self.sequenceLength - 1)
+        #print(cnt)
+        return cnt
 
     def __len__(self):
-        return len(self.dataFileList)
+        return len(self.dataFileList) if self.datasetConfig.dataType['dataType'] != 'ImageSequence' else self._getSeqDataLen()
 
 
 
@@ -249,9 +257,8 @@ class Dataset(torchDataset):
     def __init__(self, 
                  datasetComponentParamList: List, 
                  batchSize: int, 
-                 samplingCount:int, 
                  valueRangeType:str, 
-                 shuffle:bool, 
+                 isEval:bool, 
                  augmentation:List[str], 
                  numWorkers:int,
                  makePreprocessedFile:bool):
@@ -262,25 +269,31 @@ class Dataset(torchDataset):
         self._datasetComponentObjectListIntegrityTest()
 
         self.batchSize = batchSize
-        self.samplingCount = samplingCount
         self.valueRangeType = valueRangeType
-        self.shuffle = shuffle
+        self.isEval = isEval
         self.augmentation = augmentation
         self.numWorkers = numWorkers
 
         self.makePreprocessedFile = makePreprocessedFile
 
         self.globalFileList = None
+
+        '''
         self._makeGlobalFileList(self.shuffle)
         self.LabelDataDictList = None
         self.makeGlobalLabelDataDictList()
+        '''
+
+        self._makeGlobalFileList()
+        self.mapper = None
+        self._makeFileListIndexer()
+        #print(self.globalFileList)
 
         self.PILImageToTensorFunction = transforms.ToTensor()
 
 
-    def _makeGlobalFileList(self, shuffle):
+    def _makeGlobalFileList(self):
         gFL = [x.dataFileList for x in self.datasetComponentObjectList]
-        #print(gFL)
         self.globalFileList = gFL
 
 
@@ -348,14 +361,203 @@ class Dataset(torchDataset):
         self.LabelDataDictList = LabelDataDictList
 
 
+    def _makeFileListIndexer(self):
+
+
+        mapper = [] 
+
+        dcCount = 0 #datasetComponent의 갯수
+        dcLenFilesList = [] #datasetComponent 각각이 가지고 있는 총 파일의 갯 수 리스트
+        dcLenSeqsList = [] #datasetComponent가 가지고 있는 각각의 시퀀스 갯수 리스트
+        SeqLenFilesList = [] #각 dc의 시퀀스 밑에 몇개의 파일이 있는지 리스트 (2-d)
+
+        ####################################################################
+        # SEQUENCE
+        ####################################################################
+        if self.datasetComponentObjectList[0].datasetConfig.dataType['dataType'] == 'ImageSequence':
+                
+            for dcL in self.globalFileList:
+                dcCount += 1
+                dcLenSeqsList.append(len(dcL))
+
+                tempLenFiles = 0
+                tempSeqLenFiles = []
+                for seqL in dcL:
+                    ln = len(seqL[list(seqL.keys())[0]]) - (self.datasetComponentObjectList[0].sequenceLength - 1)
+                    tempSeqLenFiles.append(ln)
+                    tempLenFiles += ln
+                SeqLenFilesList.append(tempSeqLenFiles)
+                dcLenFilesList.append(tempLenFiles)
+
+
+            ####################################################################
+            # EVAL MODE   :    len -> sum(len(datasetComponents))
+            ####################################################################
+            if self.isEval is True:
+
+                ######## SEQ         [     [dc [seq [file, file] ],[seq] ],[dc]    ]
+                for i in range(self.__len__()):
+
+                    for j in range(len(dcLenFilesList)):
+                        if i < sum(dcLenFilesList[:j + 1]):
+                            break
+                    dcIdx = j
+                    
+                    tMapperElem = []
+
+                    tmp = i // dcCount % dcLenFilesList[dcIdx]
+                    for j in range(len(SeqLenFilesList[dcIdx]) - 1): 
+                        if tmp < sum(SeqLenFilesList[dcIdx][:j + 1]):
+                            break
+                    seqIdx = j
+
+                    
+                    fileIdx = tmp - sum(SeqLenFilesList[dcIdx][:j]) 
+
+                    for s in range(self.datasetComponentObjectList[dcIdx].sequenceLength):
+                        tMapperElem.append([dcIdx, seqIdx, fileIdx + s])
+
+                    mapper.append(tMapperElem)
+
+            ####################################################################
+            # TRAIN MODE   :    len -> max(len(datasetComponents)) * 2
+            ####################################################################
+            else:
+                
+                for i in range(self.__len__()):
+                    
+                    tMapperElem = []
+
+                    dcIdx = i % dcCount
+
+                    tmp = i // dcCount % dcLenFilesList[dcIdx]
+                    for j in range(len(SeqLenFilesList[dcIdx])): 
+                        if tmp < sum(SeqLenFilesList[dcIdx][:j + 1]):
+                            break
+                    seqIdx = j
+
+                    
+                    fileIdx = tmp - sum(SeqLenFilesList[dcIdx][:j]) 
+
+                    for s in range(self.datasetComponentObjectList[dcIdx].sequenceLength):
+                        tMapperElem.append([dcIdx, seqIdx, fileIdx + s])
+
+                    mapper.append(tMapperElem)
+
+
+
+        ####################################################################
+        # Non-SEQUENCE
+        ####################################################################
+        else:
+
+            for dcL in self.globalFileList:
+                dcCount += 1
+                dcLenFilesList.append(len(dcL))
+
+            ####################################################################
+            # EVAL MODE   :    len -> sum(len(datasetComponents))
+            ####################################################################
+            if self.isEval is True:
+
+                for i in range(self.__len__()):
+
+                    for j in range(len(dcLenFilesList)):
+                        if i < sum(dcLenFilesList[:j + 1]):
+                            break
+                    dcIdx = j
+                    
+                    fileIdx = i - sum(dcLenFilesList[:j]) 
+
+                    mapper.append([dcIdx, fileIdx])
+
+
+            ####################################################################
+            # TRAIN MODE   :    len -> max(len(datasetComponents)) * 2
+            ####################################################################
+            else:
+
+                for i in range(self.__len__()):
+
+                    dcIdx = i % dcCount
+
+                    fileIdx = i // dcCount % dcLenFilesList[dcIdx]
+
+
+                    mapper.append([dcIdx, fileIdx])
+
+
+
+
+
+
+        
+        self.mapper = mapper
+        #print(self.mapper)
+        #print("pasdasd" + str(len(self.mapper)))
+
+                    
     def _popItemInGlobalFileListByIndex(self, index):
-        datasetComponentLengthList = list(map(len, self.datasetComponentObjectList))
 
-        indexComponent = index % len(datasetComponentLengthList)
-        indexComponentFileList = ( index // len(datasetComponentLengthList) ) % datasetComponentLengthList[indexComponent]
 
-        return {'dataFilePath':  Config.param.data.path.datasetPath + self.globalFileList[indexComponent][indexComponentFileList]['dataFilePath'], 
-                'labelFilePath': Config.param.data.path.datasetPath + self.globalFileList[indexComponent][indexComponentFileList]['labelFilePath'] if self.globalFileList[indexComponent][indexComponentFileList]['labelFilePath'] is not None else None, 
+
+        datasetComponentType = self.datasetComponentObjectList[0].datasetConfig.dataType['dataType']
+        
+
+
+
+        if datasetComponentType != 'ImageSequence':
+
+
+            componentIndex, componentFileListIndex = self.mapper[index]
+            #print(componentIndex, componentFileListIndex)
+
+            #componentFileListIndex = ( index // len(datasetComponentLengthList) ) % datasetComponentLengthList[componentIndex]
+
+            dFP = self.globalFileList[componentIndex][componentFileListIndex]['dataFilePath']
+            dFP = Config.param.data.path.datasetPath + dFP if isinstance(dFP, str) else [Config.param.data.path.datasetPath + x for x in dFP]
+
+            lFP = self.globalFileList[componentIndex][componentFileListIndex]['labelFilePath'] if self.globalFileList[componentIndex][componentFileListIndex]['labelFilePath'] is not None else None
+            lFP = (Config.param.data.path.datasetPath + lFP if isinstance(lFP, str) else [Config.param.data.path.datasetPath + x for x in lFP]) if lFP is not None else None
+
+
+
+        else:
+
+            dFPList = []
+            lFPList = []
+
+            for componentIndex, seqIdx, fileIdx in self.mapper[index]:
+             
+
+                '''
+                datasetComponentSequenceLengthList = []
+                for dComponent in range(len(self.globalFileList)):
+                    tdC = []
+                    for dSeq in range(len(self.globalFileList[dComponent])):
+                        tdC.append(len(self.globalFileList[dComponent][dSeq]))
+                    datasetComponentSequenceLengthList.append(tdC)
+                        
+                sequenceListIndex = ( index // len(datasetComponentLengthList) ) % datasetComponentLengthList[componentIndex]
+                sequenceFileIndex = 
+                '''
+
+                #print(componentIndex, seqIdx, fileIdx)
+
+                dFP = self.globalFileList[componentIndex][seqIdx]['dataFilePath'][fileIdx]
+                dFP = Config.param.data.path.datasetPath + dFP if isinstance(dFP, str) else [Config.param.data.path.datasetPath + x for x in dFP]
+
+                lFP = self.globalFileList[componentIndex][seqIdx]['labelFilePath'][fileIdx] if self.globalFileList[componentIndex][seqIdx]['labelFilePath'][fileIdx] is not None else None
+                lFP = (Config.param.data.path.datasetPath + lFP if isinstance(lFP, str) else [Config.param.data.path.datasetPath + x for x in lFP]) if lFP is not None else None
+
+                dFPList.append(dFP)
+                lFPList.append(lFP)
+
+            dFP = dFPList
+            lFP = lFPList
+        
+        return {'dataFilePath':  dFP, 
+                'labelFilePath': lFP 
                 }
 
 
@@ -448,6 +650,9 @@ class Dataset(torchDataset):
                     break
             augedXList.append(x)
 
+        
+        
+        
         #TRANSPOSE
         augedXList = list(map(list, zip(*augedXList)))
 
@@ -514,7 +719,7 @@ class Dataset(torchDataset):
 
 
     
-    def _readItem(self, Type, FilePath, index, preProc):
+    def _readItem(self, Type, FilePath, preProc):
         # data information defined in config
         if FilePath is not None:
 
@@ -548,11 +753,11 @@ class Dataset(torchDataset):
             ###################################################################################
             elif Type['dataType'] == 'ImageSequence':
 
-                seqFileList = sorted(os.listdir(FilePath))
+                seqFileList = FilePath
                 rstList = []
 
-                for seqFile in seqFileList:
-                    seqFilePath = FilePath + '/' + seqFile
+                for seqFilePath in seqFileList:
+                    #seqFilePath = FilePath + '/' + seqFile
                     if os.path.isfile(seqFilePath + '.npy') is True:
                         rst = self._methodNPYExists(seqFilePath + '.npy') #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
                     else:
@@ -599,13 +804,19 @@ class Dataset(torchDataset):
 
 
         for Type, FilePath in zip(typeList, filePathList):
-            rstDict[Type['dataName']] = self._readItem(Type, FilePath, index, preProc)
+            #rstDict[Type['dataName']] = self._readItem(Type, FilePath, index, preProc)
+            rstDict[Type['dataName']] = self._readItem(Type, FilePath, preProc)
+
+
+
+        #print(rstDict[dataType['dataName']])
 
 
         ###################################################################################
         # Data Augmentation
-        ###################################################################################
-
+        ###################################################################################--------------------------------------------------------------
+        #print(len((list(self._dataAugmentation( x , self.augmentation ) for x in list(zip(rstDict[dataType['dataName']], rstDict[labelType['dataName']]))))[0]))
+        '''
         rstDict[dataType['dataName']], rstDict[labelType['dataName']] = self._dataAugmentation( [rstDict[dataType['dataName']], rstDict[labelType['dataName']]], self.augmentation )
         
         rstDict[dataType['dataName']] = self._setTensorValueRange(rstDict[dataType['dataName']], self.valueRangeType)
@@ -613,7 +824,17 @@ class Dataset(torchDataset):
         if labelType['dataType'] != 'Text':
             rstDict[labelType['dataName']] = self._setTensorValueRange(rstDict[labelType['dataName']], self.valueRangeType) 
             rstDict[labelType['dataName']] = self._setTensorValueRange(rstDict[labelType['dataName']], self.valueRangeType)
-            rstDict[labelType['dataName']] = self._setTensorValueRange(rstDict[labelType['dataName']], self.valueRangeType) 
+            rstDict[labelType['dataName']] = self._setTensorValueRange(rstDict[labelType['dataName']], self.valueRangeType)         
+        '''
+        
+        if isinstance(rstDict[dataType['dataName']], list):
+            rstDict[dataType['dataName']], rstDict[labelType['dataName']] =  list(zip(*list(self._dataAugmentation( x , self.augmentation ) for x in list(zip(rstDict[dataType['dataName']], rstDict[labelType['dataName']])))))
+            rstDict[dataType['dataName']] = list ( self._setTensorValueRange( x , self.valueRangeType) for x in rstDict[dataType['dataName']] )
+            rstDict[labelType['dataName']] = list ( self._setTensorValueRange( x , self.valueRangeType) for x in rstDict[labelType['dataName']] )
+        else:
+            rstDict[dataType['dataName']], rstDict[labelType['dataName']] =  self._dataAugmentation( (rstDict[dataType['dataName']], rstDict[labelType['dataName']]) , self.augmentation )
+            rstDict[dataType['dataName']] = self._setTensorValueRange(rstDict[dataType['dataName']], self.valueRangeType)
+            rstDict[labelType['dataName']] = self._setTensorValueRange(rstDict[labelType['dataName']], self.valueRangeType)
 
 
 
@@ -624,34 +845,55 @@ class Dataset(torchDataset):
         # Data Demension Align
         ###################################################################################
 
-
-        if dataType['dataType'] == 'Text':
-            pass
-        elif dataType['dataType'] == 'Image':
-            assert len(rstDict[dataType['dataName']].size()) == 4
-            rstDict[dataType['dataName']] = rstDict[dataType['dataName']].squeeze(0)
-        elif dataType['dataType'] == 'ImageSequence':
-            assert len(rstDict[dataType['dataName']].size()) == 4
-
-
-        if labelType['dataType'] == 'Text':
-            pass
-        elif labelType['dataType'] == 'Image':
-            assert len(rstDict[labelType['dataName']].size()) == 4
-            rstDict[labelType['dataName']] = rstDict[labelType['dataName']].squeeze(0)
-        elif labelType['dataType'] == 'ImageSequence':
-            assert len(rstDict[labelType['dataName']].size()) == 4
+        if isinstance(rstDict[dataType['dataName']], list):
+            if dataType['dataType'] == 'Text':
+                pass
+            elif dataType['dataType'] == 'Image':
+                assert len(rstDict[dataType['dataName']][0].size()) == 4
+                rstDict[dataType['dataName']] = rstDict[dataType['dataName']].squeeze(0)
+            elif dataType['dataType'] == 'ImageSequence':
+                assert len(rstDict[dataType['dataName']][0].size()) == 4
 
 
+            if labelType['dataType'] == 'Text':
+                pass
+            elif labelType['dataType'] == 'Image':
+                assert len(rstDict[labelType['dataName']][0].size()) == 4
+                rstDict[labelType['dataName']] = rstDict[labelType['dataName']].squeeze(0)
+            elif labelType['dataType'] == 'ImageSequence':
+                assert len(rstDict[labelType['dataName']][0].size()) == 4
+
+        else:
+            if dataType['dataType'] == 'Text':
+                pass
+            elif dataType['dataType'] == 'Image':
+                assert len(rstDict[dataType['dataName']].size()) == 4
+                rstDict[dataType['dataName']] = rstDict[dataType['dataName']].squeeze(0)
+            elif dataType['dataType'] == 'ImageSequence':
+                assert len(rstDict[dataType['dataName']].size()) == 4
 
 
+            if labelType['dataType'] == 'Text':
+                pass
+            elif labelType['dataType'] == 'Image':
+                assert len(rstDict[labelType['dataName']].size()) == 4
+                rstDict[labelType['dataName']] = rstDict[labelType['dataName']].squeeze(0)
+            elif labelType['dataType'] == 'ImageSequence':
+                assert len(rstDict[labelType['dataName']].size()) == 4
 
-
-        ## RETURN DICT OF 
         return rstDict
 
     def __len__(self):
-        return max(list(map(len, self.datasetComponentObjectList))) * len(self.datasetComponentObjectList)
+
+        if self.isEval is True:
+            cnt = 0
+            for dcL in list(map(len, self.datasetComponentObjectList)):
+                cnt += dcL
+        
+        else:
+            cnt = max(list(map(len, self.datasetComponentObjectList))) * len(self.datasetComponentObjectList)
+
+        return cnt
         
     
 
@@ -662,9 +904,8 @@ class DataLoader(torchDataLoader):
                  fromParam : bool = True, 
                  datasetComponentParamList: Optional[List[str]] = None,
                  batchSize: Optional[int] = None,
-                 samplingCount: Optional[int] = None,
                  valueRangeType: Optional[str] = None,
-                 shuffle: Optional[bool] = None,
+                 isEval: Optional[bool] = None,
                  augmentation: Optional[List[str]] = None,
                  numWorkers: Optional[int] = None,
                  makePreprocessedFile: Optional[bool] = None):
@@ -678,9 +919,8 @@ class DataLoader(torchDataLoader):
 
         self.datasetComponentParamList = datasetComponentParamList
         self.batchSize = batchSize
-        self.samplingCount = samplingCount
         self.valueRangeType = valueRangeType
-        self.shuffle = shuffle
+        self.isEval = isEval
         self.augmentation = augmentation
         self.numWorkers = numWorkers
         self.makePreprocessedFile = makePreprocessedFile
@@ -688,17 +928,17 @@ class DataLoader(torchDataLoader):
         self.fromParam = fromParam
 
         if self.fromParam is True:
-            self.getDataloaderParams()
+            self._getDataloaderParams()
 
 
         # CONSTRUCT DATASET #
         self.dataset = None
-        self.constructDataset()
+        self._constructDataset()
 
         super(DataLoader, self).__init__(
                          dataset = self.dataset,
                          batch_size = self.batchSize,
-                         shuffle = self.shuffle,
+                         shuffle = False if self.isEval else True,
                          num_workers = self.numWorkers,
                          collate_fn = self.Collater)
 
@@ -717,36 +957,40 @@ class DataLoader(torchDataLoader):
         return rstDict
 
 
-    def getDataloaderParams(self):
+    def _getDataloaderParams(self):
 
         yamlData = Config.paramDict['data']['dataLoader'][f'{self.name}']
 
         datasetNameList = list(map(str, yamlData['datasetComponent']))
         datasetModeList = list( Config.paramDict['data']['datasetComponent'][name]['mode'] for name in datasetNameList  )
         datasetClassParameterList = list( Config.paramDict['data']['datasetComponent'][name]['classParameter'] for name in datasetNameList  )
+        sequenceLength = [ yamlData['sequenceLength'] if 'sequenceLength' in yamlData.keys() else None ] * len(datasetNameList)
 
-        self.datasetComponentParamList = zip(datasetNameList, datasetModeList, datasetClassParameterList)
+        self.datasetComponentParamList = zip(datasetNameList, datasetModeList, datasetClassParameterList, sequenceLength)
 
 
         self.batchSize = int(yamlData['batchSize'])
-        self.samplingCount = int(yamlData['samplingCount'])
         self.valueRangeType = str(yamlData['valueRangeType'])
-        self.shuffle = str(yamlData['shuffle'])
+        self.isEval = yamlData['isEval']
         self.augmentation = yamlData['augmentation'] 
         self.numWorkers = Config.param.train.dataLoaderNumWorkers
         self.makePreprocessedFile = yamlData['makePreprocessedFile'] 
+        
 
     
-    def constructDataset(self):
+    def _constructDataset(self):
         
         self.dataset = Dataset(datasetComponentParamList = self.datasetComponentParamList, 
                                batchSize = self.batchSize, 
-                               samplingCount = self.samplingCount, 
                                valueRangeType = self.valueRangeType, 
-                               shuffle = self.shuffle, 
+                               isEval = self.isEval, 
                                augmentation = self.augmentation, 
                                numWorkers = self.numWorkers,
                                makePreprocessedFile = self.makePreprocessedFile)
+        
+        print(len(self.dataset))
+        for dc in self.dataset.datasetComponentObjectList:
+            print(dc.name, len(dc))
 
 
     def __iter__(self) -> '_BaseDataLoaderIter':
@@ -805,6 +1049,7 @@ class _MultiProcessingDataLoaderIterWithDataAugmentation(_MultiProcessingDataLoa
         tempLabelList = []
         labelMaxLShape = 0
         for key in data:
+            '''
             shapeList = list(map(lambda x:data[key][x].shape[1], range(len(data[key]))))
             if key == 'Text':
                 labelMaxLShape = max(shapeList)
@@ -812,10 +1057,13 @@ class _MultiProcessingDataLoaderIterWithDataAugmentation(_MultiProcessingDataLoa
                 for i in range(len(data[key])):
                     tempLabelList[i][:, 0:data[key][i].shape[1], :] = data[key][i]
                 data[key] = tempLabelList
-                
+            '''
         #a = time.perf_counter()
         AugedTensor = {}
-        AugedTList = self._GPUDataAugmentation( [ torch.stack(data[key]).cuda() for key in data ], self.augmentation )
+        if isinstance(data[list(data.keys())[0]][0], list):
+            AugedTList = self._GPUDataAugmentation( [ torch.cat( [torch.cat(x, 0).unsqueeze(0) for x in data[key]], 0 ).cuda() for key in data ], self.augmentation )
+        else:
+            AugedTList = self._GPUDataAugmentation( [ torch.stack(data[key]).cuda() for key in data ], self.augmentation )
         
         for i, key in enumerate(data):
             AugedTensor[key] = AugedTList[i]

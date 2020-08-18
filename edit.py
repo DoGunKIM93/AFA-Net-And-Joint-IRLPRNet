@@ -92,7 +92,7 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     SRImages = modelList.NET(LRImages)
 
 
-    loss = mse_criterion(SRImages, HRImages)  
+    loss = mse_criterion(SRImages, HRImages[:,p.sequenceLength//2,:,:,:])  
 
 
     # Update All model weights

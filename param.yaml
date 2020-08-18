@@ -1,7 +1,7 @@
 #################################################################################
 #                               *** param.yaml ***                              #
 #################################################################################
-version : 2.02.200729
+version : 2.03.200806
  
 
 
@@ -65,26 +65,37 @@ data:
             colorMode: color
 
 
+        VID4_SR_test:
+            dataConfig: VID4_SR
+            mode: test
+            classParameter:
+                degradationMethod:
+                    - bicubic
+                scaleFactor:
+                    - 4
+            colorMode: color
+
+
     dataLoader:
         train:
             datasetComponent:
                 - REDS_SR_train
+                #- VID4_SR_test
             batchSize: 8
-            samplingCount: 1
             valueRangeType : -1~1
-            shuffle: True
-            makePreprocessedFile: False
+            isEval: False
+            makePreprocessedFile: True
+            sequenceLength: 5
             augmentation: # Must be list of dict   /   toTensor() Must be here
                 - centerCrop(96, 96)
-                - sizeMatch()
+                #- sizeMatch()
                 - toTensor()
         train_x:
             datasetComponent: # Must be list
                 - DIV2K_SR_train
             batchSize: 32
-            samplingCount: 1
             valueRangeType : -1~1
-            shuffle: True
+            isEval: False
             makePreprocessedFile: True
             augmentation: # Must be list of dict   /   toTensor() Must be here
                 - centerCrop(96, 96)
@@ -95,9 +106,8 @@ data:
                 - 291_SR_train
                 - DIV2K_SR_train_virtual
             batchSize: 30
-            samplingCount: 1
             valueRangeType : -1~1
-            shuffle: True
+            isEval: False
             makePreprocessedFile: True
             augmentation: # Must be list of dict   /   toTensor() Must be here
                 - centerCrop(96, 96)
@@ -109,9 +119,8 @@ data:
                 - Vid4, REDS # PARALLEL TODO:
                 - Set5       # Serial with List
             batchSize: 1
-            samplingCount: 1
             valueRangeType : -1~1
-            shuffle: False
+            isEval: False
             makePreprocessedFile: False
             augmentation:
                 - resizeByMaxPixelCount(590000)

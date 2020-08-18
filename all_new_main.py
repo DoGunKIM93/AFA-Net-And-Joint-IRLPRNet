@@ -1,7 +1,7 @@
 '''
 main.py
 '''
-mainversion = "2.00.200729"
+mainversion = "2.01.200806"
 
 
 
@@ -120,6 +120,7 @@ else:
 
 
     print(f"load Train Dataset... {p.trainDataset} / {p.colorMode} X{p.scaleFactor} ({p.trainScaleMethod})")
+    
     '''
     trainDataLoader = SRDataLoader(dataset  = p.trainDataset,
                               datasetType   = p.trainDatasetType,
@@ -132,6 +133,7 @@ else:
                               sameOutputSize= p.sameOutputSize,
                               colorMode     = p.colorMode) 
     '''
+    
     trainDataLoader = andl.DataLoader('train')
 
 
@@ -378,16 +380,18 @@ else :
 
         sr_images = utils.denorm(SRImages.cpu().view(SRImages.size(0), 1 if p.colorMode=='grayscale' else 3, SRImages.size(2), SRImages.size(3)))
 
-        if p.sameOutputSize == False:
-            cated_images = torch.cat((F.interpolate(lr_images.data, size=(HRImages.size(2),HRImages.size(3) * copyCoff), mode='bicubic'),
-                                sr_images.data,
-                                hr_images.data
-                                ),3)    
+        #if p.sameOutputSize == False:
+        cated_images = torch.cat((F.interpolate(lr_images.data, size=(HRImages.size(2),HRImages.size(3) * copyCoff), mode='bicubic'),
+                            sr_images.data,
+                            hr_images.data
+                            ),3)    
+        '''
         else:
             cated_images = torch.cat(( lr_images.data,
                                 sr_images.data,
                                 hr_images.data
                                 ),3)
+        '''
 
         if args.nosave :        
             savePath = './data/'+version+'/result/'+subversion+'/SRed_train_images.png'

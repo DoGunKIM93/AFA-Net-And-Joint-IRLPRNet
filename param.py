@@ -38,13 +38,13 @@ version = '1.34.200703'
 dataPath = '/home/projSR/dataset/'
 scaleFactor = 4
 colorMode = 'color' # 'color' || 'grayscale'
-sequenceLength = 7 # Only for 'REDS' Dataset
+sequenceLength = 5 # Only for 'REDS' Dataset
 
 ### train
-trainDataset = '291' # See above table
+trainDataset = 'REDS' # See above table
 trainDatasetType = 'train'  # 'train' || 'valid' || 'test'.  # See above table
-trainScaleMethod = 'virtual' # See above table
-batchSize = 30
+trainScaleMethod = 'bicubic' # See above table
+batchSize = 8
 samplingCount = 1 # Random Crop (samplingCount) per one Image.  Actual Batch Size = batchSize * samplingCount
 cropSize = [96, 96]  # HR Image cropping size. LR Image size: cropSize / scaleFactor. None -> No crop
 randomResizeMinMax = [1, 1]

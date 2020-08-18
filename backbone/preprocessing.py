@@ -1,7 +1,7 @@
 '''
 preprocessing.py
 '''
-version = '1.01.200729'
+version = '1.02.200806'
 
 
 #FROM Python LIBRARY
