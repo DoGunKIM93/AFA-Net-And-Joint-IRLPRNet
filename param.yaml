@@ -1,7 +1,7 @@
 #################################################################################
 #                               *** param.yaml ***                              #
 #################################################################################
-version : 2.03.200806
+version : 2.04.200820
  
 
 
@@ -11,8 +11,9 @@ version : 2.03.200806
 #                                     GENERAL                                   #
 #################################################################################
 general:
-    maxMemoryCachingSizeGB: 64
-    maxVRAMCachingSizeGB: 8 # will be devide by # of GPU
+    #maxMemoryCachingSizeGB: 64
+    #maxVRAMCachingSizeGB: 8 # will be devide by # of GPU
+    GPUNum: 0 # comma-separated
 
 
 
@@ -52,7 +53,6 @@ data:
                 class: 
                     - GT
             colorMode: color
-            #sequenceLength: 7 # Only for Image Sequence Dataset
 
         REDS_SR_train:
             dataConfig: REDS_SR
@@ -90,7 +90,20 @@ data:
                 - centerCrop(96, 96)
                 #- sizeMatch()
                 - toTensor()
-        train_x:
+        validation:
+            datasetComponent:
+                - REDS_SR_train
+                #- VID4_SR_test
+            batchSize: 8
+            valueRangeType : -1~1
+            isEval: False
+            makePreprocessedFile: True
+            sequenceLength: 5
+            augmentation: # Must be list of dict   /   toTensor() Must be here
+                - centerCrop(96, 96)
+                #- sizeMatch()
+                - toTensor()
+        inference:
             datasetComponent: # Must be list
                 - DIV2K_SR_train
             batchSize: 32
@@ -114,16 +127,17 @@ data:
                 - virtualScaling(4)
                 - sizeMatch()
                 - toTensor()
-        validation:
-            datasetComponent:
-                - Vid4, REDS # PARALLEL TODO:
-                - Set5       # Serial with List
-            batchSize: 1
-            valueRangeType : -1~1
-            isEval: False
-            makePreprocessedFile: False
-            augmentation:
-                - resizeByMaxPixelCount(590000)
+
+        #validation:
+        #    datasetComponent:
+        #        - Vid4, REDS # PARALLEL TODO:
+        #        - Set5       # Serial with List
+        #    batchSize: 1
+        #    valueRangeType : -1~1
+        #    isEval: False
+        #    makePreprocessedFile: False
+        #    augmentation:
+        #        - resizeByMaxPixelCount(590000)
 
         
 
@@ -135,11 +149,8 @@ train:
 
     step:
         maxEpoch: 180000
-        validationStep: 5000
+        validationStep: 1
         archiveStep: 100
-
-    hardware:
-        GPUNum: 0 # comma-separated
 
     method:
         mixedPrecision: False 

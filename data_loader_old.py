@@ -1,7 +1,7 @@
 '''
 data_loader.py
 '''
-version = "1.58.200707"
+version = "1.59.200820"
 
 #FROM Python LIBRARY
 import os
@@ -24,7 +24,7 @@ from torchvision import datasets
 from torchvision.datasets import ImageFolder
 
 
-import param as p
+import param_old as p
 
 
 

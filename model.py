@@ -1,7 +1,7 @@
 '''
 model.py
 '''
-version = '1.4.200729'
+version = '1.41.200820'
 
 
 #from Python
@@ -30,7 +30,7 @@ from torch.autograd.function import once_differentiable
 from torch.nn.modules.utils import _pair
 
 #from this project
-import param as p
+from backbone.config import Config
 import backbone.vision as vision
     #CovPool
 from backbone.module import CovpoolLayer, SqrtmLayer, CovpoolLayer3d, SqrtmLayer3d, TriuvecLayer
@@ -54,13 +54,12 @@ from backbone.ResNeSt.resnet import ResNet, Bottleneck
 # 3. EDVR
 # 4. Spatial A
 
-inputChannel = 1 if p.colorMode =='grayscale' else 3
-
-
 
 class DeNIQuA(nn.Module):
-    def __init__(self, featureExtractor, CW=64, inFeature=1):
+    def __init__(self, featureExtractor, CW=64, inFeature=1, colorMode='color'):
         super(DeNIQuA, self).__init__()
+
+        inputChannel = 3 if colorMode == 'color' else 1
 
         self.featureExtractor = featureExtractor
 
@@ -134,8 +133,10 @@ class SunnySideUp(nn.Module):
 
 class BlueLemonade(nn.Module):#v2 
     
-    def __init__(self, featureExtractor, CW = p.NGF, blendingChannel = 3, shiftDistance = 9):#, CW = p.NDF, Blocks = 5, ResPerBlocks = 10):
+    def __init__(self, featureExtractor, CW, blendingChannel = 3, shiftDistance = 9, colorMode = 'color'):
         super(BlueLemonade, self).__init__()
+
+        self.inputChannel = 3 if colorMode == 'color' else 1
 
         self.blendingChannel = blendingChannel
         self.shiftDistance = shiftDistance
@@ -182,10 +183,10 @@ class BlueLemonade(nn.Module):#v2
         return adaptiveFilter, [shiftKernel[:,0:1,:,:].repeat(1,3,1,1), shiftKernel[:,1:2,:,:].repeat(1,3,1,1), shiftKernel[:,2:3,:,:].repeat(1,3,1,1)]
 
     def applyFilter(self, ori, aFilter):
-        aFilter = aFilter.view(aFilter.size(0), aFilter.size(1) // inputChannel, inputChannel, *aFilter.size()[2:])
+        aFilter = aFilter.view(aFilter.size(0), aFilter.size(1) // self.inputChannel, self.inputChannel, *aFilter.size()[2:])
         aFilter = F.softmax(aFilter, dim=1)#.view(x.size(0), -1, *x.size()[2:])
 
-        ori = ori.view(ori.size(0), ori.size(1) // inputChannel, inputChannel, *ori.size()[2:])
+        ori = ori.view(ori.size(0), ori.size(1) // self.inputChannel, self.inputChannel, *ori.size()[2:])
 
         return (aFilter * ori).sum(dim=1)
 
@@ -215,12 +216,14 @@ class BlueLemonade(nn.Module):#v2
 
 class ISAF(nn.Module):#v2 
     
-    def __init__(self, featureExtractor, CW = p.NGF, iteration = 5, blendingChannel = 3, shiftDistance = 3):#, CW = p.NDF, Blocks = 5, ResPerBlocks = 10):
+    def __init__(self, featureExtractor, CW, iteration = 5, blendingChannel = 3, shiftDistance = 3, colorMode = 'color'):
         super(ISAF, self).__init__()
 
         self.blendingChannel = blendingChannel
         self.shiftDistance = shiftDistance
         self.featureExtractor = featureExtractor
+
+        self.inputChannel = 3 if colorMode == 'color' else 1
 
         self.adaptiveFilterMaker = nn.Sequential( # 1/32
             nn.ConvTranspose2d( 3840,  CW*16, 4, 2, 1), #1/16
@@ -231,7 +234,7 @@ class ISAF(nn.Module):#v2
             nn.ReLU(),
             nn.ConvTranspose2d( CW*4,  CW, 4, 2, 1), #1/2
             nn.ReLU(),
-            nn.ConvTranspose2d( CW, inputChannel * self.blendingChannel, 4, 2, 1), #1/1
+            nn.ConvTranspose2d( CW, self.inputChannel * self.blendingChannel, 4, 2, 1), #1/1
             nn.Tanh(),
         )
 
@@ -263,10 +266,10 @@ class ISAF(nn.Module):#v2
         return adaptiveFilter, [shiftKernel[:,0:1,:,:].repeat(1,3,1,1), shiftKernel[:,1:2,:,:].repeat(1,3,1,1), shiftKernel[:,2:3,:,:].repeat(1,3,1,1)]
 
     def applyFilter(self, ori, aFilter):
-        aFilter = aFilter.view(aFilter.size(0), aFilter.size(1) // inputChannel, inputChannel, *aFilter.size()[2:])
+        aFilter = aFilter.view(aFilter.size(0), aFilter.size(1) // self.inputChannel, self.inputChannel, *aFilter.size()[2:])
         aFilter = F.softmax(aFilter, dim=1)#.view(x.size(0), -1, *x.size()[2:])
 
-        ori = ori.view(ori.size(0), ori.size(1) // inputChannel, inputChannel, *ori.size()[2:])
+        ori = ori.view(ori.size(0), ori.size(1) // self.inputChannel, self.inputChannel, *ori.size()[2:])
 
         return (aFilter * ori).sum(dim=1)
 
@@ -362,8 +365,10 @@ class Shifter(nn.Module):
 
 class UMP(nn.Module):
 
-    def __init__(self, CW):
+    def __init__(self, CW, colorMode='color'):
         super(UMP, self).__init__()
+
+        inputChannel = 3 if colorMode == 'color' else 1
 
         self.CW = CW
         self.DecoderList = nn.ModuleList([ # 1/32
@@ -388,7 +393,7 @@ class UMP(nn.Module):
 
 class PSY(nn.Module):
     
-    def __init__(self, CW, Blocks = 5, ResPerBlocks = 10, Attention = True, attention_sub_sample = None):
+    def __init__(self, CW, Blocks = 5, ResPerBlocks = 10, Attention = True, attention_sub_sample = None, colorMode = 'color'):
         super(PSY, self).__init__()
 
         self.CW = CW
@@ -396,12 +401,14 @@ class PSY(nn.Module):
         self.ResPerBlocks = ResPerBlocks
         self.Attention = Attention
 
+        self.inputChannel = 3 if colorMode == 'color' else 1
+
         self.ReconstructionBlocks = nn.ModuleList()
         for i in range(self.Blocks):
             self.ReconstructionBlocks.append(ReconstructionBlock(CW, ResPerBlocks, dim=2, use_attention=Attention, attention_sub_sample=None))
 
-        self.Encoder = nn.Conv2d(inputChannel * 2, CW, 4, 2, 1)
-        self.Decoder = nn.ConvTranspose2d(CW, inputChannel * 2, 4, 2, 1)
+        self.Encoder = nn.Conv2d(self.inputChannel * 2, CW, 4, 2, 1)
+        self.Decoder = nn.ConvTranspose2d(CW, self.inputChannel * 2, 4, 2, 1)
 
 
     def forward(self, x):
@@ -415,10 +422,10 @@ class PSY(nn.Module):
             x = self.ReconstructionBlocks[i](x)
         
         x = self.Decoder(x)
-        x = x.view(x.size(0), x.size(1) // inputChannel, inputChannel, *x.size()[2:])
+        x = x.view(x.size(0), x.size(1) // self.inputChannel, self.inputChannel, *x.size()[2:])
         x = F.softmax(x, dim=1)#.view(x.size(0), -1, *x.size()[2:])
 
-        ori = ori.view(ori.size(0), ori.size(1) // inputChannel, inputChannel, *ori.size()[2:])
+        ori = ori.view(ori.size(0), ori.size(1) // self.inputChannel, self.inputChannel, *ori.size()[2:])
 
         return (x * ori).sum(dim=1)
 
@@ -426,13 +433,15 @@ class PSY(nn.Module):
 
 class WENDY(nn.Module):
     
-    def __init__(self, CW, Blocks = 5, ResPerBlocks = 10, Attention = True, attention_sub_sample = None):
+    def __init__(self, CW, Blocks = 5, ResPerBlocks = 10, Attention = True, attention_sub_sample = None, colorMode = 'color'):
         super(WENDY, self).__init__()
 
         self.CW = CW
         self.Blocks = Blocks
         self.ResPerBlocks = ResPerBlocks
         self.Attention = Attention
+
+        inputChannel = 3 if colorMode == 'color' else 1
 
         self.ReconstructionBlocks = nn.ModuleList()
         for i in range(self.Blocks):
@@ -1174,10 +1183,13 @@ class resBlock(nn.Module):
     
 
 class VESPCN(nn.Module):
-    def __init__(self, upscale_factor=p.scaleFactor):
+    def __init__(self, upscale_factor, sequenceLength, colorMode = 'color'):
         super(VESPCN, self).__init__()
         
-        inputCh = (1 if p.colorMode =='grayscale' else 3) * p.sequenceLength
+        self.upscale_factor = upscale_factor
+        self.sequenceLength = sequenceLength
+
+        inputCh = (1 if colorMode =='grayscale' else 3) * sequenceLength
 
         self.conv1 = nn.Conv2d(inputCh, 256, (9, 9), (1, 1), (4, 4))
 
@@ -1196,11 +1208,11 @@ class VESPCN(nn.Module):
         self.res9 = resBlock(128, windowSize=3)
         self.res10 = resBlock(128, windowSize=3)
 
-        self.conv3 = nn.Conv2d(128, (1 if p.colorMode =='grayscale' else 3) * (upscale_factor ** 2), (3, 3), (1, 1), (1, 1))
+        self.conv3 = nn.Conv2d(128, (1 if colorMode =='grayscale' else 3) * (upscale_factor ** 2), (3, 3), (1, 1), (1, 1))
         self.pixel_shuffle = nn.PixelShuffle(upscale_factor)
 
     def forward(self, x):
-        sc = x[:,p.sequenceLength//2,:,:,:]
+        sc = x[:,self.sequenceLength//2,:,:,:]
         x = torch.cat(x.split(1, dim=1),2).squeeze(1)
 
         x = F.leaky_relu(self.conv1(x), 0.2)
@@ -1223,13 +1235,16 @@ class VESPCN(nn.Module):
         x = F.leaky_relu(self.res9(x), 0.2)
         x = F.leaky_relu(self.res10(x) + res, 0.2)
         
-        x = F.tanh(self.pixel_shuffle(self.conv3(x))) + F.interpolate(sc, scale_factor=p.scaleFactor, mode='bicubic')
+        x = F.tanh(self.pixel_shuffle(self.conv3(x))) + F.interpolate(sc, scale_factor=self.upscale_factor, mode='bicubic')
         return x
 
 
 class ESPCN(nn.Module):
-    def __init__(self, upscale_factor=p.scaleFactor):
+    def __init__(self, upscale_factor, colorMode='color'):
         super(ESPCN, self).__init__()
+
+        inputChannel = 3 if colorMode == 'color' else 1
+        self.upscale_factor = upscale_factor
 
         self.conv1 = nn.Conv2d(inputChannel, 256, (9, 9), (1, 1), (4, 4))
 
@@ -1273,8 +1288,8 @@ class ESPCN(nn.Module):
         x = F.leaky_relu(self.res9(x), 0.2)
         x = F.leaky_relu(self.res10(x) + res, 0.2)
         
-        x = F.tanh(self.pixel_shuffle(self.conv3(x))) + F.interpolate(sc, scale_factor=p.scaleFactor, mode='bicubic')
-        return (x + 1)/2 if p.valueRangeType == '0~1' else x
+        x = F.tanh(self.pixel_shuffle(self.conv3(x))) + F.interpolate(sc, scale_factor=self.upscale_factor, mode='bicubic')
+        return x
 
 
 class Conv_ReLU_Block(nn.Module):
@@ -1318,17 +1333,17 @@ class VDSR(nn.Module):
 
 class D_class(nn.Module):
 
-    def __init__(self):
+    def __init__(self, NDF, NGF):
         super(D_class, self).__init__()
 
-        self.conv1 = nn.Conv2d(p.NDF * 8, p.NDF * 4, 4, 2, 1)  # 32->16
-        self.conv2 = nn.Conv2d(p.NDF * 4, p.NDF * 2, 4, 2, 1)  # 16->8
-        self.conv3 = nn.Conv2d(p.NDF * 2, p.NDF * 1, 4, 2, 1)  # 8->4
-        self.conv4 = nn.Conv2d(p.NDF * 1, 1, 2, 1, 0)  # 4->1
+        self.conv1 = nn.Conv2d(NDF * 8, NDF * 4, 4, 2, 1)  # 32->16
+        self.conv2 = nn.Conv2d(NDF * 4, NDF * 2, 4, 2, 1)  # 16->8
+        self.conv3 = nn.Conv2d(NDF * 2, NDF * 1, 4, 2, 1)  # 8->4
+        self.conv4 = nn.Conv2d(NDF * 1, 1, 2, 1, 0)  # 4->1
 
-        self.IN_conv1 = nn.InstanceNorm2d(p.NGF * 4)
-        self.IN_conv2 = nn.InstanceNorm2d(p.NGF * 2)
-        self.IN_conv3 = nn.InstanceNorm2d(p.NGF * 1)
+        self.IN_conv1 = nn.InstanceNorm2d(NGF * 4)
+        self.IN_conv2 = nn.InstanceNorm2d(NGF * 2)
+        self.IN_conv3 = nn.InstanceNorm2d(NGF * 1)
 
     def parallelPool(self, x):
         xSize = x.size()
@@ -1364,20 +1379,20 @@ class D_class(nn.Module):
 
 class D_AE_class(nn.Module):
 
-    def __init__(self):
+    def __init__(self, NDF, NGF):
         super(D_AE_class, self).__init__()
 
-        self.conv1 = nn.Conv2d(3, p.NDF * 1, 4, 2, 1)  # 32->16
-        self.conv2 = nn.Conv2d(p.NDF * 1, p.NDF * 2, 4, 2, 1)  # 32->16
-        self.conv3 = nn.Conv2d(p.NDF * 2, p.NDF * 4, 4, 2, 1)  # 32->16
-        self.conv4 = nn.Conv2d(p.NDF * 4, p.NDF * 4, 4, 2, 1)  # 32->16
-        self.conv5 = nn.Conv2d(p.NDF * 4, p.NDF * 2, 4, 2, 1)  # 16->8
-        self.conv6 = nn.Conv2d(p.NDF * 2, p.NDF * 1, 4, 2, 1)  # 8->4
-        self.conv7 = nn.Conv2d(p.NDF * 1, 1, 4, 1, 0)  # 4->1
+        self.conv1 = nn.Conv2d(3, NDF * 1, 4, 2, 1)  # 32->16
+        self.conv2 = nn.Conv2d(NDF * 1, NDF * 2, 4, 2, 1)  # 32->16
+        self.conv3 = nn.Conv2d(NDF * 2, NDF * 4, 4, 2, 1)  # 32->16
+        self.conv4 = nn.Conv2d(NDF * 4, NDF * 4, 4, 2, 1)  # 32->16
+        self.conv5 = nn.Conv2d(NDF * 4, NDF * 2, 4, 2, 1)  # 16->8
+        self.conv6 = nn.Conv2d(NDF * 2, NDF * 1, 4, 2, 1)  # 8->4
+        self.conv7 = nn.Conv2d(NDF * 1, 1, 4, 1, 0)  # 4->1
 
-        self.IN_conv1 = nn.InstanceNorm2d(p.NGF * 4)
-        self.IN_conv2 = nn.InstanceNorm2d(p.NGF * 2)
-        self.IN_conv3 = nn.InstanceNorm2d(p.NGF * 1)
+        self.IN_conv1 = nn.InstanceNorm2d(NGF * 4)
+        self.IN_conv2 = nn.InstanceNorm2d(NGF * 2)
+        self.IN_conv3 = nn.InstanceNorm2d(NGF * 1)
 
     def forward(self, x):
 
@@ -1399,16 +1414,16 @@ class D_AE_class(nn.Module):
 
 class TiedAE(nn.Module):
 
-    def __init__(self):
+    def __init__(self, NDF, NGF):
         super(TiedAE, self).__init__()
 
-        self.conv1 = nn.Conv2d(1, p.NDF * 1, 4, 2, 1)  # 256->128
-        self.conv2 = nn.Conv2d(p.NDF * 1, p.NDF * 2, 4, 2, 1)  # 128->64
-        self.conv3 = nn.Conv2d(p.NDF * 2, p.NDF * 4, 4, 2, 1)  # 64->32
-        self.conv4 = nn.Conv2d(p.NDF * 4, p.NDF * 8, 4, 2, 1)  # 32->16
-        self.conv5 = nn.Conv2d(p.NDF * 4, p.NDF * 8, 4, 2, 1)  # ->8
-        self.conv6 = nn.Conv2d(p.NDF * 8, p.NDF * 16, 4, 2, 1)  # ->4
-        self.conv7 = nn.Conv2d(p.NDF * 16, p.NDF * 32, 4, 1, 0)  # ->1
+        self.conv1 = nn.Conv2d(1, NDF * 1, 4, 2, 1)  # 256->128
+        self.conv2 = nn.Conv2d(NDF * 1, NDF * 2, 4, 2, 1)  # 128->64
+        self.conv3 = nn.Conv2d(NDF * 2, NDF * 4, 4, 2, 1)  # 64->32
+        self.conv4 = nn.Conv2d(NDF * 4, NDF * 8, 4, 2, 1)  # 32->16
+        self.conv5 = nn.Conv2d(NDF * 4, NDF * 8, 4, 2, 1)  # ->8
+        self.conv6 = nn.Conv2d(NDF * 8, NDF * 16, 4, 2, 1)  # ->4
+        self.conv7 = nn.Conv2d(NDF * 16, NDF * 32, 4, 1, 0)  # ->1
 
     def inverse_leaky_relu(self, x, val):
     
@@ -1510,16 +1525,16 @@ class TiedAE(nn.Module):
 
 class TiedDisc(nn.Module):
     
-    def __init__(self):
+    def __init__(self, NDF, NGF):
         super(TiedDisc, self).__init__()
 
-        self.conv1 = nn.Conv2d(        3, p.NDF *   1, 4, 2, 1) # 256 -> 128
-        self.conv2 = nn.Conv2d(p.NDF *   1, p.NDF *   2, 4, 2, 1) # 256 -> 128
-        self.conv3 = nn.Conv2d(p.NDF *   2, p.NDF *   4, 4, 2, 1) # 256 -> 128
-        self.conv4 = nn.Conv2d(p.NDF *   4, p.NDF *   8, 4, 2, 1) # 256 -> 128
-        self.conv5 = nn.Conv2d(p.NDF *   8, p.NDF *  16, 4, 2, 1) # 256 -> 128
-        self.conv6 = nn.Conv2d(p.NDF *  16, p.NDF *  32, 4, 2, 1) # 256 -> 128
-        self.conv7 = nn.Conv2d(p.NDF *  32,         1, 4, 1, 0) # 256 -> 128
+        self.conv1 = nn.Conv2d(        3, NDF *   1, 4, 2, 1) # 256 -> 128
+        self.conv2 = nn.Conv2d(NDF *   1, NDF *   2, 4, 2, 1) # 256 -> 128
+        self.conv3 = nn.Conv2d(NDF *   2, NDF *   4, 4, 2, 1) # 256 -> 128
+        self.conv4 = nn.Conv2d(NDF *   4, NDF *   8, 4, 2, 1) # 256 -> 128
+        self.conv5 = nn.Conv2d(NDF *   8, NDF *  16, 4, 2, 1) # 256 -> 128
+        self.conv6 = nn.Conv2d(NDF *  16, NDF *  32, 4, 2, 1) # 256 -> 128
+        self.conv7 = nn.Conv2d(NDF *  32,         1, 4, 1, 0) # 256 -> 128
         
 
     def forward(self, x):
@@ -1543,23 +1558,23 @@ class TiedDisc(nn.Module):
 
 class TiedGAN(nn.Module):
 
-    def __init__(self):
+    def __init__(self, NDF, NGF):
         super(TiedGAN, self).__init__()
 
-        self.deconv1 = nn.ConvTranspose2d(p.NDF * 32, p.NDF * 16, 4, 2, 1)  #   4   4   256  ->  8   8   128
-        self.deconv2 = nn.ConvTranspose2d(p.NDF * 16, p.NDF *  8, 4, 2, 1)  #   8   8   128  ->  16  16  64
-        self.deconv3 = nn.ConvTranspose2d(p.NDF *  8, p.NDF *  4, 4, 2, 1)  #   16  16  64   ->  32  32  32
-        self.deconv4 = nn.ConvTranspose2d(p.NDF *  4, p.NDF *  2, 4, 2, 1)  #   32  32  32   ->  64  64  16
-        self.deconv5 = nn.ConvTranspose2d(p.NDF *  2, p.NDF *  1, 4, 2, 1)  #   64  64  16   ->  128 128 8
-        self.deconv6 = nn.ConvTranspose2d(p.NDF *  1,        3, 4, 2, 1)  #   128 128 8    ->  256 256 3
+        self.deconv1 = nn.ConvTranspose2d(NDF * 32, NDF * 16, 4, 2, 1)  #   4   4   256  ->  8   8   128
+        self.deconv2 = nn.ConvTranspose2d(NDF * 16, NDF *  8, 4, 2, 1)  #   8   8   128  ->  16  16  64
+        self.deconv3 = nn.ConvTranspose2d(NDF *  8, NDF *  4, 4, 2, 1)  #   16  16  64   ->  32  32  32
+        self.deconv4 = nn.ConvTranspose2d(NDF *  4, NDF *  2, 4, 2, 1)  #   32  32  32   ->  64  64  16
+        self.deconv5 = nn.ConvTranspose2d(NDF *  2, NDF *  1, 4, 2, 1)  #   64  64  16   ->  128 128 8
+        self.deconv6 = nn.ConvTranspose2d(NDF *  1,        3, 4, 2, 1)  #   128 128 8    ->  256 256 3
 
-        self.conv1 = nn.Conv2d(        3, p.NDF *   1, 4, 2, 1) # 256 -> 128
-        self.conv2 = nn.Conv2d(p.NDF *   1, p.NDF *   2, 4, 2, 1) # 256 -> 128
-        self.conv3 = nn.Conv2d(p.NDF *   2, p.NDF *   4, 4, 2, 1) # 256 -> 128
-        self.conv4 = nn.Conv2d(p.NDF *   4, p.NDF *   8, 4, 2, 1) # 256 -> 128
-        self.conv5 = nn.Conv2d(p.NDF *   8, p.NDF *  16, 4, 2, 1) # 256 -> 128
-        self.conv6 = nn.Conv2d(p.NDF *  16, p.NDF *  32, 4, 2, 1) # 256 -> 128
-        self.conv7 = nn.Conv2d(p.NDF *  32,         1, 4, 1, 0) # 256 -> 128
+        self.conv1 = nn.Conv2d(        3, NDF *   1, 4, 2, 1) # 256 -> 128
+        self.conv2 = nn.Conv2d(NDF *   1, NDF *   2, 4, 2, 1) # 256 -> 128
+        self.conv3 = nn.Conv2d(NDF *   2, NDF *   4, 4, 2, 1) # 256 -> 128
+        self.conv4 = nn.Conv2d(NDF *   4, NDF *   8, 4, 2, 1) # 256 -> 128
+        self.conv5 = nn.Conv2d(NDF *   8, NDF *  16, 4, 2, 1) # 256 -> 128
+        self.conv6 = nn.Conv2d(NDF *  16, NDF *  32, 4, 2, 1) # 256 -> 128
+        self.conv7 = nn.Conv2d(NDF *  32,         1, 4, 1, 0) # 256 -> 128
 
     def inverse_leaky_relu(self, x, val):
     

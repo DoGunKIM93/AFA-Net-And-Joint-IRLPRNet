@@ -28,3 +28,9 @@ class Config():
             cls.datasetConfigDict = yaml.full_load(yamlFile)
             cls.datasetConfig = munchify(cls.datasetConfigDict)
 
+
+def readConfigs():
+    Config.readParam("param.yaml")
+    Config.readDatasetConfig("datasetConfig.yaml")
+
+readConfigs()

@@ -1,7 +1,7 @@
 '''
 module.py
 '''
-version = '1.12.200708'
+version = '1.13.200820'
 
 #from Python
 import time
@@ -23,7 +23,7 @@ from torch.optim.optimizer import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 
 #from this project
-import param as p
+from backbone.config import Config
 import backbone.vision as vision
 
 

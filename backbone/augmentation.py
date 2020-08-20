@@ -1,7 +1,7 @@
 '''
 augmentation.py
 '''
-version = '1.11.200806'
+version = '1.12.200820'
 
 
 #FROM Python LIBRARY

@@ -1,7 +1,7 @@
 '''
 edit.py
 '''
-editversion = "1.13.200729"
+editversion = "1.14.200820"
 
 
 #FROM Python LIBRARY
@@ -31,7 +31,6 @@ from pytorch_msssim import MS_SSIM
 #from this project
 import backbone.vision as vision
 import model
-import param as p
 import backbone.utils as utils
 import backbone.structure as structure
 import backbone.module as module
@@ -68,17 +67,17 @@ class ModelList(structure.ModelListBase):
 
         
 
-        self.NET = model.VESPCN()
-        self.NET_optimizer = torch.optim.Adam(self.NET.parameters(), lr=0.0003)
+        self.NET = model.VESPCN(4, Config.param.data.dataLoader.train.sequenceLength)
+        self.NET_optimizer = torch.optim.Adam(self.NET.parameters(), lr=0.0001)
 
 
-        #self.initApexAMP() #TODO: migration to Pytorch Native AMP
+        self.initApexAMP() #TODO: migration to Pytorch Native AMP
         self.initDataparallel()
 
 
 def trainStep(epoch, modelList, LRImages, HRImages):
 
-
+    SEQUENCE_LENGTH = Config.param.data.dataLoader.train.sequenceLength
 
     # loss
     mse_criterion = nn.MSELoss()
@@ -92,7 +91,7 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     SRImages = modelList.NET(LRImages)
 
 
-    loss = mse_criterion(SRImages, HRImages[:,p.sequenceLength//2,:,:,:])  
+    loss = mse_criterion(SRImages, HRImages[:,SEQUENCE_LENGTH//2,:,:,:])  
 
 
     # Update All model weights
@@ -115,62 +114,34 @@ def trainStep(epoch, modelList, LRImages, HRImages):
 
 
 def validationStep(epoch, modelList, LRImages, HRImages):
-   ############# Inference Example code (with GT)#############
+
+    SEQUENCE_LENGTH = Config.param.data.dataLoader.train.sequenceLength
+
+    ############# Inference Example code (with GT)#############
     # loss
     mse_criterion = nn.MSELoss()
-    cpl_criterion = module.CharbonnierLoss(eps=1e-3)
- 
-    # model
-    modelList.Entire.eval()
 
-    ####################################################### Preproc. #######################################################
-    # SR Processing
-    with torch.no_grad():
-        SRImages   = modelList.Entire(LRImages)
-    ####################################################### Ensemble. #######################################################
-    #SRImages_Ensembled = modelList.Ensemble(SRImages_Cat)
-    #loss = mse_criterion(SRImages_Ensembled, HRImages)
-    if SRImages.shape != HRImages.shape:
-        print(f"edit.py :: ERROR : \"SRImages.shape\" : {SRImages.shape} doesn't matach \"HRImages.shape\" : {HRImages.shape}")
-        return
-    else:
-        loss = mse_criterion(SRImages, HRImages)
-        # return List of Result Images (also you can add some intermediate results).
-        #SRImagesList = [SRImages_Entire,SRImages_Face,SRImages_Ensembled] 
-        SRImagesList = [SRImages]
+    modelList.NET.eval()
 
-    return loss, SRImagesList
 
-    ''' inferenceStep
-    ############# Inference Example code (without GT)#############
-    # model
-    modelList.Entire.eval()
-    modelList.Face.eval()
+    # batch size
+    batchSize = LRImages.size(0)
 
-    ####################################################### Preproc. #######################################################
-    # SR Processing
-    with torch.no_grad():
-        print("LRImages.shape : ", LRImages.shape)
-        SRImages_Entire = modelList.Entire(LRImages)
-        SRImages_Face = modelList.Face(LRImages)
-        print("SRImages_Entire.shape : ", SRImages_Entire.shape)
-        print("SRImages_Face.shape : ", SRImages_Face.shape)
-    ####################################################### Blending. #######################################################
-    if p.blendingMode != None:
-        destination = SRImages_Entire
-        source = SRImages_Face
-        
-        ## test를 위한 roi (Detection 추가하면 roi 매핑 부분 수정 예정)
-        roi = (1300, 700, 400, 400, 400, 900, 500, 300, 300, 400, 300, 500)
-        blended_img = vision.BlendingMethod(p.blendingMode, source, destination, roi)
-        SRImages_Ensembled = blended_img
-    else:
-        SRImages_Ensembled = SRImages_Entire
+    SRImages = modelList.NET(LRImages)
 
+
+    loss = mse_criterion(SRImages, HRImages[:,SEQUENCE_LENGTH//2,:,:,:])  
+
+    # return losses
+    lossList = [loss]
+    #lossList = [srAdversarialLoss, hrAdversarialLoss, loss_disc, loss_pixelwise, loss_adversarial, loss]
     # return List of Result Images (also you can add some intermediate results).
-    SRImagesList = [SRImages_Ensembled] 
+    #SRImagesList = [gaussianSprayKernel,bImage1,bImage2,blendedImages] 
+    SRImagesList = [SRImages]
+
     
-    '''
+    return lossList, SRImagesList
+
 def inferenceStep(modelList, LRImages):
     # model
     modelList.Entire.eval()

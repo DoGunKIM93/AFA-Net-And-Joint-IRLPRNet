@@ -1,7 +1,7 @@
 '''
 vision.py
 '''
-version = '1.73.200706'
+version = '1.74.200820'
 
 #from Python
 import time
@@ -28,10 +28,10 @@ import cv2
 from PIL import Image, ImageDraw
 
 #from this project
-import param as p
+from backbone.config import Config
 import backbone.utils as utils
 
-eps = 1e-6 if p.mixedPrecision == False else 1e-4
+eps = 1e-6 if Config.param.train.method.mixedPrecision == False else 1e-4
 
 def Laplacian(input,ksize):
 
@@ -482,7 +482,7 @@ def gaussianKernelSpray(height, width, kernelMinCount, kernelMaxCount, rois):
     #output = F.conv3d(input.view(input.size()[0],1,3,input.size()[2],input.size()[3]),kernel,padding = [0, int(ksize/2), int(ksize/2)]).view(input.size()[0],-1,input.size()[2],input.size()[3])
 
 
-def BlendingMethod(blending_method, source, destination, roi):
+def BlendingMethod(blending_method, source, destination, roi, colorMode):
     # 차후 불 필요한 형변환 수정 필요 (pil,cv2,pytorch tensor 사이의 형 변환)
     blending_method_list = ['simpleBlending', 'gaussianBlending', 'possionBlending']
 
@@ -522,8 +522,8 @@ def BlendingMethod(blending_method, source, destination, roi):
     elif method == "possionBlending":
         print("possionBlending mothod")
         # pytorch tensor to cv2
-        destination = utils.denorm(destination.cpu().view(destination.size(0), 1 if p.colorMode=='grayscale' else 3, destination.size(2), destination.size(3))) 
-        source = utils.denorm(source.cpu().view(source.size(0), 1 if p.colorMode=='grayscale' else 3, source.size(2), source.size(3)))
+        destination = utils.denorm(destination.cpu().view(destination.size(0), 1 if colorMode=='grayscale' else 3, destination.size(2), destination.size(3))) 
+        source = utils.denorm(source.cpu().view(source.size(0), 1 if colorMode=='grayscale' else 3, source.size(2), source.size(3)))
         
         destination_cv2 = destination.squeeze().cpu().numpy().transpose(1, 2, 0) * 255
         destination_cv2 = cv2.cvtColor(destination_cv2, cv2.COLOR_RGB2BGR).astype(np.uint8)

@@ -1,7 +1,7 @@
 '''
 data_loader.py
 '''
-version = "2.22.200814"
+version = "2.3.200820"
 
 
 #FROM Python LIBRARY
@@ -33,7 +33,6 @@ from torchvision.datasets import ImageFolder
 
 
 #FROM This Project
-import param as p
 import backbone.preprocessing
 import backbone.augmentation
 import backbone.utils as utils
@@ -278,14 +277,17 @@ class Dataset(torchDataset):
 
         self.globalFileList = None
 
+
         self._makeGlobalFileList()
         self.mapper = None
         self._makeFileListIndexer()
         #print(self.globalFileList)
-        
+
+
         self.LabelDataDictList = None
         self._makeGlobalLabelDataDictList()
         #print(self.LabelDataDictList)
+
 
         self.PILImageToTensorFunction = transforms.ToTensor()
 
@@ -929,7 +931,7 @@ class DataLoader(torchDataLoader):
                          num_workers = self.numWorkers,
                          collate_fn = self.Collater)
 
-        print(f"Data prepared : {len(self.dataset)} data")
+        print(f"    - Data prepared : {len(self.dataset)} data")
         
     
 
@@ -975,9 +977,9 @@ class DataLoader(torchDataLoader):
                                numWorkers = self.numWorkers,
                                makePreprocessedFile = self.makePreprocessedFile)
         
-        print(len(self.dataset))
+        
         for dc in self.dataset.datasetComponentObjectList:
-            print(dc.name, len(dc))
+            print(f"    - {dc.name}: {len(dc)} data")
 
 
     def __iter__(self) -> '_BaseDataLoaderIter':
@@ -1035,7 +1037,8 @@ class _MultiProcessingDataLoaderIterWithDataAugmentation(_MultiProcessingDataLoa
         shapeList = []
         tempLabelList = []
         labelMaxLShape = 0
-        for key in data:           
+        for key in data:
+            
             shapeList = list(map(lambda x:data[key][x].shape[1], range(len(data[key]))))
             if key == 'Text':
                 labelMaxLShape = max(shapeList)

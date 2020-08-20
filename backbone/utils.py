@@ -1,14 +1,14 @@
 '''
 utils.py
 '''
-version = "1.33.200721"
+version = "1.34.200820"
 
 
 #From Python
 import argparse
 import math
 import numpy as np
-#import apex.amp as amp
+import apex.amp as amp
 import os
 import subprocess
 import psutil
@@ -25,8 +25,6 @@ from torch.autograd import Variable
 
 
 #From This Project
-import param as p
-
 from backbone.config import Config
 
 
@@ -51,14 +49,6 @@ def initTensorboard(ver, subversion):
     subprocess.Popen(["tensorboard","--logdir=" + logdir,"--port=6006"])
     writer = SummaryWriter(f'{ logdir }/{ subversion }/')
 
-    # if (p.testDataset == 'REDS' or p.testDataset == 'Vid4'):
-    #     w4b = SummaryWriter(logdir + "/bicubic_X4_1Frames/")
-    #     w4EDVR = SummaryWriter(logdir + "/EDVR_X4_7Frames/")
-    # elif (p.testDataset == 'Set5'):
-    #     w2 = SummaryWriter(logdir + "/bicubic_X2/")
-    #     w3 = SummaryWriter(logdir + "/bicubic_X3/")
-    #     w4 = SummaryWriter(logdir + "/bicubic_X4/")
-    #     w8 = SummaryWriter(logdir + "/bicubic_X8/")
 
     return writer
 
@@ -158,13 +148,26 @@ def loadModels(modelList, version, subversion, loadModelNum, isTest):
             # LOAD OPTIMIZER
             if optimizer is not None:
                 try:
+                    lrList = [param_group['lr'] for param_group in optimizer.param_groups]
+                    assert [lrList[0]] * len(lrList) == lrList, 'utils.py :: Error, optimizer has different values of learning rates. Tell me... I\'ll fix it.'
+                    lr = lrList[0]
+
                     optimizer.load_state_dict(checkpoint['optim'])
-                    for param_group in optimizer.param_groups: param_group['lr'] = p.learningRate
+                    for param_group in optimizer.param_groups: param_group['lr'] = lr
                 except:
                     optimDict = optimizer.state_dict()
                     preTrainedDict = {k: v for k, v in checkpoint.items() if k in optimDict}
 
                     optimDict.update(preTrainedDict)
+
+
+                    if scheduler is not None:
+                        #scheduler.load_state_dict(checkpoint['scheduler'])
+                        scheduler.last_epoch = startEpoch
+                        scheduler.max_lr = lr
+                        #scheduler.total_steps = p.schedulerPeriod
+
+
 
             if len([attr for attr in vars(modelList) if attr == (mdlStr+"_pretrained")]) == 0:
             # LOAD VARs..
@@ -184,16 +187,11 @@ def loadModels(modelList, version, subversion, loadModelNum, isTest):
                     pass#bestPSNR = 0
             
             
-            if scheduler is not None:
-                #scheduler.load_state_dict(checkpoint['scheduler'])
-                scheduler.last_epoch = startEpoch
-                scheduler.max_lr = p.learningRate
-                scheduler.total_steps = p.schedulerPeriod
+
 
             try:
-                if p.mixedPrecision is True:
-                    pass
-                    #amp.load_state_dict(checkpoint['amp'])
+                if Config.param.train.method.mixedPrecision is True:
+                    amp.load_state_dict(checkpoint['amp'])
             except:
                 pass
 
@@ -227,14 +225,13 @@ def saveModels(modelList, version, subversion, epoch, lastLoss, bestPSNR):
             saveData.update({'epoch': epoch + 1})
             saveData.update({'lastLoss': lastLoss})
             saveData.update({'bestPSNR': bestPSNR})
-            if p.mixedPrecision is True:
-                pass
-                #saveData.update({'amp': amp.state_dict()})
+            if Config.param.train.method.mixedPrecision is True:
+                saveData.update({'amp': amp.state_dict()})
             saveData.update({'epoch': epoch + 1})
 
 
             torch.save(saveData, './data/'+version+'/model/'+subversion+'/' + mdlStr + '.pth')
-            if epoch % p.archiveStep == 0:
+            if epoch % Config.param.train.step.archiveStep == 0:
                 torch.save(saveData, './data/'+version+'/model/'+subversion+'/'+ mdlStr +'-%d.pth' % (epoch + 1))
 
 def saveTensorToNPY(tnsr, fileName):
@@ -267,9 +264,9 @@ def to_var(x):
         x = x.cuda()
     return Variable(x)
 
-def denorm(x):
+def denorm(x, valueRangeType):
     out = x
-    if p.valueRangeType == '-1~1':
+    if valueRangeType == '-1~1':
         out = (x + 1) / 2
     
     return out.clamp(0, 1)
@@ -303,12 +300,11 @@ def backproagateAndWeightUpdate(modelList, loss, modelNames = None):
         modelObj.zero_grad()
 
     #backprop and calculate weight diff
-    if p.mixedPrecision == False:
+    if Config.param.train.method.mixedPrecision == False:
         loss.backward()
     else:
-        pass
-        #with amp.scale_loss(loss, optimizers) as scaled_loss:
-            #scaled_loss.backward()
+        with amp.scale_loss(loss, optimizers) as scaled_loss:
+            scaled_loss.backward()
 
     #weight update
     for optimizer in optimizers:
@@ -327,7 +323,7 @@ def backproagateAndWeightUpdate(modelList, loss, modelNames = None):
 ######################################################################################################################################################################## 
 
 
-def calculateImagePSNR(a, b):
+def calculateImagePSNR(a, b, valueRangeType, colorMode):
 
     pred = a.cpu().data[0].numpy().astype(np.float32)
     gt = b.cpu().data[0].numpy().astype(np.float32)
@@ -335,11 +331,11 @@ def calculateImagePSNR(a, b):
     np.nan_to_num(pred, copy=False)
     np.nan_to_num(gt, copy=False)
 
-    if p.valueRangeType == '-1~1':
+    if valueRangeType == '-1~1':
         pred = (pred + 1)/2
         gt = (gt + 1)/2
 
-    if p.colorMode == 'grayscale':
+    if colorMode == 'grayscale':
         pred = np.round(pred * 219.)
         pred[pred < 0] = 0
         pred[pred > 219.] = 219.
@@ -349,7 +345,7 @@ def calculateImagePSNR(a, b):
         gt[gt < 0] = 0
         gt[gt > 219.] = 219.
         gt = gt[0,:,:] + 16
-    elif p.colorMode == 'color':
+    elif colorMode == 'color':
         pred = 16 + 65.481*pred[0:1,:,:] + 128.553*pred[1:2,:,:] + 24.966*pred[2:3,:,:]
         pred[pred < 16.] = 16.
         pred[pred > 235.] = 235.
@@ -393,9 +389,6 @@ def initArgParser():
     return parser, args
     
 
-def readConfigs():
-    Config.readParam("param.yaml")
-    Config.readDatasetConfig("datasetConfig.yaml")
 
 
 def printirene():

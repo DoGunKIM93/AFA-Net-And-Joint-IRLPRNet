@@ -1,7 +1,7 @@
 '''
 main.py
 '''
-mainversion = "1.61.200710"
+mainversion = "1.62.200820"
 
 
 #FROM Python LIBRARY
@@ -22,7 +22,7 @@ from torchvision.utils import save_image
 import data_loader as dl
 import backbone.vision as vision
 import model
-import param as p
+import param_old as p
 import backbone.utils as utils
 import backbone.module as module
 import backbone.structure as structure
