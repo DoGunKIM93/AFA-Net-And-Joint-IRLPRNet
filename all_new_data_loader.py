@@ -278,16 +278,14 @@ class Dataset(torchDataset):
 
         self.globalFileList = None
 
-        '''
-        self._makeGlobalFileList(self.shuffle)
-        self.LabelDataDictList = None
-        self.makeGlobalLabelDataDictList()
-        '''
-
         self._makeGlobalFileList()
         self.mapper = None
         self._makeFileListIndexer()
         #print(self.globalFileList)
+        
+        self.LabelDataDictList = None
+        self._makeGlobalLabelDataDictList()
+        #print(self.LabelDataDictList)
 
         self.PILImageToTensorFunction = transforms.ToTensor()
 
@@ -297,7 +295,7 @@ class Dataset(torchDataset):
         self.globalFileList = gFL
 
 
-    def makeLabelDataDict(self, labelPath):
+    def _makeLabelDataDict(self, labelPath):
         '''
         Arguments:
             labelPath: (string) text file path of images and annotations
@@ -344,7 +342,7 @@ class Dataset(torchDataset):
         return LabelDict
 
 
-    def makeGlobalLabelDataDictList(self):
+    def _makeGlobalLabelDataDictList(self):
         '''
         # Commponent Count 후 각 Commponent에 접근의 Label에 접근
         # output : list [dict, dict, ..., dict] # dict{filepath : values}
@@ -356,7 +354,7 @@ class Dataset(torchDataset):
         componentList = len(self.datasetComponentObjectList)
         
         LabelDataPathList = list(map(lambda x:Config.param.data.path.datasetPath + self.globalFileList[x][firstIndex]['labelFilePath'], range(componentList)))
-        LabelDataDictList = list(map(lambda x:self.makeLabelDataDict(x), LabelDataPathList))
+        LabelDataDictList = list(map(lambda x:self._makeLabelDataDict(x), LabelDataPathList))
         
         self.LabelDataDictList = LabelDataDictList
 
@@ -494,7 +492,7 @@ class Dataset(torchDataset):
         
         self.mapper = mapper
         #print(self.mapper)
-        #print("pasdasd" + str(len(self.mapper)))
+        #print("str(len(self.mapper))" + str(len(self.mapper)))
 
                     
     def _popItemInGlobalFileListByIndex(self, index):
@@ -719,7 +717,7 @@ class Dataset(torchDataset):
 
 
     
-    def _readItem(self, Type, FilePath, preProc):
+    def _readItem(self, Type, FilePath, index, preProc):
         # data information defined in config
         if FilePath is not None:
 
@@ -804,8 +802,7 @@ class Dataset(torchDataset):
 
 
         for Type, FilePath in zip(typeList, filePathList):
-            #rstDict[Type['dataName']] = self._readItem(Type, FilePath, index, preProc)
-            rstDict[Type['dataName']] = self._readItem(Type, FilePath, preProc)
+            rstDict[Type['dataName']] = self._readItem(Type, FilePath, index, preProc)
 
 
 
@@ -816,16 +813,6 @@ class Dataset(torchDataset):
         # Data Augmentation
         ###################################################################################--------------------------------------------------------------
         #print(len((list(self._dataAugmentation( x , self.augmentation ) for x in list(zip(rstDict[dataType['dataName']], rstDict[labelType['dataName']]))))[0]))
-        '''
-        rstDict[dataType['dataName']], rstDict[labelType['dataName']] = self._dataAugmentation( [rstDict[dataType['dataName']], rstDict[labelType['dataName']]], self.augmentation )
-        
-        rstDict[dataType['dataName']] = self._setTensorValueRange(rstDict[dataType['dataName']], self.valueRangeType)
-
-        if labelType['dataType'] != 'Text':
-            rstDict[labelType['dataName']] = self._setTensorValueRange(rstDict[labelType['dataName']], self.valueRangeType) 
-            rstDict[labelType['dataName']] = self._setTensorValueRange(rstDict[labelType['dataName']], self.valueRangeType)
-            rstDict[labelType['dataName']] = self._setTensorValueRange(rstDict[labelType['dataName']], self.valueRangeType)         
-        '''
         
         if isinstance(rstDict[dataType['dataName']], list):
             rstDict[dataType['dataName']], rstDict[labelType['dataName']] =  list(zip(*list(self._dataAugmentation( x , self.augmentation ) for x in list(zip(rstDict[dataType['dataName']], rstDict[labelType['dataName']])))))
@@ -1048,8 +1035,7 @@ class _MultiProcessingDataLoaderIterWithDataAugmentation(_MultiProcessingDataLoa
         shapeList = []
         tempLabelList = []
         labelMaxLShape = 0
-        for key in data:
-            '''
+        for key in data:           
             shapeList = list(map(lambda x:data[key][x].shape[1], range(len(data[key]))))
             if key == 'Text':
                 labelMaxLShape = max(shapeList)
@@ -1057,7 +1043,7 @@ class _MultiProcessingDataLoaderIterWithDataAugmentation(_MultiProcessingDataLoa
                 for i in range(len(data[key])):
                     tempLabelList[i][:, 0:data[key][i].shape[1], :] = data[key][i]
                 data[key] = tempLabelList
-            '''
+            
         #a = time.perf_counter()
         AugedTensor = {}
         if isinstance(data[list(data.keys())[0]][0], list):
