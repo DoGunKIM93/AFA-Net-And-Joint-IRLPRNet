@@ -1,3 +1,9 @@
+<center><img src='airlogo.png' width=600></center>
+
+
+
+
+
 # 사용법
 
 1. model.py에 모델을 추가

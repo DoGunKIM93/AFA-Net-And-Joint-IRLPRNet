@@ -346,7 +346,7 @@ else :
 
         sr_images = utils.denorm(SRImages.cpu().view(SRImages.size(0), 1 if Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.train.datasetComponent[0]]['colorMode'] == 'grayscale' else 3, SRImages.size(2), SRImages.size(3)), Config.param.data.dataLoader.train.valueRangeType)
 
-        cated_images = torch.cat((F.interpolate(lr_images.data, size=(HRImages.size(2),HRImages.size(3) * copyCoff), mode='bicubic'),
+        cated_images = torch.cat((F.interpolate(lr_images.data, size=(HRImages.size(2), HRImages.size(3) * copyCoff), mode='bicubic'),
                             sr_images.data,
                             hr_images.data
                             ),3)    
