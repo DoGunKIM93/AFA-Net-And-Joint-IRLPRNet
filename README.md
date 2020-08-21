@@ -1,4 +1,4 @@
-<center><img src='airlogo.png' width=600></center>
+<p align="center"><img src='airlogo.png' width=600></p>
 
 
 
