@@ -1,7 +1,7 @@
 '''
 edit.py
 '''
-editversion = "1.14.200820"
+editversion = "1.15.200825"
 
 
 #FROM Python LIBRARY
@@ -71,29 +71,40 @@ class ModelList(structure.ModelListBase):
         # Super Resolution Models
         # SISR
         #  1. ESPCN
+        '''
         self.ESPCN = model.ESPCN()
         self.ESPCN_pretrained = "ESPCN-General.pth"   # FaceModel: "ESPCN-Face.pth"
-        
+        # Param
+        # valueRangeType = '-1~1'
+        # NGF = 32
+        # NDF = 32
+        '''
 
         #  2. EDVR(S)
+        '''
         self.EDVR = model.EDVR(nf=128, nframes=1, groups=1, front_RBs=5, back_RBs=40)
         self.EDVR_pretrained = "EDVR-General.pth"  # FaceModel: "EDVR-Face.pth"
         self.EDVR_optimizer = torch.optim.Adam(self.EDVR.parameters(), lr=p.learningRate)
-
+        # Param
+        # valueRangeType = '0~1'
+        # NGF = 64
+        # NDF = 64
+        '''
 
         #  3. SPSR
+        '''
         self.netG = networks.define_G()
-        self.netG_pretrained = "netG-Face.pth"
+        self.netG_pretrained = "netG-General.pth"   # FaceModel: "netG-Face.pth"
         self.netG_optimizer = torch.optim.Adam(self.netG.parameters(), lr=p.learningRate, weight_decay=0, betas=(0.9, 0.999))
         self.netG_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.netG_optimizer, [5000,100000,200000,300000], 0.5)
 
         self.netD = networks.define_D()
-        self.netD_pretrained = "netD-Face.pth"
+        self.netD_pretrained = "netD-General.pth"   # FaceModel: "netD-Face.pth"
         self.netD_optimizer = torch.optim.Adam(self.netD.parameters(), lr=p.learningRate, weight_decay=0, betas=(0.9, 0.999))
         self.netD_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.netD_optimizer, [5000,100000,200000,300000], 0.5)
 
         self.netDgrad = networks.define_D_grad()
-        self.netDgrad_pretrained = "netDgrad-Face.pth"
+        self.netDgrad_pretrained = "netDgrad-General.pth"   # FaceModel: "netDgrad-Face.pth"
         self.netDgrad_optimizer = torch.optim.Adam(self.netD.parameters(), lr=p.learningRate, weight_decay=0, betas=(0.9, 0.999))
         self.netDgrad_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.netDgrad_optimizer, [5000,100000,200000,300000], 0.5)
 
@@ -102,7 +113,7 @@ class ModelList(structure.ModelListBase):
 
         self.Get_gradient = model.Get_gradient()
         self.Get_gradient_nopadding = model.Get_gradient_nopadding()
-        
+        '''
 
 
         # MISR
@@ -229,11 +240,9 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     else:
         cri_pix_branch = None
 
-
     log_dict = OrderedDict()
     get_grad = modelList.Get_gradient
     get_grad_nopadding = modelList.Get_gradient_nopadding
-
 
 
     # Optimizing
@@ -277,7 +286,6 @@ def trainStep(epoch, modelList, LRImages, HRImages):
         l_g_total += l_g_gan
 
         # grad G gan + cls loss
-        
         pred_g_fake_grad = modelList.netDgrad(fake_H_grad)
         pred_d_real_grad = modelList.netDgrad(var_ref_grad).detach()
 
@@ -285,10 +293,8 @@ def trainStep(epoch, modelList, LRImages, HRImages):
                                             cri_grad_gan(pred_g_fake_grad - torch.mean(pred_d_real_grad), True)) /2
         l_g_total += l_g_gan_grad
 
-
         l_g_total.backward()
         modelList.netG_optimizer.step()
-        # modelList.netG_scheduler.step()
 
 
     # D
@@ -316,11 +322,9 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     l_d_total.backward()
 
     modelList.netD_optimizer.step()
-    # modelList.netD_scheduler.step()
 
     
     # D_grad
-    
     pred_d_real_grad = modelList.netDgrad(var_ref_grad)
     pred_d_fake_grad = modelList.netDgrad(fake_H_grad.detach())  # detach to avoid BP to G
     
@@ -333,8 +337,6 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     l_d_total_grad.backward()
 
     modelList.netDgrad_optimizer.step()
-    # modelList.netDgrad_scheduler.step()
-
 
     SRImages = fake_H
 
@@ -447,7 +449,7 @@ def inferenceStep(modelList, LRImages):
         SRImages_Ensembled = SRImages_Entire
 
     # return List of Result Images (also you can add some intermediate results).
-    SRImagesList = [SRImages_Ensembled] 
+    SRImagesList = [SRImages_SPSR] 
     
     return SRImagesList
 
