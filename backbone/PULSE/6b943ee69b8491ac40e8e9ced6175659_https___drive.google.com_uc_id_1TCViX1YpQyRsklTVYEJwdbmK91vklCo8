@@ -1,0 +1,23 @@
+<script>
+			function getIP(){return '172.16.2.44';}
+			function getURL(){return 'drive.google.com/uc';}
+			function getHost(){return 'drive.google.com/';}
+			function getCategory(){return '웹하드';}
+			function getPolicyName(){return '기본정책';}
+			function getUserID(){return '172.16.2.0';}
+			</script>
+<html><head><meta http-equiv=Content-Type content="text/html; charset=utf-8"></head><body bgcolor=#ffffff><br><br><br><br>
+<CENTER><font face="굴림" size=4 color=#000000><b>
+<hr noshade size=3 color="#FA8258" width="100%">
+<FONT color="#DF013A" size=6>회사 정보보호 정책에 따라 비업무 사이트 접속을 제한합니다.</font><br><br>
+</b>
+<br><b><FONT size=4>자세한 사항은 회사 정보보호 담당자에게 문의 하십시오.</font></b>
+<hr noshade size=3 color="#FA8258" width="100%">
+<br><br><FONT size=3>사용자IP : </font><script>document.write (getIP());</script>
+<br><FONT size=3>차단 카테고리 : </font><script>document.write (getCategory());</script> </b>
+<br><FONT size=3>접속 경로 : <script>document.write (getURL());</script>
+<br><br><br><br><br><br>
+<FONT size=4><b>사이트 차단 예외(접속허용) 요청 방법</b><br><br>
+<FONT size=3>사용자 ▶ 부서 정보보호책임자(부서장)승인 ▶ 회사 정보보호책임자 승인 ▶ 운영조직 적용(완료)</font><br><br><br><br>
+</BODY>
+</html> 
