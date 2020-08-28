@@ -11,11 +11,11 @@ import math
 import numpy as np
 
 from PIL import Image as PILImage
+from PIL import ImageOps
 from PIL import PngImagePlugin
 from PIL.PngImagePlugin import PngImageFile
 from PIL.JpegImagePlugin import JpegImageFile
 from typing import List, Dict, Tuple, Union, Optional
-
 
 #FROM PyTorch
 import torch
@@ -115,9 +115,12 @@ def centerCrop(xList: list, outputLabelHeight, outputLabelWidth):
 
     * 레이블 없을 시 데이터만 주어진 인자대로 센터 크롭
     '''
-    #print(xList)
     xData = xList[0]
     xLabel = xList[1]
+
+    #print("xD: ", len(xData))
+    #print("xL: ", len(xLabel))
+
 
     if xLabel is not None:
 
@@ -140,7 +143,66 @@ def centerCrop(xList: list, outputLabelHeight, outputLabelWidth):
 
 
 
+def randomCrop(xList: list, outputLabelHeight, outputLabelWidth):
+    xData = xList[0]
+    xLabel = xList[1]
 
+    if xLabel is not None:
+
+        _, dH, dW = _getSize(xData)
+        _, lH, lW = _getSize(xLabel)
+
+        ratio = dH / lH
+
+        outputDataHeight = math.ceil(ratio * outputLabelHeight)
+        outputDataWidth = math.ceil(ratio * outputLabelWidth)
+
+        xData, xLabel = _randomCrop([xData, xLabel], outputDataHeight, outputDataWidth)
+
+        return [xData, xLabel]
+
+    else:
+
+        return [_randomCrop([xData], outputLabelHeight, outputLabelWidth), None]
+
+
+
+def flip(xList: list):
+    xData = xList[0]
+    xLabel = xList[1]
+
+    h = random.randint(0,1)
+    v = random.randint(0,1)
+
+    if xLabel is not None:
+
+        xData = _flip(xData, h, v)
+        xLabel = _flip(xLabel, h, v)
+
+        return [xData, xLabel]
+
+    else:
+
+        return [_flip(xData, h, v), None]
+
+
+
+def rotate(xList: list):
+    xData = xList[0]
+    xLabel = xList[1]
+
+    a = random.randint(0,3)
+
+    if xLabel is not None:
+
+        xData = _rotate(xData, a)
+        xLabel = _rotate(xLabel, a)
+
+        return [xData, xLabel]
+
+    else:
+
+        return [_rotate(xData, a), None]
 
 
 
@@ -201,7 +263,7 @@ def _toTensor(x) -> torch.Tensor:
 
 
 
-
+# Crop
 def _crop(x, top: int, left: int, height: int, width: int):
 
     if _getType(x) in ['PIL']: #PIL & Tensor Implemenataion
@@ -222,6 +284,63 @@ def _centerCrop(x, height, width):
     x = _crop(x, (cH - height) // 2, (cW - width) // 2, height, width)
     return x
 
+
+def _randomCrop(x, height, width):
+    _, cH, cW = _getSize(x[0])
+    randH = random.randint(0,cH - height)
+    randW = random.randint(0,cW - width)
+    x[0] = _crop(x[0], randH, randW, height, width)
+
+    if len(x) is 2:
+        _, cH1, cW1 = _getSize(x[1])
+        scale = math.ceil(cH1 / cH)
+        x[1] = _crop(x[1], randH*scale, randW*scale, height*scale, width*scale)
+
+    return x
+
+
+
+def _flip(x, horiz, verti):
+
+    if _getType(x) in ['PIL']: #PIL & Tensor Implemenataion
+        if horiz is 1:
+            x = ImageOps.flip(x)
+
+        if verti is 1:
+            x = ImageOps.mirror(x)
+
+    elif _getType(x) in ['TENSOR']: #PIL & Tensor Implemenataion
+
+        if horiz is 1:
+            x = torch.flip(x,(3,))
+        if verti is 1:
+            x = torch.flip(x,(2,))
+
+    elif _getType(x) is 'NPARRAY': #Tensor Implementation
+        if horiz is 1: 
+            x2 = np.flip(x,1)
+            x = x2.copy()
+
+        if verti is 1:
+            x2 = np.flip(x,0)
+            x = x2.copy()
+
+    return x
+
+
+def _rotate(x, angle):
+
+    if _getType(x) in ['PIL']: #PIL & Tensor Implemenataion
+        x = x.rotate(angle*90)
+
+    elif _getType(x) in ['TENSOR']: #PIL & Tensor Implemenataion
+        x = torch.rot90(x,angle,(2,3))
+
+    elif _getType(x) is 'NPARRAY': #Tensor Implementation
+        x2 = np.rot90(x,angle,(1,2))
+        x = x2.copy()
+
+    return x
 
 def _resize(x, height, width, interpolation=2):
     '''
