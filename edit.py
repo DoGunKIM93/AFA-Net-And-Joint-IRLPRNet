@@ -10,6 +10,7 @@ import math
 import numpy as np
 import psutil
 import random
+from collections import OrderedDict
 
 #FROM PyTorch
 import torch
@@ -24,7 +25,7 @@ from torchvision.utils import save_image
 
 
 #from pytorch_msssim (github/jorge_pessoa)
-from pytorch_msssim import MS_SSIM
+#from pytorch_msssim import MS_SSIM
 
 
 
@@ -36,16 +37,20 @@ import backbone.structure as structure
 import backbone.module as module
 from backbone.utils import loadModels, saveModels, backproagateAndWeightUpdate        
 from backbone.config import Config
+from backbone.SPSR import networks
+from backbone.SPSR import architecture as arch
+from backbone.SPSR.loss import GANLoss, GradientPenaltyLoss
 
-from backbone.PULSE.stylegan import G_synthesis,G_mapping
-from backbone.PULSE.SphericalOptimizer import SphericalOptimizer
-from backbone.PULSE.loss import LossBuilder
+
+#from backbone.PULSE.stylegan import G_synthesis,G_mapping
+#from backbone.PULSE.SphericalOptimizer import SphericalOptimizer
+#from backbone.PULSE.loss import LossBuilder
 
 
 ################ V E R S I O N ################
 # VERSION
-version = '32-ANDLTest'
-subversion = '0-Test'
+version = '00-test'
+subversion = '05-Test'
 ###############################################
 
 
@@ -84,7 +89,7 @@ class ModelList(structure.ModelListBase):
         '''
         self.EDVR = model.EDVR(nf=128, nframes=1, groups=1, front_RBs=5, back_RBs=40)
         self.EDVR_pretrained = "EDVR-General.pth"  # FaceModel: "EDVR-Face.pth"
-        self.EDVR_optimizer = torch.optim.Adam(self.EDVR.parameters(), lr=p.learningRate)
+        self.EDVR_optimizer = torch.optim.Adam(self.EDVR.parameters(), lr=0.0001)
         # Param
         # valueRangeType = '0~1'
         # NGF = 64
@@ -92,20 +97,19 @@ class ModelList(structure.ModelListBase):
         '''
 
         #  3. SPSR
-        '''
         self.netG = networks.define_G()
         self.netG_pretrained = "netG-General.pth"   # FaceModel: "netG-Face.pth"
-        self.netG_optimizer = torch.optim.Adam(self.netG.parameters(), lr=p.learningRate, weight_decay=0, betas=(0.9, 0.999))
+        self.netG_optimizer = torch.optim.Adam(self.netG.parameters(), lr=Config.paramDict['train']['step']['learningRate'], weight_decay=0, betas=(0.9, 0.999))
         self.netG_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.netG_optimizer, [5000,100000,200000,300000], 0.5)
 
         self.netD = networks.define_D()
         self.netD_pretrained = "netD-General.pth"   # FaceModel: "netD-Face.pth"
-        self.netD_optimizer = torch.optim.Adam(self.netD.parameters(), lr=p.learningRate, weight_decay=0, betas=(0.9, 0.999))
+        self.netD_optimizer = torch.optim.Adam(self.netD.parameters(), lr=Config.paramDict['train']['step']['learningRate'], weight_decay=0, betas=(0.9, 0.999))
         self.netD_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.netD_optimizer, [5000,100000,200000,300000], 0.5)
 
         self.netDgrad = networks.define_D_grad()
         self.netDgrad_pretrained = "netDgrad-General.pth"   # FaceModel: "netDgrad-Face.pth"
-        self.netDgrad_optimizer = torch.optim.Adam(self.netD.parameters(), lr=p.learningRate, weight_decay=0, betas=(0.9, 0.999))
+        self.netDgrad_optimizer = torch.optim.Adam(self.netD.parameters(), lr=Config.paramDict['train']['step']['learningRate'], weight_decay=0, betas=(0.9, 0.999))
         self.netDgrad_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.netDgrad_optimizer, [5000,100000,200000,300000], 0.5)
 
         self.VGG_FE = arch.VGGFeatureExtractor(feature_layer=34, use_bn=False, use_input_norm=True)
@@ -113,7 +117,6 @@ class ModelList(structure.ModelListBase):
 
         self.Get_gradient = model.Get_gradient()
         self.Get_gradient_nopadding = model.Get_gradient_nopadding()
-        '''
 
 
         # MISR
@@ -148,7 +151,6 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     '''
 
     # 3. SPSR
-    '''
     l_d_total_grad = 0
     l_g_total = 0
 
@@ -333,7 +335,6 @@ def trainStep(epoch, modelList, LRImages, HRImages):
 
     l_d_total_grad = (l_d_real_grad + l_d_fake_grad) / 2
 
-
     l_d_total_grad.backward()
 
     modelList.netDgrad_optimizer.step()
@@ -343,7 +344,7 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     l_g_total = torch.as_tensor(l_g_total)
     l_d_total = torch.as_tensor(l_d_total)
     l_d_total_grad = torch.as_tensor(l_d_total_grad)
-    '''
+
 
     # Update All model weights
     # if modelNames = None, this function updates all trainable model.
@@ -356,8 +357,9 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     # lossList = [srAdversarialLoss, hrAdversarialLoss, loss_disc, loss_pixelwise, loss_adversarial, loss]
     # return List of Result Images (also you can add some intermediate results).
     # SRImagesList = [gaussianSprayKernel,bImage1,bImage2,blendedImages] 
-    
-    lossList = [loss]
+
+
+    lossList = [l_g_total, l_d_total, l_d_total_grad]
     SRImagesList = [SRImages]
     
     return lossList, SRImagesList
@@ -379,12 +381,11 @@ def validationStep(epoch, modelList, LRImages, HRImages):
     '''
     cpl_criterion = utils.CharbonnierLoss(eps=1e-3)
     modelList.EDVR.eval()
-    SRImages   = modelList.EDVR(LRImages)
+    SRImages = modelList.EDVR(LRImages)
     loss = cpl_criterion(SRImages, HRImages)
     '''
 
     # 3. SPSR
-    '''
     fake_H_branch = None
     SRImages = None
     grad_LR = None
@@ -398,42 +399,38 @@ def validationStep(epoch, modelList, LRImages, HRImages):
         fake_H_branch, SRImages, grad_LR = modelList.netG(LRImages)
     modelList.netG.train()
     
-    SRImages = fake_H
-
     loss = bce_criterion(SRImages, HRImages)
     loss = torch.as_tensor(loss)
-    '''
 
 
     #SEQUENCE_LENGTH = Config.param.data.dataLoader.train.sequenceLength
     #lossList = [srAdversarialLoss, hrAdversarialLoss, loss_disc, loss_pixelwise, loss_adversarial, loss]
     # return List of Result Images (also you can add some intermediate results).
     #SRImagesList = [gaussianSprayKernel,bImage1,bImage2,blendedImages] 
-    lossList = [loss]
     SRImagesList = [SRImages]
 
     
-    return lossList, SRImagesList
+    return loss, SRImagesList
 
 def inferenceStep(modelList, LRImages):
     # model
     # 1. ESPCN
-    modelList.ESPCN.eval()
+    # modelList.ESPCN.eval()
     
     # 2. EDVR(S)
     modelList.EDVR.eval()
 
     # 3. SPSR
-    modelList.netG.eval()
+    # modelList.netG.eval()
 
 
 
     ####################################################### Preproc. #######################################################
     # SR Processing
     with torch.no_grad():
-        SRImages_ESPCN = modelList.ESPCN(LRImages)
+        #SRImages_ESPCN = modelList.ESPCN(LRImages)
         SRImages_EDVR = modelList.EDVR(LRImages)
-        fake_H_branch, SRImages_SPSR, grad_LR = modelList.netG(LRImages)
+        #fake_H_branch, SRImages_SPSR, grad_LR = modelList.netG(LRImages)
     modelList.netG.train()
 
     ####################################################### Blending. #######################################################
@@ -449,7 +446,7 @@ def inferenceStep(modelList, LRImages):
         SRImages_Ensembled = SRImages_Entire
 
     # return List of Result Images (also you can add some intermediate results).
-    SRImagesList = [SRImages_SPSR] 
+    SRImagesList = [SRImages_EDVR] 
     
     return SRImagesList
 

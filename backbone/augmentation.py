@@ -167,7 +167,7 @@ def randomCrop(xList: list, outputLabelHeight, outputLabelWidth):
 
 
 
-def flip(xList: list):
+def randomFlip(xList: list):
     xData = xList[0]
     xLabel = xList[1]
 
@@ -187,7 +187,7 @@ def flip(xList: list):
 
 
 
-def rotate(xList: list):
+def randomRotate(xList: list):
     xData = xList[0]
     xLabel = xList[1]
 
@@ -303,24 +303,24 @@ def _randomCrop(x, height, width):
 def _flip(x, horiz, verti):
 
     if _getType(x) in ['PIL']: #PIL & Tensor Implemenataion
-        if horiz is 1:
-            x = ImageOps.flip(x)
 
+        if horiz is 1:
+            x = vF.hflip(x)
         if verti is 1:
-            x = ImageOps.mirror(x)
+            x = vF.vflip(x)
 
     elif _getType(x) in ['TENSOR']: #PIL & Tensor Implemenataion
 
         if horiz is 1:
-            x = torch.flip(x,(3,))
+            x = vF.hflip(x)
         if verti is 1:
-            x = torch.flip(x,(2,))
+            x = vF.vflip(x)
 
     elif _getType(x) is 'NPARRAY': #Tensor Implementation
+
         if horiz is 1: 
             x2 = np.flip(x,1)
             x = x2.copy()
-
         if verti is 1:
             x2 = np.flip(x,0)
             x = x2.copy()
@@ -331,7 +331,7 @@ def _flip(x, horiz, verti):
 def _rotate(x, angle):
 
     if _getType(x) in ['PIL']: #PIL & Tensor Implemenataion
-        x = x.rotate(angle*90)
+        x = vF.rotate(x, angle*90)
 
     elif _getType(x) in ['TENSOR']: #PIL & Tensor Implemenataion
         x = torch.rot90(x,angle,(2,3))
