@@ -6,9 +6,9 @@ import torchvision
 from torchvision.models.vgg import model_urls
 from backbone.SPSR import block as B
 from backbone.SPSR import spectral_norm as SN
+from backbone.config import Config
 
 from torchvision.utils import save_image
-import param as p
 
 class Get_gradient_nopadding(nn.Module):
     def __init__(self):

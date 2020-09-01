@@ -4,8 +4,9 @@ import torch
 import torch.nn as nn
 from torch.nn import init
 
-import param as p
 import backbone.SPSR.architecture as arch
+from backbone.config import Config
+
 logger = logging.getLogger('base')
 ####################
 # initialize
@@ -83,8 +84,11 @@ def init_weights(net, init_type='kaiming', scale=1, std=0.02):
 
 # Generator
 def define_G():
+    dataComp = Config.paramDict['data']['dataLoader']['validation']['datasetComponent']
+    scaleF = Config.paramDict['data']['datasetComponent'][dataComp[0]]['classParameter']['scaleFactor']
+
     netG = arch.SPSRNet(in_nc=3, out_nc=3, nf=64,
-        nb=23, gc=32, upscale=p.scaleFactor, norm_type=None,
+        nb=23, gc=32, upscale=scaleF[0], norm_type=None,
         act_type='leakyrelu', mode="CNA", upsample_mode='upconv')
     return netG
 
@@ -92,14 +96,31 @@ def define_G():
 
 # Discriminator
 def define_D():
-    which_model = 'discriminator_vgg_128'
+    aug = Config.paramDict['data']['dataLoader']['train']['augmentation']
+    cropSize = ""
+    for i in range(len(aug)):
+        tmp = aug[i].split("(")
+        if tmp[0] == "randomCrop":
+            tmp2 = tmp[1].split(",")
+            cropSize = tmp2[0]
+            break
+        
+    which_model = 'discriminator_vgg_' + cropSize
 
     if which_model == 'discriminator_vgg_128':
         netD = arch.Discriminator_VGG_128(in_nc=3, base_nf=64, \
             norm_type="batch", mode="CNA", act_type="leakyrelu")
-
     elif which_model == 'discriminator_vgg_96':
         netD = arch.Discriminator_VGG_96(in_nc=3, base_nf=64, \
+            norm_type="batch", mode="CNA", act_type="leakyrelu")
+    elif which_model == 'discriminator_vgg_64':
+        netD = arch.Discriminator_VGG_64(in_nc=3, base_nf=64, \
+            norm_type="batch", mode="CNA", act_type="leakyrelu")
+    elif which_model == 'discriminator_vgg_32':
+        netD = arch.Discriminator_VGG_32(in_nc=3, base_nf=64, \
+            norm_type="batch", mode="CNA", act_type="leakyrelu")
+    elif which_model == 'discriminator_vgg_16':
+        netD = arch.Discriminator_VGG_16(in_nc=3, base_nf=64, \
             norm_type="batch", mode="CNA", act_type="leakyrelu")
     elif which_model == 'discriminator_vgg_192':
         netD = arch.Discriminator_VGG_192(in_nc=3, base_nf=64, \
@@ -111,14 +132,31 @@ def define_D():
     return netD
 
 def define_D_grad():
-    which_model = "discriminator_vgg_128"
+    aug = Config.paramDict['data']['dataLoader']['train']['augmentation']
+    cropSize = ""
+    for i in range(len(aug)):
+        tmp = aug[i].split("(")
+        if tmp[0] == "randomCrop":
+            tmp2 = tmp[1].split(",")
+            cropSize = tmp2[0]
+            break
+
+    which_model = "discriminator_vgg_" + cropSize
 
     if which_model == 'discriminator_vgg_128':
         netD = arch.Discriminator_VGG_128(in_nc=3, base_nf=64, \
             norm_type="batch", mode="CNA", act_type="leakyrelu")
-
     elif which_model == 'discriminator_vgg_96':
         netD = arch.Discriminator_VGG_96(in_nc=3, base_nf=64, \
+            norm_type="batch", mode="CNA", act_type="leakyrelu")
+    elif which_model == 'discriminator_vgg_64':
+        netD = arch.Discriminator_VGG_64(in_nc=3, base_nf=64, \
+            norm_type="batch", mode="CNA", act_type="leakyrelu")
+    elif which_model == 'discriminator_vgg_32':
+        netD = arch.Discriminator_VGG_32(in_nc=3, base_nf=64, \
+            norm_type="batch", mode="CNA", act_type="leakyrelu")
+    elif which_model == 'discriminator_vgg_16':
+        netD = arch.Discriminator_VGG_16(in_nc=3, base_nf=64, \
             norm_type="batch", mode="CNA", act_type="leakyrelu")
     elif which_model == 'discriminator_vgg_192':
         netD = arch.Discriminator_VGG_192(in_nc=3, base_nf=64, \
