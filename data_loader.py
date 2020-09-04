@@ -348,18 +348,19 @@ class Dataset(torchDataset):
         '''
         # Commponent Count 후 각 Commponent에 접근의 Label에 접근
         # output : list [dict, dict, ..., dict] # dict{filepath : values}
-        # firstIndex -> Component에 대한 type는 동일하게만 들어옴(txt)
+        # firstIndex -> Component에 대한 type는 동일하게만 들어옴 (txt)
         '''
+        if self.datasetComponentObjectList[0].datasetConfig.dataType['dataType'] == 'Text':
+            firstIndex = 0
+            LabelDataPathList = []
+            componentList = len(self.datasetComponentObjectList)
         
-        firstIndex = 0
-        LabelDataPathList = []
-        componentList = len(self.datasetComponentObjectList)
+            LabelDataPathList = list(map(lambda x:Config.param.data.path.datasetPath + self.globalFileList[x][firstIndex]['labelFilePath'], range(componentList)))
+            LabelDataDictList = list(map(lambda x:self._makeLabelDataDict(x), LabelDataPathList))
         
-        LabelDataPathList = list(map(lambda x:Config.param.data.path.datasetPath + self.globalFileList[x][firstIndex]['labelFilePath'], range(componentList)))
-        LabelDataDictList = list(map(lambda x:self._makeLabelDataDict(x), LabelDataPathList))
-        
-        self.LabelDataDictList = LabelDataDictList
-
+            self.LabelDataDictList = LabelDataDictList
+        else:
+            self.LabelDataDictList = {}
 
     def _makeFileListIndexer(self):
 
