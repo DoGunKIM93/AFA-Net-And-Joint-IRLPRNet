@@ -100,7 +100,7 @@ def define_D():
     cropSize = ""
     for i in range(len(aug)):
         tmp = aug[i].split("(")
-        if tmp[0] == "randomCrop":
+        if tmp[0] == "randomCrop" or tmp[0] == "centerCrop":
             tmp2 = tmp[1].split(",")
             cropSize = tmp2[0]
             break
@@ -136,7 +136,7 @@ def define_D_grad():
     cropSize = ""
     for i in range(len(aug)):
         tmp = aug[i].split("(")
-        if tmp[0] == "randomCrop":
+        if tmp[0] == "randomCrop" or tmp[0] == "centerCrop":
             tmp2 = tmp[1].split(",")
             cropSize = tmp2[0]
             break
