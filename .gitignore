@@ -10,4 +10,4 @@ old code
 README.md
 test.py
 test.ipynb
-.pyx
+*.pyx
