@@ -1,53 +1,63 @@
 '''
 structure.py
 '''
-version = "1.01.200820"
+version = "1.03.201006"
 
 import torch.nn as nn
 import torch
-from torch.autograd import Variable
-import argparse
-
 import apex.amp as amp
-#from apex.parallel import DistributedDataParallel as DDP
+
+from torch.autograd import Variable
+
+
+import argparse
+import time
+
+
+import backbone.utils as utils
 
 from backbone.config import Config
 
 
 
 
-class EpochBase():
+class Epoch():
 
     def __init__(self, 
                  dataLoader,
                  modelList,
+                 step,
                  researchVersion,
                  researchSubVersion,
+                 writer,
 
                  scoreMetricDict = {}, # { (scoreName) -> STRING : { function:(func) -> FUNCTION , argDataNames:  ['LR','HR', ...] -> list of STRING, additionalArgs:[...]  } }
                  
+                 isNoResultSave = False,
                  earlyStopIteration = -1):
 
         self.dataLoader = dataLoader
         self.modelList = modelList
 
+        self.step = step
+
         self.researchVersion = researchVersion
         self.researchSubVersion = researchSubVersion
 
+        self.writer = writer
+
         self.scoreMetricDict = scoreMetricDict
 
-        self.isPSNR = isPSNR
-        self.PSNRDataNamePair = PSNRDataNamePair
-
+        self.isNoResultSave = isNoResultSave
         self.earlyStopIteration = earlyStopIteration
 
-    def Epoch(self, currentEpoch):
+    def runEpoch(self, currentEpoch):
 
 
         finali = 0
         globalScoreCount = 0
 
-
+        
         ####################################
         #            Hyp. Params           
         ####################################
@@ -90,9 +100,9 @@ class EpochBase():
 
 
             ####################################
-            #             Train Step             
+            #         Instruction Step             
             ####################################
-            lossDict, resultDict = trainStep(currentEpoch, modelList, dataDict)
+            lossDict, resultDict = self.step(currentEpoch, modelList, dataDict)
 
             for key in resultDict:
                 assert key not in dataDict.keys(), f"Some keys are duplicated in input data and result data of Step... : {key}"
@@ -255,11 +265,11 @@ class EpochBase():
         
         # Save loss log
         for key in AvgLossDict:
-            utils.logValues(writer, [f'{key}', AvgLossDict[key].item()], currentEpoch)
+            utils.logValues(self.writer, [f'{key}', AvgLossDict[key].item()], currentEpoch)
 
         # Save score log
         for key in AvgScoreDict:
-            utils.logValues(writer, [f'{key}', AvgScoreDict[key]], currentEpoch)
+            utils.logValues(self.writer, [f'{key}', AvgScoreDict[key]], currentEpoch)
 
 
 
@@ -267,39 +277,23 @@ class EpochBase():
         ####################################        
         #            save Rst.            
         ####################################W
-        #TODO:
         print('output images.')
         # Save sampled images
-        copyCoff = 1
-        if len(LRImages.size()) == 5:
-            #LRImages = torch.cat(LRImages.cpu().split(1, dim=1),4).squeeze(1)
-            LRImages = LRImages[:,Config.param.data.dataLoader.train.sequenceLength//2,:,:,:]
-            HRImages = HRImages[:,Config.param.data.dataLoader.train.sequenceLength//2,:,:,:]
-            copyCoff = 1
-        lr_images = utils.denorm(LRImages.cpu().view(LRImages.size(0), 1 if Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.train.datasetComponent[0]]['colorMode'] =='grayscale' else 3, LRImages.size(2), LRImages.size(3)), Config.param.data.dataLoader.train.valueRangeType)
-        hr_images = utils.denorm(HRImages.cpu().view(HRImages.size(0), 1 if Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.train.datasetComponent[0]]['colorMode'] =='grayscale' else 3, HRImages.size(2), HRImages.size(3)), Config.param.data.dataLoader.train.valueRangeType)
-
-        for i, si in enumerate(SRImagesList):
-            if (si.size(2) != HRImages.size(2) or si.size(3) != HRImages.size(3)):
-                SRImagesList[i] = F.interpolate(si, size=(HRImages.size(2),HRImages.size(3)), mode='bicubic')
-
-        SRImages = torch.cat(SRImagesList, 3)
-
-        sr_images = utils.denorm(SRImages.cpu().view(SRImages.size(0), 1 if Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.train.datasetComponent[0]]['colorMode'] == 'grayscale' else 3, SRImages.size(2), SRImages.size(3)), Config.param.data.dataLoader.train.valueRangeType)
-
-        cated_images = torch.cat((F.interpolate(lr_images.data, size=(HRImages.size(2),HRImages.size(3) * copyCoff), mode='bicubic'),
-                            sr_images.data,
-                            hr_images.data
-                            ),3)    
-
-
-        if args.nosave :        
+        if self.isNoResultSave :        
             savePath = './data/'+self.researchVersion+'/result/'+self.researchSubVersion+'/SRed_train_images.png'
         else :
-            savePath = './data/'+self.researchVersion+'/result/'+self.researchSubVersion+'/SRed_train_images-' + str(epoch + 1) + '.png'
-            utils.logImages(writer, ['train_images', cated_images], epoch)
+            savePath = './data/'+self.researchVersion+'/result/'+self.researchSubVersion+'/SRed_train_images-' + str(currentEpoch + 1) + '.png'
+            
+        utils.saveImageTensorToFile(dataDict, savePath, COLOR_MODE, VALUE_RANGE_TYPE)
 
-        save_image(cated_images, savePath)
+        #Image Logging is not Supported now
+        #utils.logImages(self.writer, ['train_images', cated_images], currentEpoch)
+
+        ####################################        
+        #         Step LR Scheduler            
+        ####################################W
+        for scheduler in modelList.getSchedulers():
+            scheduler.step()
 
 
 
@@ -367,10 +361,16 @@ class ModelListBase():
         mdlStrLst = [attr for attr in vars(self) if not attr.startswith("__") and not attr.endswith("_optimizer") and not attr.endswith("_scheduler") and attr.endswith("_pretrained")]
         mdlPpaLst = []
         for mdlStr in mdlStrLst:
-            mdlPpaLst.append(getattr(self, mdlStr))
+            try:
+                mdlPpaLst.append(getattr(self, mdlStr))
+            except AttributeError:
+                mdlPpaLst.append(None)
         return mdlPpaLst
 
     def getPretrainedPath(self, mdlStr):
-        pP = Config.param.data.path.pretrainedPath + getattr(self, mdlStr + "_pretrained")
+        try:
+            pP = Config.param.data.path.pretrainedPath + getattr(self, mdlStr + "_pretrained")
+        except AttributeError:
+            pP = None
         return pP
 

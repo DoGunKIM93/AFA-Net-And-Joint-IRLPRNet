@@ -1,7 +1,7 @@
 '''
 main.py
 '''
-mainversion = "2.03.200820"
+mainversion = "2.06.201006"
 
 
 
@@ -29,7 +29,6 @@ import backbone.module as module
 import backbone.structure as structure
 
 from edit import editversion, version, subversion, trainStep, validationStep, ModelList, inferenceStep
-
 
 
 
@@ -72,6 +71,8 @@ print("         sub Version : " + subversion)
 print("")
 print("         -------- FRAMEWORK VERSIONs --------")
 
+
+
 #print module version
 exList = ['main.py', 'edit.py', 'data_loader_old.py', 'main_old.py', 'test.py']
 pyModuleStrList = list(x[:-3] for x in os.listdir('.') if x not in exList and x.endswith('.py')) + list(f'backbone.{x[:-3]}' for x in os.listdir('./backbone') if x.endswith('.py')) 
@@ -83,6 +84,7 @@ versionDict = [['main', mainversion], ['edit', editversion]] + \
             pyModuleStrList, 
             pyModuleObjList )) + \
             [['config', Config.param.version]]
+
 
 
 any(print(f'         {key.ljust(23)} : {val.split(".")[0]}.{val.split(".")[1].rjust(2)}.{val.split(".")[2]}') for key, val in versionDict)
@@ -117,7 +119,6 @@ else:
     print("")
     
 print("Dataset loaded.\n")
-
 
 
 
@@ -169,52 +170,50 @@ if args.inferenceTest == True :
 
         ########### Inference using Benchmark dataset ############
         else:
-            epoch = 1
-            PSNR = 0
-            with torch.no_grad():
-                LRImages = []
-                HRImages = []
-                for _LRi, _HRi in Imagepairs:
-                    LRImages.append(_LRi)
-                    HRImages.append(_HRi)
-                LRImages = torch.cat(LRImages, 0)
-                HRImages = torch.cat(HRImages, 0)
-                LRImages = utils.to_var(LRImages)
-                HRImages = utils.to_var(HRImages)
-
-                ########### Inference STEP with paired GT ############
-                loss, SRImagesList = validationStep(epoch, modelList, LRImages, HRImages)
-                ###################################
-
-                SRImages = SRImagesList[-1]
-
-                if len(LRImages.size()) == 5:
-                    PSNR += utils.calculateImagePSNR(SRImages,HRImages[:,Config.param.data.dataLoader.inference.sequenceLength//2,:,:,:])
-                else:
-                    PSNR += utils.calculateImagePSNR(SRImages,HRImages)
-
-                SRImages = torch.cat(SRImagesList, 3)
-                
-                if p.blendingMode == 'possionBlending':
-                    sr_images = SRImages
-                else:
-                    sr_images = utils.denorm(SRImages.cpu().view(SRImages.size(0), 1 if Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.train.datasetComponent[0]]['colorMode'] =='grayscale' else 3, SRImages.size(2), SRImages.size(3))) 
-                
-                print('/SRed_inference_images-' + str(i) + '.png' + ", PSNR : ", PSNR)
-                savePath = './data/'+version+'/result/'+subversion+'/SRed_inference_images-' + str(i) + '.png'            
-                save_image(sr_images, savePath)
         '''
+        epoch = 0
+        PSNR = 0
+        with torch.no_grad():
+            
+            LRImages = Imagepairs['LR']
+
+            HRImages = Imagepairs['HR']
+
+            #HRImages = F.interpolate(HRImages, size=tuple(4*x for x in LRImages.size()[-2:]), mode='bicubic')
+            epoch += 1
+            batchSize = LRImages.size(0)
+
+            ########### Inference STEP with paired GT ############
+            loss, SRImagesList = validationStep(epoch, modelList, LRImages, HRImages)
+            ###################################
+
+            SRImages = SRImagesList[-1]
+            '''
+            if len(LRImages.size()) == 5:
+                PSNR += utils.calculateImagePSNR(SRImages,HRImages[:,Config.param.data.dataLoader.inference.sequenceLength//2,:,:,:], Config.param.data.dataLoader.inference.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.inference.datasetComponent[0]]['colorMode'])
+            else:
+                PSNR += utils.calculateImagePSNR(SRImages,HRImages, Config.param.data.dataLoader.inference.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.inference.datasetComponent[0]]['colorMode'])
+            '''
+            SRImages = torch.cat(SRImagesList, 3)
+            
+            sr_images = utils.denorm(SRImages.cpu().view(SRImages.size(0), 1 if Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.inference.datasetComponent[0]]['colorMode'] =='grayscale' else 3, SRImages.size(2), SRImages.size(3)), Config.param.data.dataLoader.inference.valueRangeType) 
+            
+            #print('/SRed_inference_images-' + str(i) + '.png' + ", PSNR : ", PSNR)
+            savePath = './data/'+version+'/result/'+subversion+'/SRed_inference_images-' + str(i) + '.png'            
+            save_image(sr_images, savePath)
+    
         eachEnd = time.perf_counter()
         print('/SRed_inference_images-' + str(i) + '.png' + ', model inference completed : ', eachEnd - eachStart)
     
     end = time.perf_counter()
     print('All model inference completed : ', end - start)
+    #print(f'P S N R : {PSNR / epoch:.3f} dB')
 
 
 else : 
     for epoch in range(startEpoch, Config.param.train.step.maxEpoch):
 
-
+        
         # ============= Train =============#
         # ============= Train =============#
         # ============= Train =============#
@@ -225,6 +224,10 @@ else :
 
         finali = 0
         PSNR = 0
+
+        PSNR_A = 0
+        PSNR_B = 0
+
         GlobalPSNRCount = 0
 
         Avgloss = [torch.zeros(1)]*256
@@ -232,7 +235,7 @@ else :
         
         for i, Imagepairs in enumerate(trainDataLoader):
 
-            #if i == 10: break
+            if i == 100: break
 
             LRImages = Imagepairs['LR']
             HRImages = Imagepairs['HR']
@@ -246,7 +249,7 @@ else :
                 PSNR += utils.calculateImagePSNR(SRImages,HRImages[:,Config.param.data.dataLoader.train.sequenceLength//2,:,:,:], Config.param.data.dataLoader.train.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.train.datasetComponent[0]]['colorMode'])
             else:
                 PSNR += utils.calculateImagePSNR(SRImages,HRImages, Config.param.data.dataLoader.train.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.train.datasetComponent[0]]['colorMode'])
-            
+
             GlobalPSNRCount += 1
 
             for lossIdx, loss in enumerate(lossList):
@@ -257,7 +260,7 @@ else :
             if (i + 1) % 1 == 0:
                 olda = a
                 a = time.perf_counter()
-                print('                      E[%d/%d][%.2f%%] NET:'
+                print('E[%d/%d][%.2f%%] NET:'
                         % (epoch, Config.param.train.step.maxEpoch, (i + 1) / (len(trainDataLoader.dataset) / Config.param.data.dataLoader.train.batchSize / 100)),  end=" ")
 
                 # print('loss:%.5f' % (Avgloss[0]/finali), end = " ")
@@ -362,9 +365,10 @@ else :
             savePath = './data/'+version+'/result/'+subversion+'/SRed_train_images.png'
         else :
             savePath = './data/'+version+'/result/'+subversion+'/SRed_train_images-' + str(epoch + 1) + '.png'
-            utils.logImages(writer, ['train_images', cated_images], epoch)
+            #utils.logImages(writer, ['train_images', cated_images], epoch)
 
-        save_image(cated_images, savePath)
+        save_image(cated_images[:Config.param.save.maxSaveImageNumberTrain], savePath, padding=12)
+        #save_image(utils.addCaptionToImageTensor(sr_images.data, 'Really Bad Boy 7월 7일 1234567890'), 'a.png')
 
         
 
@@ -381,6 +385,9 @@ else :
 
             finali = 0
             PSNR = 0
+            #PSNR_Hard = 0
+            #PSNR_A = 0
+            #PSNR_B = 0
             GlobalPSNRCount = 0
 
             Avgloss = [torch.zeros(1)]*256
@@ -404,6 +411,14 @@ else :
                     LRImages = Imagepairs['LR']
                     HRImages = Imagepairs['HR']
 
+                    # (TMP) cut Alpha channel
+                    LRImages = LRImages[:,0:3,:,:]
+                    HRImages = HRImages[:,0:3,:,:]
+
+
+                    #HRImages = F.interpolate(HRImages, size=tuple(4*x for x in LRImages.size()[-2:]), mode='bicubic')
+
+
                     batchSize = LRImages.size(0)
 
                     ########### Valid STEP ############
@@ -419,7 +434,7 @@ else :
                     if (i + 1) % 1 == 0:
                         olda = a
                         a = time.perf_counter()
-                        print('                       Test : [%d/%d][%.2f%%]'
+                        print('Test : [%d/%d][%.2f%%]'
                                 % (epoch, Config.param.train.step.maxEpoch, (i + 1) / (len(validDataLoader.dataset) / 1 / 100)),  end="\r")
 
                     #print('saving output images...')
@@ -429,10 +444,21 @@ else :
                     ###################################
                     SRImages = SRImagesList[-1]
                     if len(LRImages.size()) == 5:
-                        PSNR += utils.calculateImagePSNR(SRImages,HRImages[:,Config.param.data.dataLoader.validation.sequenceLength//2,:,:,:], Config.param.data.dataLoader.validation.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.validation.datasetComponent[0]]['colorMode'])
+                        t_PSNR = utils.calculateImagePSNR(SRImages,HRImages[:,Config.param.data.dataLoader.validation.sequenceLength//2,:,:,:], Config.param.data.dataLoader.validation.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.validation.datasetComponent[0]]['colorMode'])
                     else:
-                        PSNR += utils.calculateImagePSNR(SRImages,HRImages, Config.param.data.dataLoader.validation.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.validation.datasetComponent[0]]['colorMode'])
+                        t_PSNR = utils.calculateImagePSNR(SRImages,HRImages, Config.param.data.dataLoader.validation.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.validation.datasetComponent[0]]['colorMode'])
+                        #t_PSNR_Hard = utils.calculateImagePSNR(SRImagesList[3], HRImages, Config.param.data.dataLoader.validation.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.validation.datasetComponent[0]]['colorMode'])
+
+                        #t_PSNR_A = utils.calculateImagePSNR(SRImagesList[0], HRImages, Config.param.data.dataLoader.validation.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.validation.datasetComponent[0]]['colorMode'])
+                        #t_PSNR_B = utils.calculateImagePSNR(SRImagesList[1], HRImages, Config.param.data.dataLoader.validation.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.validation.datasetComponent[0]]['colorMode'])
+
+                    PSNR += t_PSNR
+                    #PSNR_Hard += t_PSNR_Hard
+                    #PSNR_A += t_PSNR_A
+                    #PSNR_B += t_PSNR_B
                     GlobalPSNRCount += 1
+
+                    print(f"PSNR: {GlobalPSNRCount-1} ({SRImages.size(2)}x{SRImages.size(3)}) : {t_PSNR:.3f} dB")
 
                     lr_images = utils.denorm(LRImages.cpu().view(LRImages.size(0), 1 if Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.validation.datasetComponent[0]]['colorMode'] =='grayscale' else 3, LRImages.size(2), LRImages.size(3)), Config.param.data.dataLoader.validation.valueRangeType)
 
@@ -472,6 +498,9 @@ else :
             oldb = b
             b = time.perf_counter()      
             PSNR /= len(validDataLoader)
+            #PSNR_A /= len(validDataLoader)
+            #PSNR_B /= len(validDataLoader)
+            #PSNR_Hard /= len(validDataLoader)
 
             if PSNR > bestPSNR:
                 bestPSNR = PSNR

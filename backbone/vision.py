@@ -1,7 +1,7 @@
 '''
 vision.py
 '''
-version = '1.74.200820'
+version = '1.90.201006'
 
 #from Python
 import time
@@ -26,12 +26,46 @@ from torchvision.utils import save_image
 #from Image Library
 import cv2
 from PIL import Image, ImageDraw
+from fast_slic import Slic
+from fast_slic.avx2 import SlicAvx2
 
 #from this project
 from backbone.config import Config
 import backbone.utils as utils
 
 eps = 1e-6 if Config.param.train.method.mixedPrecision == False else 1e-4
+
+
+
+def SLIC(input, numCompo, compactness, isAvx2 = False, colorMode = 'color'):
+
+    rst = []
+    for i in range(input.size(0)):
+        input_t = np.ascontiguousarray((input[i,:,:,:] * 255).permute(1,2,0).int().cpu().numpy().astype(np.uint8))
+        slic = Slic(num_components=numCompo, compactness=compactness) if isAvx2 is False else SlicAvx2(num_components=numCompo, compactness=compactness)
+        assignment = slic.iterate(input_t) # Cluster Map
+        rst.append( torch.tensor(assignment).view(1,1,*assignment.shape).repeat(1,3 if colorMode == 'color' else 1,1,1) )
+    
+    return torch.cat(rst,0).cuda()#, slic.slic_model.clusters #cluster map / The cluster information of superpixels.
+
+
+     
+
+
+def E2EBlending(input1, input2, IQAMap, superPixelMap, softMode = False):
+
+    assert input1.dim() == 4 and input2.dim() == 4, f'vision.py :: tensor dim must be 4 (current: {input1.dim()}, {input2.dim()})'
+    
+    scoreMap = torch.zeros_like(IQAMap)
+    for i in range(torch.max(superPixelMap)):
+        meanScoreInGivenArea = torch.sum(IQAMap * (superPixelMap == i), dim=(1,2,3), keepdim=True) / (torch.sum(superPixelMap == i, dim=(1,2,3), keepdim=True) + eps)
+        scoreMap += meanScoreInGivenArea * (superPixelMap == i)
+
+    scoreMap = scoreMap if softMode is True else torch.round(scoreMap)
+    rst = input1 * scoreMap + input2 * (1 - scoreMap)
+
+    return rst, scoreMap
+
 
 def Laplacian(input,ksize):
 

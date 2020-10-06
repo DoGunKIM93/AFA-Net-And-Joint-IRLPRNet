@@ -52,7 +52,7 @@ class To1Channel(object):
     def __call__(self, x):
 
         return 
-
+ 
 class To3Channel(object):
 
     def __init__(self):

@@ -1,7 +1,7 @@
 '''
 data_loader.py
 '''
-version = "2.3.200820"
+version = "2.31.200916"
 
 
 #FROM Python LIBRARY
@@ -123,7 +123,7 @@ class DatasetConfig():
 class DatasetComponent():
 
 
-    def __init__(self, name, mode, classParameter, sequenceLength):
+    def __init__(self, name, mode, classParameter, labelClassName, sequenceLength):
 
         self.name = name
 
@@ -133,6 +133,7 @@ class DatasetComponent():
 
         self.mode = mode
         self.classParameter = classParameter
+        self.labelClassName = labelClassName
         self.sequenceLength = sequenceLength
 
         self.dataFileList = None 
@@ -182,7 +183,7 @@ class DatasetComponent():
         #if label Exists
         if len(self.datasetConfig.labelType) > 0:
 
-            labelPath = f'{path}GT/'
+            labelPath = f'{path}{self.labelClassName}/'
             
             if self.datasetConfig.labelType['dataType'] == 'Text':
                 # construct all of readable file lists in class path lists
@@ -285,7 +286,7 @@ class Dataset(torchDataset):
 
 
         self.LabelDataDictList = None
-        self._makeGlobalLabelDataDictList()
+        #self._makeGlobalLabelDataDictList()
         #print(self.LabelDataDictList)
 
 
@@ -315,6 +316,7 @@ class Dataset(torchDataset):
         labels_copy = []
         fullPath = ''
         isFirst = True
+        
 
         upperName= labelPath.split('/')[-2] #GT
         modeName = labelPath.split('/')[-1] #label_train
@@ -954,9 +956,10 @@ class DataLoader(torchDataLoader):
         datasetNameList = list(map(str, yamlData['datasetComponent']))
         datasetModeList = list( Config.paramDict['data']['datasetComponent'][name]['mode'] for name in datasetNameList  )
         datasetClassParameterList = list( Config.paramDict['data']['datasetComponent'][name]['classParameter'] for name in datasetNameList  )
+        datasetLabelClassNameList = list( (Config.paramDict['data']['datasetComponent'][name]['labelClassName'] if 'labelClassName' in Config.paramDict['data']['datasetComponent'][name].keys() else 'GT') for name in datasetNameList )
         sequenceLength = [ yamlData['sequenceLength'] if 'sequenceLength' in yamlData.keys() else None ] * len(datasetNameList)
 
-        self.datasetComponentParamList = zip(datasetNameList, datasetModeList, datasetClassParameterList, sequenceLength)
+        self.datasetComponentParamList = zip(datasetNameList, datasetModeList, datasetClassParameterList, datasetLabelClassNameList, sequenceLength)
 
 
         self.batchSize = int(yamlData['batchSize'])
@@ -1040,8 +1043,8 @@ class _MultiProcessingDataLoaderIterWithDataAugmentation(_MultiProcessingDataLoa
         labelMaxLShape = 0
         for key in data:
             
-            shapeList = list(map(lambda x:data[key][x].shape[1], range(len(data[key]))))
             if key == 'Text':
+                shapeList = list(map(lambda x:data[key][x].shape[1], range(len(data[key]))))
                 labelMaxLShape = max(shapeList)
                 tempLabelList = list(map(lambda x:torch.zeros(1, labelMaxLShape, 15), range(len(data[key]))))
                 for i in range(len(data[key])):

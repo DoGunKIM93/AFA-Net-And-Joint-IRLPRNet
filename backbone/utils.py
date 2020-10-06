@@ -1,7 +1,7 @@
 '''
 utils.py
 '''
-version = "1.34.200820"
+version = "1.36.201006"
 
 
 #From Python
@@ -15,17 +15,21 @@ import psutil
 
 #from apex.parallel import DistributedDataParallel as DDP
 from shutil import copyfile
+from PIL import Image, ImageOps, ImageDraw, ImageFont
 
 #From Pytorch
 import torch
 import torch.nn as nn
-from torch.utils.tensorboard import SummaryWriter
 
+from torch.utils.tensorboard import SummaryWriter
+from torchvision.transforms import ToPILImage
+from torchvision.utils import save_image
 from torch.autograd import Variable
 
 
 #From This Project
 from backbone.config import Config
+from backbone.torchvision_injected import functional as vF
 
 
 
@@ -72,6 +76,80 @@ def logImages(writer, imageTuple, iter):
 ######################################################################################################################################################################## 
 
 
+def addCaptionToImageTensor(imageTensor, caption, DEFAULT_TEXT_SIZE = 24):
+
+    assert imageTensor.dim() == 4
+
+    IMAGE_HEIGHT, IMAGE_WIDTH = imageTensor.size()[-2:]
+
+    #DEFAULT_TEXT_SIZE = 24
+    TEXT_SIZE = max(12, int(DEFAULT_TEXT_SIZE * (IMAGE_WIDTH / 256)))
+    PAD_LEFT = int(DEFAULT_TEXT_SIZE * 0.75)
+    PAD_TOP = int(DEFAULT_TEXT_SIZE * 0.25)
+    PAD_BOTTOM = int(DEFAULT_TEXT_SIZE * 0.75)
+
+    
+
+    ToPILImageFunc = ToPILImage()
+    pilImageList = list( [ToPILImageFunc(x) for x in imageTensor] )
+
+    tmpPilImageList = []
+    for pilImage in pilImageList:
+
+        pilImage = ImageOps.expand(pilImage, (0,0,0,TEXT_SIZE + PAD_TOP + PAD_BOTTOM)) # L, T, R, B
+        ImageDraw.Draw(pilImage).text( xy = (PAD_LEFT, IMAGE_HEIGHT + PAD_TOP),
+                                        text = caption,
+                                        fill = (255, 255, 255),
+                                        font = ImageFont.truetype('.' + Config.param.save.font.path, TEXT_SIZE) )
+
+        tmpPilImageList.append(pilImage)
+
+    return torch.stack( list( vF.to_tensor(x) for x in tmpPilImageList )  )
+
+def addFrameCaptionToImageSequenceTensor(imageSequenceTensor):
+    '''
+    ADD Frame caption
+    &&
+    Cat horiziotal
+    '''
+    assert imageSequenceTensor.dim() == 5
+
+    return torch.cat( list( addCaptionToImageTensor(x, f"Frame {i}") for i, x in enumerate(imageSequenceTensor.split(1, dim=1).squeeze(1)) ) , 3)
+
+
+def saveImageTensorToFile(dataDict, fileName, colorMode='color', valueRangeType='-1~1'):
+
+    rst = []
+
+    MAX_HEIGHT = max( list( x.size(-2) for x in dataDict.values() ) )
+    MAX_WIDTH = max( list( x.size(-1) for x in dataDict.values() ) )
+        
+
+    for name in dataDict:
+        dim = dataDict[name].dim()
+        
+        rstElem = dataDict[name]
+
+        #denorm & pp for save
+        rstElem = utils.denorm(rstElem.cpu().view(rstElem.size(0), 1 if colorMode =='grayscale' else 3, rstElem.size(2), rstElem.size(3)), valueRangeType)
+        if dim == 4:
+            if rstElem.size(-2) != MAX_HEIGHT or rstElem.size(-1) != MAX_WIDTH:
+                F.interpolate(rstElem, size=(MAX_HEIGHT, MAX_WIDTH), mode='bicubic')
+        elif dim == 5:
+            rstElem = torch.cat( list( F.interpolate(x, size=(MAX_HEIGHT, MAX_WIDTH), mode='bicubic') for x in rstElem.split(1, dim=1).squeeze(1) if (x.size(-2) != MAX_HEIGHT or x.size(-1) != MAX_WIDTH)  ) , 3)
+
+        #ADD Frame Caption to ImageSequence
+        if dim == 5:
+            rstElem = addFrameCaptionToImageSequenceTensor(rstElem)
+
+        rstElem = addCaptionToImageTensor(rstElem, caption = name)
+
+        rst.append(rstElem)
+    
+    rst = torch.cat(rst, 3)
+    save_image(rst, fileName)
+
+
 
 def loadModels(modelList, version, subversion, loadModelNum, isTest):
     startEpoch = 0
@@ -85,14 +163,13 @@ def loadModels(modelList, version, subversion, loadModelNum, isTest):
 
         modelObj.cuda()
 
-
-
-
+        checkpoint = None
         if (loadModelNum is not 'None' or len([attr for attr in vars(modelList) if attr == (mdlStr+"_pretrained")]) > 0 ): # 로드 할거야
             
             isPretrainedLoad = False
             if optimizer is None:
-                isPretrainedLoad = True
+                if modelList.getPretrainedPath(mdlStr) is not None:
+                    isPretrainedLoad = True
             else:
                 try:
                     if(loadModelNum == '-1'):
@@ -120,80 +197,85 @@ def loadModels(modelList, version, subversion, loadModelNum, isTest):
                     print(mk[i], ck[i])
             
             '''
-                
-
-            try:
-                modelObj.load_state_dict(checkpoint['model'],strict=True)
-            except:
+            if checkpoint is not None:
+                #print(checkpoint)
                 try:
-                    print("utils.py :: try another method... load model in GLOBAL STRUCTURE mode..")
-                    modelObj.load_state_dict(checkpoint ,strict=True)
+                    mthd = 'NORMAL'
+                    modelObj.load_state_dict(checkpoint['model'],strict=True)
                 except:
                     try:
-                        print("utils.py :: try another method... load model in INNER MODEL GLOBAL STRUCTURE mode..")
-                        modelObj.module.load_state_dict(checkpoint ,strict=True)
+                        mthd = 'GLOBAL STRUCTURE'
+                        modelObj.load_state_dict(checkpoint ,strict=True)
                     except:
                         try:
-                            print("utils.py :: model load failed... load model in UNSTRICT mode.. (WARNING : load weights imperfectly)")
-                            modelObj.load_state_dict(checkpoint['model'],strict=False)
+                            mthd = 'INNER MODEL GLOBAL STRUCTURE'
+                            modelObj.module.load_state_dict(checkpoint ,strict=True)
                         except:
                             try:
-                                print("utils.py :: model load failed... load model in GLOBAL STRUCTURE UNSTRICT mode.. (WARNING : load weights imperfectly)")
-                                modelObj.load_state_dict(checkpoint ,strict=False)
+                                mthd = 'UNSTRICT (WARNING : load weights imperfectly)'
+                                modelObj.load_state_dict(checkpoint['model'],strict=False)
                             except:
-                                print("utils.py :: model load failed..... I'm sorry~")
-
-            
-
-            # LOAD OPTIMIZER
-            if optimizer is not None:
-                try:
-                    lrList = [param_group['lr'] for param_group in optimizer.param_groups]
-                    assert [lrList[0]] * len(lrList) == lrList, 'utils.py :: Error, optimizer has different values of learning rates. Tell me... I\'ll fix it.'
-                    lr = lrList[0]
-
-                    optimizer.load_state_dict(checkpoint['optim'])
-                    for param_group in optimizer.param_groups: param_group['lr'] = lr
-                except:
-                    optimDict = optimizer.state_dict()
-                    preTrainedDict = {k: v for k, v in checkpoint.items() if k in optimDict}
-
-                    optimDict.update(preTrainedDict)
-
-
-                    if scheduler is not None:
-                        #scheduler.load_state_dict(checkpoint['scheduler'])
-                        scheduler.last_epoch = startEpoch
-                        scheduler.max_lr = lr
-                        #scheduler.total_steps = p.schedulerPeriod
-
-
-
-            if len([attr for attr in vars(modelList) if attr == (mdlStr+"_pretrained")]) == 0:
-            # LOAD VARs..
-                try:
-                    startEpoch = checkpoint['epoch']
-                except:
-                    pass#startEpoch = 0
-
-                try:
-                    lastLoss = checkpoint['lastLoss']
-                except:
-                    pass#lastLoss = torch.ones(1)*100
+                                try:
+                                    mthd = 'GLOBAL STRUCTURE UNSTRICT (WARNING : load weights imperfectly)'
+                                    modelObj.load_state_dict(checkpoint ,strict=False)
+                                except:
+                                    mthd = 'FAILED'
+                                    print("utils.py :: model load failed..... I'm sorry~")
                 
+                print(f"{mdlStr} Loaded with {mthd} mode." if mthd != 'FAILED' else f"{mdlStr} Load Failed.")
+
+                
+
+                # LOAD OPTIMIZER
+                if optimizer is not None:
+                    try:
+                        lrList = [param_group['lr'] for param_group in optimizer.param_groups]
+                        assert [lrList[0]] * len(lrList) == lrList, 'utils.py :: Error, optimizer has different values of learning rates. Tell me... I\'ll fix it.'
+                        lr = lrList[0]
+
+                        optimizer.load_state_dict(checkpoint['optim'])
+                        for param_group in optimizer.param_groups: param_group['lr'] = lr
+                    except:
+                        optimDict = optimizer.state_dict()
+                        preTrainedDict = {k: v for k, v in checkpoint.items() if k in optimDict}
+
+                        optimDict.update(preTrainedDict)
+
+
+                        if scheduler is not None:
+                            #scheduler.load_state_dict(checkpoint['scheduler'])
+                            scheduler.last_epoch = startEpoch
+                            scheduler.max_lr = lr
+                            #scheduler.total_steps = p.schedulerPeriod
+
+
+
+                #if len([attr for attr in vars(modelList) if attr == (mdlStr+"_pretrained")]) == 0:
+                # LOAD VARs..
+                if isPretrainedLoad is False:
+                    try:
+                        startEpoch = checkpoint['epoch']
+                    except:
+                        pass#startEpoch = 0
+
+                    try:
+                        lastLoss = checkpoint['lastLoss']
+                    except:
+                        pass#lastLoss = torch.ones(1)*100
+                    
+                    try:
+                        bestPSNR = checkpoint['bestPSNR']
+                    except:
+                        pass#bestPSNR = 0
+                
+                
+
+
                 try:
-                    bestPSNR = checkpoint['bestPSNR']
+                    if Config.param.train.method.mixedPrecision is True:
+                        amp.load_state_dict(checkpoint['amp'])
                 except:
-                    pass#bestPSNR = 0
-            
-            
-
-
-            try:
-                if Config.param.train.method.mixedPrecision is True:
-                    amp.load_state_dict(checkpoint['amp'])
-            except:
-                pass
+                    pass
 
         #modelObj = nn.DataParallel(modelObj)  
         

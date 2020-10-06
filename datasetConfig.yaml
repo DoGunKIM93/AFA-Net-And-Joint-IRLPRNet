@@ -76,3 +76,60 @@ VID4_SR:
         - scaleFactor
     preprocessings: # Must be list
         - Pass()
+
+
+FFHQ_FACE_SR:
+    origin: FFHQ/Face
+    dataType: 
+        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
+    labelType:
+        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
+    availableMode:
+        - train
+        - test
+    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+        - class
+    preprocessings: # Must be list
+        - Pass()
+
+
+Set5_SR:
+    origin: benchmark/Set5
+    dataType: 
+        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
+    labelType:
+        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
+    availableMode:
+        - test
+    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+        - scaleMethod
+        - scaleFactor
+    preprocessings: # Must be list
+        - Pass()
+
+Set5_SR_V:
+    origin: benchmark/Set5
+    dataType: 
+        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
+    labelType:
+        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
+    availableMode:
+        - test
+    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+        - class
+    preprocessings: # Must be list
+        - Pass()
+
+Blending_SR:
+    origin: benchmark/Blending
+    dataType: 
+        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
+    labelType:
+        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
+    availableMode:
+        - test
+    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+        - scaleMethod
+        - scaleFactor
+    preprocessings: # Must be list
+        - Pass()

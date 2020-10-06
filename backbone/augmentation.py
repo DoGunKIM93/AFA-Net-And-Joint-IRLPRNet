@@ -1,8 +1,7 @@
 '''
 augmentation.py
 '''
-version = '1.12.200820'
-
+version = '1.14.201006'
 
 #FROM Python LIBRARY
 import os
@@ -23,9 +22,11 @@ import torch
 from torchvision import transforms
 from torchvision import datasets
 
-
 #from THIS Project
+import backbone.vision as vision
+
 from backbone.torchvision_injected import functional as vF
+
 
 
 
@@ -64,7 +65,7 @@ def toTensor(xList: list):
     return [_toTensor(xList[0]), _toTensor(xList[1])]
 
 
-def sizeMatch(xList: list, interpolation = 2, matchIndex = 1):
+def sizeMatch(xList: list, interpolation = 3, matchIndex = 1):
     '''
     match data size to LABEL
     '''
@@ -72,25 +73,133 @@ def sizeMatch(xList: list, interpolation = 2, matchIndex = 1):
     return [ _resize(x, h, w, interpolation) if i != matchIndex else x for i, x in enumerate(xList) ]
 
 
-def resize(xList: list, outputLabelHeight, outputLabelWidth, interpolation = 2, option = 1):
+def resize(xList: list, outputLabelHeight, outputLabelWidth, interpolation = 3, labelIndex = -1):
     '''
-    option
-    0 : Image Image
-    1 : Image Label
+    resize data with same ratio
     '''
 
-    if option == 0:
-        return [ _resize(xList[0], outputLabelHeight, outputLabelWidth, interpolation), _resize(xList[0], outputLabelHeight, outputLabelWidth, interpolation)]
-    elif option == 1:
-        return [ _resize(xList[0], outputLabelHeight, outputLabelWidth, interpolation), _resizeLabel(xList, outputLabelHeight, outputLabelWidth)]
+    _, cH, cW = _getSize(xList[labelIndex])
+
+    rst = []
+    for x in xList:
+
+        if x is not None:
+            _, h, w = _getSize(x)
+            ratioH = h / cH  
+            ratioW = w / cW
+
+            rst.append(_resize(x, int(outputLabelHeight * ratioH), int(outputLabelWidth * ratioW), interpolation))
+        else:
+            rst.append(None)
+
+    return rst
 
 
-def virtualScaling(xList: list, scale:int, interpolation = 2):
+def resizeToMultipleOf(xList: list, multiple, interpolation = 3):
+    '''
+    resize (shrink) data to multiple of X
+    '''
+    '''
+    mnH = 10000000000
+    mnW = 10000000000
+    for x in xList:
+        _, h, w = _getSize(x)
+        if h < mn: 
+            mnH = h
+            mnW = w
+    '''
+
+    rst = []
+    for x in xList:
+
+        if x is not None:
+            _, h, w = _getSize(x)
+
+            rst.append(_resize(x, h // multiple * multiple, w // multiple * multiple, interpolation))
+        else:
+            rst.append(None)
+
+    return rst
+
+
+def centerCropToMultipleOf(xList: list, multiple):
+    '''
+    resize (shrink) data to multiple of X
+    '''
+    '''
+    mnH = 10000000000
+    mnW = 10000000000
+    for x in xList:
+        _, h, w = _getSize(x)
+        if h < mn: 
+            mnH = h
+            mnW = w
+    '''
+
+    rst = []
+    for x in xList:
+
+        if x is not None:
+            _, h, w = _getSize(x)
+
+            rst.append(centerCrop([x, None], h // multiple * multiple, w // multiple * multiple)[0])
+        else:
+            rst.append(None)
+
+    return rst
+
+
+
+def shrink(xList: list, outputLabelHeight, outputLabelWidth, interpolation = 3, labelIndex = -1):
+
+    _, cH, cW = _getSize(xList[labelIndex])
+
+    # add resize blur ( 최솟값 기준 최댓값과의 비율의 제곱근 만큼 축소 했다가 확대 )
+    minMaxRatioH = math.sqrt(outputLabelHeight / cH)
+    minMaxRatioW = math.sqrt(outputLabelWidth / cW)
+    
+    
+    rst = resize(xList, int(outputLabelHeight * minMaxRatioH), int(outputLabelWidth * minMaxRatioW), interpolation)
+    rst = resize(xList, outputLabelHeight, outputLabelWidth, interpolation)
+
+    return rst
+
+def shrinkWithRandomMethod(xList: list, outputLabelHeight, outputLabelWidth, labelIndex = -1):
+
+    _, cH, cW = _getSize(xList[labelIndex])
+
+    # add resize blur ( 최솟값 기준 최댓값과의 비율의 제곱근 만큼 축소 했다가 확대 )
+    minMaxRatioH = math.sqrt(outputLabelHeight / cH)
+    minMaxRatioW = math.sqrt(outputLabelWidth / cW)
+    
+    
+    if random.randint(0,1) == 0:
+        rst = resize(xList, int(outputLabelHeight * minMaxRatioH), int(outputLabelWidth * minMaxRatioW), random.sample([0,2,3],1)[0])
+        rst = resize(xList, outputLabelHeight, outputLabelWidth, random.sample([0,2,3],1)[0])
+    else:
+        rst = resize(xList, outputLabelHeight, outputLabelWidth, random.sample([0,2,3],1)[0])
+
+    return rst
+
+
+def resizeWithTextLabel(xList: list, outputLabelHeight, outputLabelWidth, interpolation = 3):
+
+    assert len(xList) == 2
+
+    return [ _resize(xList[0], outputLabelHeight, outputLabelWidth, interpolation), _resizeLabel(xList, outputLabelHeight, outputLabelWidth)]
+
+
+
+
+
+
+def virtualScaling(xList: list, scale:int, interpolation = 3):
     '''
     make virturally downscaled image
 
     recommended input : [ GT, GT ]
     '''
+    assert len(xList) == 2
 
     xData = xList[0]
     xLabel = xList[1]
@@ -143,27 +252,43 @@ def centerCrop(xList: list, outputLabelHeight, outputLabelWidth):
 
 
 
-def randomCrop(xList: list, outputLabelHeight, outputLabelWidth):
-    xData = xList[0]
-    xLabel = xList[1]
+def randomCrop(xList: list, outputLabelHeight, outputLabelWidth, labelIndex = -1):
 
-    if xLabel is not None:
+    
+    _, cH, cW = _getSize(xList[labelIndex])
+    rY = random.randint(0,cH - outputLabelHeight)
+    rX = random.randint(0,cW - outputLabelWidth)
 
-        _, dH, dW = _getSize(xData)
-        _, lH, lW = _getSize(xLabel)
+    rst = []
+    for x in xList:
+        if x is not None:
+            _, h, w = _getSize(x)
+            ratioH = h / cH  
+            ratioW = w / cW
 
-        ratio = dH / lH
+            rst.append(_crop(x, int(rY * ratioH), int(rX * ratioW), int(outputLabelHeight * ratioH), int(outputLabelWidth * ratioW)))
+        else:
+            rst.append(None)
+            
+    return rst
 
-        outputDataHeight = math.ceil(ratio * outputLabelHeight)
-        outputDataWidth = math.ceil(ratio * outputLabelWidth)
 
-        xData, xLabel = _randomCrop([xData, xLabel], outputDataHeight, outputDataWidth)
+def randomCropWithRandomSize(xList: list, outputLabelHeightMin, outputLabelWidthMin, outputLabelHeightMax, outputLabelWidthMax, multipleOf=1, fixedRatio = 1, labelIndex = -1):
 
-        return [xData, xLabel]
+    if fixedRatio == 1:
+        assert outputLabelHeightMax / outputLabelHeightMin == outputLabelWidthMax / outputLabelWidthMin
 
+    outputLabelHeight = random.randint(outputLabelHeightMin, outputLabelHeightMax) // multipleOf * multipleOf
+
+    if fixedRatio == 1:
+        outputLabelWidth = outputLabelHeight * outputLabelWidthMax / outputLabelHeightMax
     else:
+        outputLabelWidth = random.randint(outputLabelWidthMin, outputLabelWidthMax)
 
-        return [_randomCrop([xData], outputLabelHeight, outputLabelWidth), None]
+    rst = randomCrop(xList, outputLabelHeight, outputLabelWidth, labelIndex)
+
+    return rst
+
 
 
 
@@ -171,9 +296,19 @@ def randomFlip(xList: list):
     xData = xList[0]
     xLabel = xList[1]
 
-    h = random.randint(0,1)
-    v = random.randint(0,1)
+    h = True if random.randint(0,1) is 1 else False
+    v = True if random.randint(0,1) is 1 else False
 
+    rst = []
+    for x in xList:
+        if x is not None:
+            rst.append(_flip(x, h, v))
+        else:
+            rst.append(None)
+
+    return rst
+
+    '''
     if xLabel is not None:
 
         xData = _flip(xData, h, v)
@@ -184,6 +319,7 @@ def randomFlip(xList: list):
     else:
 
         return [_flip(xData, h, v), None]
+    '''
 
 
 
@@ -205,6 +341,20 @@ def randomRotate(xList: list):
         return [_rotate(xData, a), None]
 
 
+def randomGaussianBlur(xList: list, kernelSizeMin, kernelSizeMax, sigmaMin, sigmaMax):
+    assert len(xList) == 2, "this function only implemented for [image, label]"
+    assert kernelSizeMin % 2 == 1
+    assert kernelSizeMax % 2 == 1
+    assert kernelSizeMin <= kernelSizeMax
+
+    kernelSize = random.sample(range(kernelSizeMin, kernelSizeMax, 2), 1)[0]
+    sigma = random.uniform(sigmaMin, sigmaMax)
+    return [_gaussianBlur(xList[0], kernelSize, sigma), xList[1]]
+
+
+def gaussianNoise(xList: list):
+    pass
+
 
 
 ######################################################################################################################################################################## 
@@ -212,7 +362,6 @@ def randomRotate(xList: list):
 # Private Basis Functions 
 
 ######################################################################################################################################################################## 
-
 
 
 def _getType(x) -> str:
@@ -224,6 +373,7 @@ def _getType(x) -> str:
                 np.memmap : 'NPARRAY',
                 np.ndarray : 'NPARRAY',
                 torch.Tensor : 'TENSOR',
+                type(None) : 'NONE'
                 }
     
     return TYPEDICT[type(x)]
@@ -304,24 +454,24 @@ def _flip(x, horiz, verti):
 
     if _getType(x) in ['PIL']: #PIL & Tensor Implemenataion
 
-        if horiz is 1:
+        if horiz is True:
             x = vF.hflip(x)
-        if verti is 1:
+        if verti is True:
             x = vF.vflip(x)
 
     elif _getType(x) in ['TENSOR']: #PIL & Tensor Implemenataion
 
-        if horiz is 1:
+        if horiz is True:
             x = vF.hflip(x)
-        if verti is 1:
+        if verti is True:
             x = vF.vflip(x)
 
     elif _getType(x) is 'NPARRAY': #Tensor Implementation
 
-        if horiz is 1: 
+        if horiz is True: 
             x2 = np.flip(x,1)
             x = x2.copy()
-        if verti is 1:
+        if verti is True:
             x2 = np.flip(x,0)
             x = x2.copy()
 
@@ -342,7 +492,7 @@ def _rotate(x, angle):
 
     return x
 
-def _resize(x, height, width, interpolation=2):
+def _resize(x, height, width, interpolation=3):
     '''
     interpolation
     0 : Nearest neighbour
@@ -360,6 +510,7 @@ def _resize(x, height, width, interpolation=2):
         x = x.numpy()
 
     return x
+
 
     
 def _resizeLabel(xList: list, outputLabelHeight, outputLabelWidth):
@@ -382,6 +533,23 @@ def _resizeLabel(xList: list, outputLabelHeight, outputLabelWidth):
     xLabel = np.hstack((boxes, landm, labels))
     
     return xLabel
+
+
+def _gaussianBlur(x, kernelSize, sigma):
+
+    if _getType(x) in ['PIL']: #PIL & Tensor Implemenataion
+        raise NotImplementedError('augmentation.py :: gaussianBlur Augmentation has not implemented for PIL Image due to speed issue. please use it for Tensor after toTensor() augmentation.')
+
+    elif _getType(x) in ['TENSOR']: #PIL & Tensor Implemenataion
+        x = vision.Gaussian(x, kernelSize, sigma)
+
+    elif _getType(x) is 'NPARRAY': #Tensor Implementation
+        raise NotImplementedError('augmentation.py :: gaussianBlur Augmentation has not implemented for NP array due to speed issue. please use it for Tensor after toTensor() augmentation.')
+
+    return x
+
+
+
 
 
 

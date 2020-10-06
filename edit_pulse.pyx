@@ -25,7 +25,7 @@ from torchvision.utils import save_image
 
 
 #from pytorch_msssim (github/jorge_pessoa)
-from pytorch_msssim import MS_SSIM
+#from pytorch_msssim import MS_SSIM
 
 
 
@@ -49,8 +49,8 @@ from backbone.SPSR.loss import GANLoss, GradientPenaltyLoss
 
 ################ V E R S I O N ################
 # VERSION
-version = '39-ESPCN-General'
-subversion = '1-test'
+version = '35-Cleanser'
+subversion = '02-96ch-Res'
 ###############################################
 
 
@@ -76,35 +76,31 @@ class ModelList(structure.ModelListBase):
         # Super Resolution Models
         # SISR
         #  1. ESPCN
-        
-        self.ESPCN = model.ESPCN(4)
-        #self.ESPCN_pretrained = "ESPCN-General.pth"   # FaceModel: "ESPCN-Face.pth"
-        self.ESPCN_optimizer = torch.optim.Adam(self.ESPCN.parameters(), lr=0.0001)
-        
+        '''
+        self.ESPCN = model.ESPCN()
+        self.ESPCN_pretrained = "ESPCN-General.pth"   # FaceModel: "ESPCN-Face.pth"
         # Param
         # valueRangeType = '-1~1'
         # NGF = 32
         # NDF = 32
-        
+        '''
 
         #  2. EDVR(S)
-        
-        
-        #self.EDVR = model.EDVR(nf=128, nframes=1, groups=1, front_RBs=5, back_RBs=40)
-        #self.EDVR_pretrained = "EDVR-General.pth"  # FaceModel: "EDVR-Face.pth"
-        
-        #self.EDVR_optimizer = torch.optim.Adam(self.EDVR.parameters(), lr=0.0002)
+        '''
+        self.EDVR = model.EDVR(nf=128, nframes=1, groups=1, front_RBs=5, back_RBs=40)
+        self.EDVR_pretrained = "EDVR-General.pth"  # FaceModel: "EDVR-Face.pth"
+        self.EDVR_optimizer = torch.optim.Adam(self.EDVR.parameters(), lr=0.0001)
         # Param
         # valueRangeType = '0~1'
         # NGF = 64
         # NDF = 64
-        
+        '''
 
         
         #  3. SPSR
         '''
         self.netG = networks.define_G()
-        self.netG_pretrained = "SPSR-netG-Face.pth"#"SPSR-RRDB_PSNR_x4.pth"   # FaceModel: "netG-Face.pth"
+        self.netG_pretrained = "SPSR-netG-Face.pth"   # FaceModel: "netG-Face.pth"
         self.netG_optimizer = torch.optim.Adam(self.netG.parameters(), lr=0.0001, weight_decay=0, betas=(0.9, 0.999))
         self.netG_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.netG_optimizer, [5000,100000,200000,300000], 0.5)
 
@@ -126,32 +122,15 @@ class ModelList(structure.ModelListBase):
         self.Get_gradient_nopadding = model.Get_gradient_nopadding()
         '''
 
-        
-
         # MISR
         #  1. VESPCN
         # self.NET = model.VESPCN(4, Config.param.data.dataLoader.train.sequenceLength)
         # self.NET_optimizer = torch.optim.Adam(self.NET.parameters(), lr=0.0001)
 
-        
-        #4. Blending
-         
-        '''
-        self.SR = model.ESPCN(4)
-        self.SR_pretrained = "ESPCN-General.pth"   # FaceModel: "ESPCN-Face.pth"
-        #self.ESPCN_optimizer = torch.optim.Adam(self.ESPCN.parameters(), lr=0.0003)
 
-        self.SR_FACE = model.ESPCN(4)
-        self.SR_FACE_pretrained = "ESPCN-Face.pth"   # FaceModel: "ESPCN-Face.pth"
 
-        self.BLENDER_FE = model.EfficientNet('b0', num_classes=1, mode='feature_extractor')
-        self.BLENDER_FE_optimizer = torch.optim.Adam(self.BLENDER_FE.parameters(), lr=0.0001)
-        self.BLENDER_FE_pretrained = 'efficientnet_b0_ns.pth'
-
-        self.BLENDER_DECO = model.DeNIQuA(featureExtractor = self.BLENDER_FE, inFeature=2)
-        self.BLENDER_DECO_optimizer = torch.optim.Adam(self.BLENDER_DECO.parameters(), lr=0.0003)
-        '''
-
+        self.NET = model.WENDY(96, Blocks=3, ResPerBlocks=5)
+        self.NET_optimizer = torch.optim.Adam(self.NET.parameters(), lr=0.0003)
 
 
         self.initApexAMP() #TODO: migration to Pytorch Native AMP
@@ -162,18 +141,17 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     batch = LRImages.size(0)
 
     # 1. ESPCN
-    
+    '''
     mse_criterion = nn.MSELoss()
     modelList.ESPCN.train()
     SRImages = modelList.ESPCN(LRImages)
     loss = mse_criterion(SRImages, HRImages)  
     backproagateAndWeightUpdate(modelList, loss, modelNames = "ESPCN")
-    lossList = [loss]
-    SRImagesList = [SRImages]
+    '''
 
     # 2. EDVR(S)
     '''
-    cpl_criterion = module.CharbonnierLoss(eps=1e-3)
+    cpl_criterion = utils.CharbonnierLoss(eps=1e-3)
     modelList.EDVR.train()
     SRImages = modelList.EDVR(LRImages)
     loss = cpl_criterion(SRImages, HRImages)  
@@ -186,7 +164,7 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     l_g_total = 0
 
     pixel_criterion = "l1"
-    pixel_weight = 2e-2
+    pixel_weight = 1e-2
     feature_criterion = "l1"
     feature_weight = 1
     gan_type = "vanilla"
@@ -377,12 +355,7 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     l_g_total = torch.as_tensor(l_g_total)
     l_d_total = torch.as_tensor(l_d_total)
     l_d_total_grad = torch.as_tensor(l_d_total_grad)
-
-
-    lossList = [l_g_total, l_d_total, l_d_total_grad]
-    SRImagesList = [SRImages]
     '''
-
 
 
     # Update All model weights
@@ -395,7 +368,18 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     # return losses
     # lossList = [srAdversarialLoss, hrAdversarialLoss, loss_disc, loss_pixelwise, loss_adversarial, loss]
     # return List of Result Images (also you can add some intermediate results).
-    # SRImagesList = [gaussianSprayKernel,bImage1,bImage2,blendedImages]
+    # SRImagesList = [gaussianSprayKernel,bImage1,bImage2,blendedImages] 
+
+
+    mse_criterion = nn.MSELoss()
+    modelList.NET.train()
+    SRImages = modelList.NET(LRImages)
+    loss = mse_criterion(SRImages, HRImages)  
+    backproagateAndWeightUpdate(modelList, loss, modelNames = "NET")
+
+
+    lossList = [loss]
+    SRImagesList = [SRImages]
     
     
     return lossList, SRImagesList
@@ -406,13 +390,12 @@ def validationStep(epoch, modelList, LRImages, HRImages):
     batchSize = LRImages.size(0)
 
     # 1. ESPCN
-    
+    '''
     mse_criterion = nn.MSELoss()
     modelList.ESPCN.eval()
     SRImages = modelList.ESPCN(LRImages)
     loss = mse_criterion(SRImages, HRImages)  
-    
-    SRImagesList = [SRImages]
+    '''
 
     # 2. EDVR(S)
     '''
@@ -435,6 +418,7 @@ def validationStep(epoch, modelList, LRImages, HRImages):
     modelList.netG.eval()
     with torch.no_grad():
         fake_H_branch, SRImages, grad_LR = modelList.netG(LRImages)
+    modelList.netG.train()
     
     loss = bce_criterion(SRImages, HRImages)
     loss = torch.as_tensor(loss)
@@ -444,10 +428,20 @@ def validationStep(epoch, modelList, LRImages, HRImages):
     #lossList = [srAdversarialLoss, hrAdversarialLoss, loss_disc, loss_pixelwise, loss_adversarial, loss]
     # return List of Result Images (also you can add some intermediate results).
     #SRImagesList = [gaussianSprayKernel,bImage1,bImage2,blendedImages] 
+    SRImagesList = [SRImages]
     '''
+
+
+    mse_criterion = nn.MSELoss()
+    modelList.NET.eval()
+    SRImages = modelList.NET(LRImages)
+    loss = mse_criterion(SRImages, HRImages)  
+
+
+    lossList = [loss]
+    SRImagesList = [SRImages]
+
     
-
-
     return loss, SRImagesList
 
 def inferenceStep(modelList, LRImages):
@@ -456,28 +450,13 @@ def inferenceStep(modelList, LRImages):
     # modelList.ESPCN.eval()
     
     # 2. EDVR(S)
-    '''
     modelList.EDVR.eval()
-    SRImages = modelList.EDVR(LRImages)
-    SRImagesList = [SRImages] 
-    '''
 
     # 3. SPSR
-    
-    #gan_type = "vanilla"
-    #cri_gan = GANLoss(gan_type, 1.0, 0.0)
-    
-    '''
-    modelList.netG.eval()
-    with torch.no_grad():
-        _, SRImages, _ = modelList.netG(LRImages)
-    '''
-    modelList.EDVR.eval()
-    SRImages = modelList.EDVR(LRImages)
+    # modelList.netG.eval()
 
 
 
-    '''
     ####################################################### Preproc. #######################################################
     # SR Processing
     with torch.no_grad():
@@ -499,9 +478,7 @@ def inferenceStep(modelList, LRImages):
         SRImages_Ensembled = SRImages_Entire
 
     # return List of Result Images (also you can add some intermediate results).
-    '''
-    SRImagesList = [SRImages] 
-    
+    SRImagesList = [SRImages_EDVR] 
     
     return SRImagesList
 

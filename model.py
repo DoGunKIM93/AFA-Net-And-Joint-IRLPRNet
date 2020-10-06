@@ -1,7 +1,7 @@
 '''
 model.py
 '''
-version = '1.41.200820'
+version = '1.42.201006'
 
 
 #from Python
@@ -58,6 +58,11 @@ from backbone.RetinaFace.RetinaFace_config import cfg_mnet, cfg_re50
 # 4. Spatial A
 
 
+
+
+
+
+
 class DeNIQuA(nn.Module):
     def __init__(self, featureExtractor, CW=64, inFeature=1, colorMode='color'):
         super(DeNIQuA, self).__init__()
@@ -96,211 +101,6 @@ class DeNIQuA(nn.Module):
 
 
 
-class SunnySideUp(nn.Module):
-    
-    def __init__(self, CW=32):
-        super(SunnySideUp, self).__init__()
-
-        self.conv1 = nn.Conv2d(        3, CW *   1, 4, 2, 1) # 256 -> 128
-        self.conv2 = nn.Conv2d(CW *   1, CW *   2, 4, 2, 1) # 256 -> 128
-        self.conv3 = nn.Conv2d(CW *   2, CW *   4, 4, 2, 1) # 256 -> 128
-        self.conv4 = nn.Conv2d(CW *   4, CW *   8, 4, 2, 1) # 256 -> 128
-        self.conv5 = nn.Conv2d(CW *   8, 1, 4, 2, 1) # 256 -> 128
-        self.AAP = nn.AdaptiveAvgPool2d((3, 3))
-
-        self.shifter = Shifter()
-
-
-    def forward(self, x):
-
-        ori = x
-
-        x = F.leaky_relu(self.conv1(x), 0.2)
-
-        x = F.leaky_relu(self.conv2(x), 0.2)
-
-        x = F.leaky_relu(self.conv3(x), 0.2)
-
-        x = F.leaky_relu(self.conv4(x), 0.2)
-
-        x = F.leaky_relu(self.conv5(x), 0.2)
-
-        x = F.sigmoid(self.AAP(x)).repeat(1,3,1,1)
-        
-        ori = self.shifter(ori, x)
-
-        return ori
-
-
-
-
-class BlueLemonade(nn.Module):#v2 
-    
-    def __init__(self, featureExtractor, CW, blendingChannel = 3, shiftDistance = 9, colorMode = 'color'):
-        super(BlueLemonade, self).__init__()
-
-        self.inputChannel = 3 if colorMode == 'color' else 1
-
-        self.blendingChannel = blendingChannel
-        self.shiftDistance = shiftDistance
-        self.featureExtractor = featureExtractor
-
-        self.adaptiveFilterMaker = nn.Sequential( # 1/32
-            nn.ConvTranspose2d( 3840,  CW*16, 4, 2, 1), #1/16
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW*16, CW*8, 4, 2, 1), #1/8
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW*8,  CW*4, 4, 2, 1), #1/4
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW*4,  CW, 4, 2, 1), #1/2
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW, inputChannel * self.blendingChannel, 4, 2, 1), #1/1
-            nn.Tanh(),
-        )
-
-        self.shiftKernelMaker = nn.Sequential( # 1/32
-            nn.ConvTranspose2d( 3840,  CW*16, 4, 2, 1), #1/16
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW*16, CW*8, 4, 2, 1), #1/8
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW*8,  CW*4, 4, 2, 1), #1/4
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW*4,  CW, 4, 2, 1), #1/2
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW, self.blendingChannel, 4, 2, 1), #1/1
-            nn.ReLU(),
-            nn.AdaptiveAvgPool2d((self.shiftDistance, self.shiftDistance)),
-            nn.Sigmoid(),
-        )
-        #for i in range(Blocks):
-        #    self.kernelMaker.append(ReconstructionBlock(CW, ResPerBlocks, dim=2, use_attention=False, attention_sub_sample=None))
-
-        self.shifter = Shifter()
-
-        self.iteration = iteration
-    
-    def kernelMaking(self, a, b, c):
-        cated = torch.cat((a,b,c),1)
-        adaptiveFilter = self.adaptiveFilterMaker(cated) * (2 / self.iteration) 
-        shiftKernel = self.shiftKernelMaker(cated)
-        return adaptiveFilter, [shiftKernel[:,0:1,:,:].repeat(1,3,1,1), shiftKernel[:,1:2,:,:].repeat(1,3,1,1), shiftKernel[:,2:3,:,:].repeat(1,3,1,1)]
-
-    def applyFilter(self, ori, aFilter):
-        aFilter = aFilter.view(aFilter.size(0), aFilter.size(1) // self.inputChannel, self.inputChannel, *aFilter.size()[2:])
-        aFilter = F.softmax(aFilter, dim=1)#.view(x.size(0), -1, *x.size()[2:])
-
-        ori = ori.view(ori.size(0), ori.size(1) // self.inputChannel, self.inputChannel, *ori.size()[2:])
-
-        return (aFilter * ori).sum(dim=1)
-
-    def forward(self, x1, x2):
-
-        xb = x1
-        x1f = self.featureExtractor(x1)
-        x2f = self.featureExtractor(x2)
-
-        for i in range(self.iteration):
-
-            xbf = self.featureExtractor(xb)
-
-            adaptiveFilter, shiftKernel = self.kernelMaking(x1f, x2f, xbf)
-
-            shiftedX1 = self.shifter(x1, shiftKernel[0])
-            shiftedX2 = self.shifter(x2, shiftKernel[1])
-            shiftedXB = self.shifter(xb, shiftKernel[2])
-
-            catedX = torch.cat((shiftedX1, shiftedX2, shiftedXB), 1)
-            filterdX = self.applyFilter(catedX, adaptiveFilter)
-
-            xb = filterdX
-
-        return xb
-
-
-class ISAF(nn.Module):#v2 
-    
-    def __init__(self, featureExtractor, CW, iteration = 5, blendingChannel = 3, shiftDistance = 3, colorMode = 'color'):
-        super(ISAF, self).__init__()
-
-        self.blendingChannel = blendingChannel
-        self.shiftDistance = shiftDistance
-        self.featureExtractor = featureExtractor
-
-        self.inputChannel = 3 if colorMode == 'color' else 1
-
-        self.adaptiveFilterMaker = nn.Sequential( # 1/32
-            nn.ConvTranspose2d( 3840,  CW*16, 4, 2, 1), #1/16
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW*16, CW*8, 4, 2, 1), #1/8
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW*8,  CW*4, 4, 2, 1), #1/4
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW*4,  CW, 4, 2, 1), #1/2
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW, self.inputChannel * self.blendingChannel, 4, 2, 1), #1/1
-            nn.Tanh(),
-        )
-
-        self.shiftKernelMaker = nn.Sequential( # 1/32
-            nn.ConvTranspose2d( 3840,  CW*16, 4, 2, 1), #1/16
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW*16, CW*8, 4, 2, 1), #1/8
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW*8,  CW*4, 4, 2, 1), #1/4
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW*4,  CW, 4, 2, 1), #1/2
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW, self.blendingChannel, 4, 2, 1), #1/1
-            nn.ReLU(),
-            nn.AdaptiveAvgPool2d((self.shiftDistance, self.shiftDistance)),
-            nn.Sigmoid(),
-        )
-        #for i in range(Blocks):
-        #    self.kernelMaker.append(ReconstructionBlock(CW, ResPerBlocks, dim=2, use_attention=False, attention_sub_sample=None))
-
-        self.shifter = Shifter()
-
-        self.iteration = iteration
-    
-    def kernelMaking(self, a, b, c):
-        cated = torch.cat((a,b,c),1)
-        adaptiveFilter = self.adaptiveFilterMaker(cated) * (2 / self.iteration) 
-        shiftKernel = self.shiftKernelMaker(cated)
-        return adaptiveFilter, [shiftKernel[:,0:1,:,:].repeat(1,3,1,1), shiftKernel[:,1:2,:,:].repeat(1,3,1,1), shiftKernel[:,2:3,:,:].repeat(1,3,1,1)]
-
-    def applyFilter(self, ori, aFilter):
-        aFilter = aFilter.view(aFilter.size(0), aFilter.size(1) // self.inputChannel, self.inputChannel, *aFilter.size()[2:])
-        aFilter = F.softmax(aFilter, dim=1)#.view(x.size(0), -1, *x.size()[2:])
-
-        ori = ori.view(ori.size(0), ori.size(1) // self.inputChannel, self.inputChannel, *ori.size()[2:])
-
-        return (aFilter * ori).sum(dim=1)
-
-    def forward(self, x1, x2):
-
-        xb = x1
-        x1f = self.featureExtractor(x1)
-        x2f = self.featureExtractor(x2)
-
-        for i in range(self.iteration):
-
-            xbf = self.featureExtractor(xb)
-
-            adaptiveFilter, shiftKernel = self.kernelMaking(x1f, x2f, xbf)
-
-            shiftedX1 = self.shifter(x1, shiftKernel[0])
-            shiftedX2 = self.shifter(x2, shiftKernel[1])
-            shiftedXB = self.shifter(xb, shiftKernel[2])
-
-            catedX = torch.cat((shiftedX1, shiftedX2, shiftedXB), 1)
-            filterdX = self.applyFilter(catedX, adaptiveFilter)
-
-            xb = filterdX
-
-        return xb
-
-
-
 
 class ShiftKernelMaker(nn.Module):
     def __init__(self):
@@ -322,8 +122,6 @@ class ShiftKernelMaker(nn.Module):
         #skTensor = skTensor.unsqueeze(2)#.permute(1,0,2,3)
 
         return skTensor
-
-
 
 class Shifter(nn.Module):
     
@@ -351,18 +149,6 @@ class Shifter(nn.Module):
         x = F.conv2d(x, shiftKernel, padding=paddingSize, groups=x.size(1))
         x = x.view(N,C,*x.size()[2:])
         return x
-
-
-#sk1 = torch.randn(2,3,5,5)
-#sk2 = ShiftKernelMaker()(sk1)
-#inp = torch.randn(2,3,5,5)
-#out = Shifter()(inp, sk2)
-#print(sk1)
-#print(sk2)
-#print(inp)
-#print(out)
-#
-
 
 
 
@@ -436,7 +222,7 @@ class PSY(nn.Module):
 
 class WENDY(nn.Module):
     
-    def __init__(self, CW, Blocks = 5, ResPerBlocks = 10, Attention = True, attention_sub_sample = None, colorMode = 'color'):
+    def __init__(self, CW, Blocks = 5, ResPerBlocks = 10, Attention = False, attention_sub_sample = None, colorMode = 'color'):
         super(WENDY, self).__init__()
 
         self.CW = CW
@@ -450,7 +236,7 @@ class WENDY(nn.Module):
         for i in range(self.Blocks):
             self.ReconstructionBlocks.append(ReconstructionBlock(CW, ResPerBlocks, dim=2, use_attention=Attention, attention_sub_sample=None))
 
-        self.Encoder = nn.Conv2d(inputChannel * 2, CW, 4, 2, 1)
+        self.Encoder = nn.Conv2d(inputChannel * 1, CW, 4, 2, 1)
         self.Decoder = nn.ConvTranspose2d(CW, inputChannel, 4, 2, 1)
 
 
@@ -461,12 +247,15 @@ class WENDY(nn.Module):
         x = F.relu(x)
         
         for i in range(self.Blocks):
-            x = self.ReconstructionBlocks[i](x)
+            res = x
+            x = self.ReconstructionBlocks[i](x) + res
         
         x = self.Decoder(x)
-        x = F.tanh(x)
+        #x = F.sigmoid(x)
 
-        return x + sc
+        x = F.interpolate(x, size=sc.size()[-2:], mode='bicubic')
+
+        return x, sc, x+ sc
 
 
         

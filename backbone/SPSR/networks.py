@@ -95,17 +95,10 @@ def define_G():
 
 
 # Discriminator
-def define_D():
-    aug = Config.paramDict['data']['dataLoader']['train']['augmentation']
-    cropSize = ""
-    for i in range(len(aug)):
-        tmp = aug[i].split("(")
-        if tmp[0] == "randomCrop" or tmp[0] == "centerCrop":
-            tmp2 = tmp[1].split(",")
-            cropSize = tmp2[0]
-            break
+def define_D(size):
+    
         
-    which_model = 'discriminator_vgg_' + cropSize
+    which_model = 'discriminator_vgg_' + str(size)
 
     if which_model == 'discriminator_vgg_128':
         netD = arch.Discriminator_VGG_128(in_nc=3, base_nf=64, \
@@ -131,17 +124,9 @@ def define_D():
         raise NotImplementedError('Discriminator model [{:s}] not recognized'.format(which_model))
     return netD
 
-def define_D_grad():
-    aug = Config.paramDict['data']['dataLoader']['train']['augmentation']
-    cropSize = ""
-    for i in range(len(aug)):
-        tmp = aug[i].split("(")
-        if tmp[0] == "randomCrop" or tmp[0] == "centerCrop":
-            tmp2 = tmp[1].split(",")
-            cropSize = tmp2[0]
-            break
+def define_D_grad(size):
 
-    which_model = "discriminator_vgg_" + cropSize
+    which_model = "discriminator_vgg_" + str(size)
 
     if which_model == 'discriminator_vgg_128':
         netD = arch.Discriminator_VGG_128(in_nc=3, base_nf=64, \
@@ -174,7 +159,7 @@ def define_F(VGG):
     #    feature_layer = 49
     #else:
     #    feature_layer = 34
-    print("netF start")
+    #print("netF start")
     #netF = arch.VGGFeatureExtractor(feature_layer=feature_layer, use_bn=use_bn, use_input_norm=True)
     netF = VGG
     netF.eval()  
