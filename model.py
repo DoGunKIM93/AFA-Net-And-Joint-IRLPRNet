@@ -1,7 +1,7 @@
 '''
 model.py
 '''
-version = '1.3.200624'
+version = '1.42.201006'
 
 
 #from Python
@@ -23,6 +23,7 @@ from torch.autograd import Variable,grad
 from torchvision import datasets
 from torchvision import transforms
 from torchvision.utils import save_image
+from torchvision.models import _utils
 from torch.autograd.function import once_differentiable
 from torch.nn.modules.utils import _pair
 from torch.autograd import Function
@@ -30,7 +31,7 @@ from torch.autograd.function import once_differentiable
 from torch.nn.modules.utils import _pair
 
 #from this project
-import param as p
+from backbone.config import Config
 import backbone.vision as vision
     #CovPool
 from backbone.module import CovpoolLayer, SqrtmLayer, CovpoolLayer3d, SqrtmLayer3d, TriuvecLayer
@@ -43,7 +44,9 @@ from backbone.EfficientNet.EfficientNet import EfficientNetBuilder, EFF_create_c
     #ResNeSt
 from backbone.ResNeSt.resnest import resnest50, resnest101, resnest200, resnest269
 from backbone.ResNeSt.resnet import ResNet, Bottleneck
-
+    #RetinaFace
+from backbone.RetinaFace.RetinaFace import MobileNetV1, FPN, SSH, ClassHead, BboxHead, LandmarkHead
+from backbone.RetinaFace.RetinaFace_config import cfg_mnet, cfg_re50
 
 
 
@@ -54,207 +57,47 @@ from backbone.ResNeSt.resnet import ResNet, Bottleneck
 # 3. EDVR
 # 4. Spatial A
 
-inputChannel = 1 if p.colorMode =='grayscale' else 3
 
 
-class SunnySideUp(nn.Module):
-    
-    def __init__(self, CW=32):
-        super(SunnySideUp, self).__init__()
-
-        self.conv1 = nn.Conv2d(        3, CW *   1, 4, 2, 1) # 256 -> 128
-        self.conv2 = nn.Conv2d(CW *   1, CW *   2, 4, 2, 1) # 256 -> 128
-        self.conv3 = nn.Conv2d(CW *   2, CW *   4, 4, 2, 1) # 256 -> 128
-        self.conv4 = nn.Conv2d(CW *   4, CW *   8, 4, 2, 1) # 256 -> 128
-        self.conv5 = nn.Conv2d(CW *   8, 1, 4, 2, 1) # 256 -> 128
-        self.AAP = nn.AdaptiveAvgPool2d((3, 3))
-
-        self.shifter = Shifter()
 
 
-    def forward(self, x):
 
-        ori = x
 
-        x = F.leaky_relu(self.conv1(x), 0.2)
+class DeNIQuA(nn.Module):
+    def __init__(self, featureExtractor, CW=64, inFeature=1, colorMode='color'):
+        super(DeNIQuA, self).__init__()
 
-        x = F.leaky_relu(self.conv2(x), 0.2)
+        inputChannel = 3 if colorMode == 'color' else 1
 
-        x = F.leaky_relu(self.conv3(x), 0.2)
+        self.featureExtractor = featureExtractor
 
-        x = F.leaky_relu(self.conv4(x), 0.2)
+        self.CW = CW
 
-        x = F.leaky_relu(self.conv5(x), 0.2)
+        self.inFeature = inFeature
 
-        x = F.sigmoid(self.AAP(x)).repeat(1,3,1,1)
+        self.DecoderList = nn.ModuleList([ # 1/32
+            nn.ConvTranspose2d(1280*inFeature,   CW*8, 4, 2, 1), #1/16
+            nn.ConvTranspose2d( CW*8,  CW*4, 4, 2, 1), #1/8
+            nn.ConvTranspose2d( CW*4,  CW*2, 4, 2, 1), #1/4
+            nn.ConvTranspose2d( CW*2 , CW*1, 4, 2, 1), #1/2
+            nn.ConvTranspose2d( CW*1 , inputChannel, 4, 2, 1), #1/1
+        ])
+
+    def forward(self, xList):
+
+        assert self.inFeature == len(xList)
         
-        ori = self.shifter(ori, x)
+        rstList = []
+        for i in range(self.inFeature):
+            rstList.append(self.featureExtractor(xList[i]))
+        x = torch.cat(rstList, 1)
 
-        return ori
+        for i, decoder in enumerate(self.DecoderList):
+            x = decoder(x)
+            if i + 1 < len(self.DecoderList):    
+                x = F.relu(x)
 
-
-
-
-class BlueLemonade(nn.Module):#v2 
-    
-    def __init__(self, featureExtractor, CW = p.NGF, blendingChannel = 3, shiftDistance = 9):#, CW = p.NDF, Blocks = 5, ResPerBlocks = 10):
-        super(BlueLemonade, self).__init__()
-
-        self.blendingChannel = blendingChannel
-        self.shiftDistance = shiftDistance
-        self.featureExtractor = featureExtractor
-
-        self.adaptiveFilterMaker = nn.Sequential( # 1/32
-            nn.ConvTranspose2d( 3840,  CW*16, 4, 2, 1), #1/16
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW*16, CW*8, 4, 2, 1), #1/8
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW*8,  CW*4, 4, 2, 1), #1/4
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW*4,  CW, 4, 2, 1), #1/2
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW, inputChannel * self.blendingChannel, 4, 2, 1), #1/1
-            nn.Tanh(),
-        )
-
-        self.shiftKernelMaker = nn.Sequential( # 1/32
-            nn.ConvTranspose2d( 3840,  CW*16, 4, 2, 1), #1/16
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW*16, CW*8, 4, 2, 1), #1/8
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW*8,  CW*4, 4, 2, 1), #1/4
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW*4,  CW, 4, 2, 1), #1/2
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW, self.blendingChannel, 4, 2, 1), #1/1
-            nn.ReLU(),
-            nn.AdaptiveAvgPool2d((self.shiftDistance, self.shiftDistance)),
-            nn.Sigmoid(),
-        )
-        #for i in range(Blocks):
-        #    self.kernelMaker.append(ReconstructionBlock(CW, ResPerBlocks, dim=2, use_attention=False, attention_sub_sample=None))
-
-        self.shifter = Shifter()
-
-        self.iteration = iteration
-    
-    def kernelMaking(self, a, b, c):
-        cated = torch.cat((a,b,c),1)
-        adaptiveFilter = self.adaptiveFilterMaker(cated) * (2 / self.iteration) 
-        shiftKernel = self.shiftKernelMaker(cated)
-        return adaptiveFilter, [shiftKernel[:,0:1,:,:].repeat(1,3,1,1), shiftKernel[:,1:2,:,:].repeat(1,3,1,1), shiftKernel[:,2:3,:,:].repeat(1,3,1,1)]
-
-    def applyFilter(self, ori, aFilter):
-        aFilter = aFilter.view(aFilter.size(0), aFilter.size(1) // inputChannel, inputChannel, *aFilter.size()[2:])
-        aFilter = F.softmax(aFilter, dim=1)#.view(x.size(0), -1, *x.size()[2:])
-
-        ori = ori.view(ori.size(0), ori.size(1) // inputChannel, inputChannel, *ori.size()[2:])
-
-        return (aFilter * ori).sum(dim=1)
-
-    def forward(self, x1, x2):
-
-        xb = x1
-        x1f = self.featureExtractor(x1)
-        x2f = self.featureExtractor(x2)
-
-        for i in range(self.iteration):
-
-            xbf = self.featureExtractor(xb)
-
-            adaptiveFilter, shiftKernel = self.kernelMaking(x1f, x2f, xbf)
-
-            shiftedX1 = self.shifter(x1, shiftKernel[0])
-            shiftedX2 = self.shifter(x2, shiftKernel[1])
-            shiftedXB = self.shifter(xb, shiftKernel[2])
-
-            catedX = torch.cat((shiftedX1, shiftedX2, shiftedXB), 1)
-            filterdX = self.applyFilter(catedX, adaptiveFilter)
-
-            xb = filterdX
-
-        return xb
-
-
-class ISAF(nn.Module):#v2 
-    
-    def __init__(self, featureExtractor, CW = p.NGF, iteration = 5, blendingChannel = 3, shiftDistance = 3):#, CW = p.NDF, Blocks = 5, ResPerBlocks = 10):
-        super(ISAF, self).__init__()
-
-        self.blendingChannel = blendingChannel
-        self.shiftDistance = shiftDistance
-        self.featureExtractor = featureExtractor
-
-        self.adaptiveFilterMaker = nn.Sequential( # 1/32
-            nn.ConvTranspose2d( 3840,  CW*16, 4, 2, 1), #1/16
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW*16, CW*8, 4, 2, 1), #1/8
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW*8,  CW*4, 4, 2, 1), #1/4
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW*4,  CW, 4, 2, 1), #1/2
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW, inputChannel * self.blendingChannel, 4, 2, 1), #1/1
-            nn.Tanh(),
-        )
-
-        self.shiftKernelMaker = nn.Sequential( # 1/32
-            nn.ConvTranspose2d( 3840,  CW*16, 4, 2, 1), #1/16
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW*16, CW*8, 4, 2, 1), #1/8
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW*8,  CW*4, 4, 2, 1), #1/4
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW*4,  CW, 4, 2, 1), #1/2
-            nn.ReLU(),
-            nn.ConvTranspose2d( CW, self.blendingChannel, 4, 2, 1), #1/1
-            nn.ReLU(),
-            nn.AdaptiveAvgPool2d((self.shiftDistance, self.shiftDistance)),
-            nn.Sigmoid(),
-        )
-        #for i in range(Blocks):
-        #    self.kernelMaker.append(ReconstructionBlock(CW, ResPerBlocks, dim=2, use_attention=False, attention_sub_sample=None))
-
-        self.shifter = Shifter()
-
-        self.iteration = iteration
-    
-    def kernelMaking(self, a, b, c):
-        cated = torch.cat((a,b,c),1)
-        adaptiveFilter = self.adaptiveFilterMaker(cated) * (2 / self.iteration) 
-        shiftKernel = self.shiftKernelMaker(cated)
-        return adaptiveFilter, [shiftKernel[:,0:1,:,:].repeat(1,3,1,1), shiftKernel[:,1:2,:,:].repeat(1,3,1,1), shiftKernel[:,2:3,:,:].repeat(1,3,1,1)]
-
-    def applyFilter(self, ori, aFilter):
-        aFilter = aFilter.view(aFilter.size(0), aFilter.size(1) // inputChannel, inputChannel, *aFilter.size()[2:])
-        aFilter = F.softmax(aFilter, dim=1)#.view(x.size(0), -1, *x.size()[2:])
-
-        ori = ori.view(ori.size(0), ori.size(1) // inputChannel, inputChannel, *ori.size()[2:])
-
-        return (aFilter * ori).sum(dim=1)
-
-    def forward(self, x1, x2):
-
-        xb = x1
-        x1f = self.featureExtractor(x1)
-        x2f = self.featureExtractor(x2)
-
-        for i in range(self.iteration):
-
-            xbf = self.featureExtractor(xb)
-
-            adaptiveFilter, shiftKernel = self.kernelMaking(x1f, x2f, xbf)
-
-            shiftedX1 = self.shifter(x1, shiftKernel[0])
-            shiftedX2 = self.shifter(x2, shiftKernel[1])
-            shiftedXB = self.shifter(xb, shiftKernel[2])
-
-            catedX = torch.cat((shiftedX1, shiftedX2, shiftedXB), 1)
-            filterdX = self.applyFilter(catedX, adaptiveFilter)
-
-            xb = filterdX
-
-        return xb
+        return F.sigmoid(x)
 
 
 
@@ -279,8 +122,6 @@ class ShiftKernelMaker(nn.Module):
         #skTensor = skTensor.unsqueeze(2)#.permute(1,0,2,3)
 
         return skTensor
-
-
 
 class Shifter(nn.Module):
     
@@ -310,23 +151,13 @@ class Shifter(nn.Module):
         return x
 
 
-#sk1 = torch.randn(2,3,5,5)
-#sk2 = ShiftKernelMaker()(sk1)
-#inp = torch.randn(2,3,5,5)
-#out = Shifter()(inp, sk2)
-#print(sk1)
-#print(sk2)
-#print(inp)
-#print(out)
-#
-
-
-
 
 class UMP(nn.Module):
 
-    def __init__(self, CW):
+    def __init__(self, CW, colorMode='color'):
         super(UMP, self).__init__()
+
+        inputChannel = 3 if colorMode == 'color' else 1
 
         self.CW = CW
         self.DecoderList = nn.ModuleList([ # 1/32
@@ -351,7 +182,7 @@ class UMP(nn.Module):
 
 class PSY(nn.Module):
     
-    def __init__(self, CW, Blocks = 5, ResPerBlocks = 10, Attention = True, attention_sub_sample = None):
+    def __init__(self, CW, Blocks = 5, ResPerBlocks = 10, Attention = True, attention_sub_sample = None, colorMode = 'color'):
         super(PSY, self).__init__()
 
         self.CW = CW
@@ -359,12 +190,14 @@ class PSY(nn.Module):
         self.ResPerBlocks = ResPerBlocks
         self.Attention = Attention
 
+        self.inputChannel = 3 if colorMode == 'color' else 1
+
         self.ReconstructionBlocks = nn.ModuleList()
         for i in range(self.Blocks):
             self.ReconstructionBlocks.append(ReconstructionBlock(CW, ResPerBlocks, dim=2, use_attention=Attention, attention_sub_sample=None))
 
-        self.Encoder = nn.Conv2d(inputChannel * 2, CW, 4, 2, 1)
-        self.Decoder = nn.ConvTranspose2d(CW, inputChannel * 2, 4, 2, 1)
+        self.Encoder = nn.Conv2d(self.inputChannel * 2, CW, 4, 2, 1)
+        self.Decoder = nn.ConvTranspose2d(CW, self.inputChannel * 2, 4, 2, 1)
 
 
     def forward(self, x):
@@ -378,10 +211,10 @@ class PSY(nn.Module):
             x = self.ReconstructionBlocks[i](x)
         
         x = self.Decoder(x)
-        x = x.view(x.size(0), x.size(1) // inputChannel, inputChannel, *x.size()[2:])
+        x = x.view(x.size(0), x.size(1) // self.inputChannel, self.inputChannel, *x.size()[2:])
         x = F.softmax(x, dim=1)#.view(x.size(0), -1, *x.size()[2:])
 
-        ori = ori.view(ori.size(0), ori.size(1) // inputChannel, inputChannel, *ori.size()[2:])
+        ori = ori.view(ori.size(0), ori.size(1) // self.inputChannel, self.inputChannel, *ori.size()[2:])
 
         return (x * ori).sum(dim=1)
 
@@ -389,7 +222,7 @@ class PSY(nn.Module):
 
 class WENDY(nn.Module):
     
-    def __init__(self, CW, Blocks = 5, ResPerBlocks = 10, Attention = True, attention_sub_sample = None):
+    def __init__(self, CW, Blocks = 5, ResPerBlocks = 10, Attention = False, attention_sub_sample = None, colorMode = 'color'):
         super(WENDY, self).__init__()
 
         self.CW = CW
@@ -397,11 +230,13 @@ class WENDY(nn.Module):
         self.ResPerBlocks = ResPerBlocks
         self.Attention = Attention
 
+        inputChannel = 3 if colorMode == 'color' else 1
+
         self.ReconstructionBlocks = nn.ModuleList()
         for i in range(self.Blocks):
             self.ReconstructionBlocks.append(ReconstructionBlock(CW, ResPerBlocks, dim=2, use_attention=Attention, attention_sub_sample=None))
 
-        self.Encoder = nn.Conv2d(inputChannel * 2, CW, 4, 2, 1)
+        self.Encoder = nn.Conv2d(inputChannel * 1, CW, 4, 2, 1)
         self.Decoder = nn.ConvTranspose2d(CW, inputChannel, 4, 2, 1)
 
 
@@ -412,12 +247,15 @@ class WENDY(nn.Module):
         x = F.relu(x)
         
         for i in range(self.Blocks):
-            x = self.ReconstructionBlocks[i](x)
+            res = x
+            x = self.ReconstructionBlocks[i](x) + res
         
         x = self.Decoder(x)
-        x = F.tanh(x)
+        #x = F.sigmoid(x)
 
-        return x + sc
+        x = F.interpolate(x, size=sc.size()[-2:], mode='bicubic')
+
+        return x, sc, x+ sc
 
 
         
@@ -1137,10 +975,13 @@ class resBlock(nn.Module):
     
 
 class VESPCN(nn.Module):
-    def __init__(self, upscale_factor=p.scaleFactor):
+    def __init__(self, upscale_factor, sequenceLength, colorMode = 'color'):
         super(VESPCN, self).__init__()
         
-        inputCh = (1 if p.colorMode =='grayscale' else 3) * p.sequenceLength
+        self.upscale_factor = upscale_factor
+        self.sequenceLength = sequenceLength
+
+        inputCh = (1 if colorMode =='grayscale' else 3) * sequenceLength
 
         self.conv1 = nn.Conv2d(inputCh, 256, (9, 9), (1, 1), (4, 4))
 
@@ -1159,11 +1000,11 @@ class VESPCN(nn.Module):
         self.res9 = resBlock(128, windowSize=3)
         self.res10 = resBlock(128, windowSize=3)
 
-        self.conv3 = nn.Conv2d(128, (1 if p.colorMode =='grayscale' else 3) * (upscale_factor ** 2), (3, 3), (1, 1), (1, 1))
+        self.conv3 = nn.Conv2d(128, (1 if colorMode =='grayscale' else 3) * (upscale_factor ** 2), (3, 3), (1, 1), (1, 1))
         self.pixel_shuffle = nn.PixelShuffle(upscale_factor)
 
     def forward(self, x):
-        sc = x[:,p.sequenceLength//2,:,:,:]
+        sc = x[:,self.sequenceLength//2,:,:,:]
         x = torch.cat(x.split(1, dim=1),2).squeeze(1)
 
         x = F.leaky_relu(self.conv1(x), 0.2)
@@ -1186,13 +1027,16 @@ class VESPCN(nn.Module):
         x = F.leaky_relu(self.res9(x), 0.2)
         x = F.leaky_relu(self.res10(x) + res, 0.2)
         
-        x = F.tanh(self.pixel_shuffle(self.conv3(x))) + F.interpolate(sc, scale_factor=p.scaleFactor, mode='bicubic')
+        x = F.tanh(self.pixel_shuffle(self.conv3(x))) + F.interpolate(sc, scale_factor=self.upscale_factor, mode='bicubic')
         return x
 
 
 class ESPCN(nn.Module):
-    def __init__(self, upscale_factor=p.scaleFactor):
+    def __init__(self, upscale_factor, colorMode='color'):
         super(ESPCN, self).__init__()
+
+        inputChannel = 3 if colorMode == 'color' else 1
+        self.upscale_factor = upscale_factor
 
         self.conv1 = nn.Conv2d(inputChannel, 256, (9, 9), (1, 1), (4, 4))
 
@@ -1236,8 +1080,8 @@ class ESPCN(nn.Module):
         x = F.leaky_relu(self.res9(x), 0.2)
         x = F.leaky_relu(self.res10(x) + res, 0.2)
         
-        x = F.tanh(self.pixel_shuffle(self.conv3(x))) + F.interpolate(sc, scale_factor=p.scaleFactor, mode='bicubic')
-        return (x + 1)/2 if p.valueRangeType == '0~1' else x
+        x = F.tanh(self.pixel_shuffle(self.conv3(x))) + F.interpolate(sc, scale_factor=self.upscale_factor, mode='bicubic')
+        return x
 
 
 class Conv_ReLU_Block(nn.Module):
@@ -1253,7 +1097,7 @@ class VDSR(nn.Module):
     def __init__(self):
         super(VDSR, self).__init__()
         self.residual_layer = self.VDSR_make_layer(Conv_ReLU_Block, 18)
-        self.input = nn.Conv2d(in_channels=1, out_channels=64, kernel_size=3, stride=1, padding=1, bias=False)
+        self.input = nn.Conv2d(in_channels=3, out_channels=64, kernel_size=3, stride=1, padding=1, bias=False)
         self.output = nn.Conv2d(in_channels=64, out_channels=1, kernel_size=3, stride=1, padding=1, bias=False)
         self.relu = nn.ReLU(inplace=True)
     
@@ -1274,24 +1118,24 @@ class VDSR(nn.Module):
         out = self.residual_layer(out)
         out = self.output(out)
         out = torch.add(out,residual)
-        return 0*out + residual
+        return out + residual
 
 
 
 
 class D_class(nn.Module):
 
-    def __init__(self):
+    def __init__(self, NDF, NGF):
         super(D_class, self).__init__()
 
-        self.conv1 = nn.Conv2d(p.NDF * 8, p.NDF * 4, 4, 2, 1)  # 32->16
-        self.conv2 = nn.Conv2d(p.NDF * 4, p.NDF * 2, 4, 2, 1)  # 16->8
-        self.conv3 = nn.Conv2d(p.NDF * 2, p.NDF * 1, 4, 2, 1)  # 8->4
-        self.conv4 = nn.Conv2d(p.NDF * 1, 1, 2, 1, 0)  # 4->1
+        self.conv1 = nn.Conv2d(NDF * 8, NDF * 4, 4, 2, 1)  # 32->16
+        self.conv2 = nn.Conv2d(NDF * 4, NDF * 2, 4, 2, 1)  # 16->8
+        self.conv3 = nn.Conv2d(NDF * 2, NDF * 1, 4, 2, 1)  # 8->4
+        self.conv4 = nn.Conv2d(NDF * 1, 1, 2, 1, 0)  # 4->1
 
-        self.IN_conv1 = nn.InstanceNorm2d(p.NGF * 4)
-        self.IN_conv2 = nn.InstanceNorm2d(p.NGF * 2)
-        self.IN_conv3 = nn.InstanceNorm2d(p.NGF * 1)
+        self.IN_conv1 = nn.InstanceNorm2d(NGF * 4)
+        self.IN_conv2 = nn.InstanceNorm2d(NGF * 2)
+        self.IN_conv3 = nn.InstanceNorm2d(NGF * 1)
 
     def parallelPool(self, x):
         xSize = x.size()
@@ -1327,20 +1171,20 @@ class D_class(nn.Module):
 
 class D_AE_class(nn.Module):
 
-    def __init__(self):
+    def __init__(self, NDF, NGF):
         super(D_AE_class, self).__init__()
 
-        self.conv1 = nn.Conv2d(3, p.NDF * 1, 4, 2, 1)  # 32->16
-        self.conv2 = nn.Conv2d(p.NDF * 1, p.NDF * 2, 4, 2, 1)  # 32->16
-        self.conv3 = nn.Conv2d(p.NDF * 2, p.NDF * 4, 4, 2, 1)  # 32->16
-        self.conv4 = nn.Conv2d(p.NDF * 4, p.NDF * 4, 4, 2, 1)  # 32->16
-        self.conv5 = nn.Conv2d(p.NDF * 4, p.NDF * 2, 4, 2, 1)  # 16->8
-        self.conv6 = nn.Conv2d(p.NDF * 2, p.NDF * 1, 4, 2, 1)  # 8->4
-        self.conv7 = nn.Conv2d(p.NDF * 1, 1, 4, 1, 0)  # 4->1
+        self.conv1 = nn.Conv2d(3, NDF * 1, 4, 2, 1)  # 32->16
+        self.conv2 = nn.Conv2d(NDF * 1, NDF * 2, 4, 2, 1)  # 32->16
+        self.conv3 = nn.Conv2d(NDF * 2, NDF * 4, 4, 2, 1)  # 32->16
+        self.conv4 = nn.Conv2d(NDF * 4, NDF * 4, 4, 2, 1)  # 32->16
+        self.conv5 = nn.Conv2d(NDF * 4, NDF * 2, 4, 2, 1)  # 16->8
+        self.conv6 = nn.Conv2d(NDF * 2, NDF * 1, 4, 2, 1)  # 8->4
+        self.conv7 = nn.Conv2d(NDF * 1, 1, 4, 1, 0)  # 4->1
 
-        self.IN_conv1 = nn.InstanceNorm2d(p.NGF * 4)
-        self.IN_conv2 = nn.InstanceNorm2d(p.NGF * 2)
-        self.IN_conv3 = nn.InstanceNorm2d(p.NGF * 1)
+        self.IN_conv1 = nn.InstanceNorm2d(NGF * 4)
+        self.IN_conv2 = nn.InstanceNorm2d(NGF * 2)
+        self.IN_conv3 = nn.InstanceNorm2d(NGF * 1)
 
     def forward(self, x):
 
@@ -1362,16 +1206,16 @@ class D_AE_class(nn.Module):
 
 class TiedAE(nn.Module):
 
-    def __init__(self):
+    def __init__(self, NDF, NGF):
         super(TiedAE, self).__init__()
 
-        self.conv1 = nn.Conv2d(1, p.NDF * 1, 4, 2, 1)  # 256->128
-        self.conv2 = nn.Conv2d(p.NDF * 1, p.NDF * 2, 4, 2, 1)  # 128->64
-        self.conv3 = nn.Conv2d(p.NDF * 2, p.NDF * 4, 4, 2, 1)  # 64->32
-        self.conv4 = nn.Conv2d(p.NDF * 4, p.NDF * 8, 4, 2, 1)  # 32->16
-        self.conv5 = nn.Conv2d(p.NDF * 4, p.NDF * 8, 4, 2, 1)  # ->8
-        self.conv6 = nn.Conv2d(p.NDF * 8, p.NDF * 16, 4, 2, 1)  # ->4
-        self.conv7 = nn.Conv2d(p.NDF * 16, p.NDF * 32, 4, 1, 0)  # ->1
+        self.conv1 = nn.Conv2d(1, NDF * 1, 4, 2, 1)  # 256->128
+        self.conv2 = nn.Conv2d(NDF * 1, NDF * 2, 4, 2, 1)  # 128->64
+        self.conv3 = nn.Conv2d(NDF * 2, NDF * 4, 4, 2, 1)  # 64->32
+        self.conv4 = nn.Conv2d(NDF * 4, NDF * 8, 4, 2, 1)  # 32->16
+        self.conv5 = nn.Conv2d(NDF * 4, NDF * 8, 4, 2, 1)  # ->8
+        self.conv6 = nn.Conv2d(NDF * 8, NDF * 16, 4, 2, 1)  # ->4
+        self.conv7 = nn.Conv2d(NDF * 16, NDF * 32, 4, 1, 0)  # ->1
 
     def inverse_leaky_relu(self, x, val):
     
@@ -1473,16 +1317,16 @@ class TiedAE(nn.Module):
 
 class TiedDisc(nn.Module):
     
-    def __init__(self):
+    def __init__(self, NDF, NGF):
         super(TiedDisc, self).__init__()
 
-        self.conv1 = nn.Conv2d(        3, p.NDF *   1, 4, 2, 1) # 256 -> 128
-        self.conv2 = nn.Conv2d(p.NDF *   1, p.NDF *   2, 4, 2, 1) # 256 -> 128
-        self.conv3 = nn.Conv2d(p.NDF *   2, p.NDF *   4, 4, 2, 1) # 256 -> 128
-        self.conv4 = nn.Conv2d(p.NDF *   4, p.NDF *   8, 4, 2, 1) # 256 -> 128
-        self.conv5 = nn.Conv2d(p.NDF *   8, p.NDF *  16, 4, 2, 1) # 256 -> 128
-        self.conv6 = nn.Conv2d(p.NDF *  16, p.NDF *  32, 4, 2, 1) # 256 -> 128
-        self.conv7 = nn.Conv2d(p.NDF *  32,         1, 4, 1, 0) # 256 -> 128
+        self.conv1 = nn.Conv2d(        3, NDF *   1, 4, 2, 1) # 256 -> 128
+        self.conv2 = nn.Conv2d(NDF *   1, NDF *   2, 4, 2, 1) # 256 -> 128
+        self.conv3 = nn.Conv2d(NDF *   2, NDF *   4, 4, 2, 1) # 256 -> 128
+        self.conv4 = nn.Conv2d(NDF *   4, NDF *   8, 4, 2, 1) # 256 -> 128
+        self.conv5 = nn.Conv2d(NDF *   8, NDF *  16, 4, 2, 1) # 256 -> 128
+        self.conv6 = nn.Conv2d(NDF *  16, NDF *  32, 4, 2, 1) # 256 -> 128
+        self.conv7 = nn.Conv2d(NDF *  32,         1, 4, 1, 0) # 256 -> 128
         
 
     def forward(self, x):
@@ -1506,23 +1350,23 @@ class TiedDisc(nn.Module):
 
 class TiedGAN(nn.Module):
 
-    def __init__(self):
+    def __init__(self, NDF, NGF):
         super(TiedGAN, self).__init__()
 
-        self.deconv1 = nn.ConvTranspose2d(p.NDF * 32, p.NDF * 16, 4, 2, 1)  #   4   4   256  ->  8   8   128
-        self.deconv2 = nn.ConvTranspose2d(p.NDF * 16, p.NDF *  8, 4, 2, 1)  #   8   8   128  ->  16  16  64
-        self.deconv3 = nn.ConvTranspose2d(p.NDF *  8, p.NDF *  4, 4, 2, 1)  #   16  16  64   ->  32  32  32
-        self.deconv4 = nn.ConvTranspose2d(p.NDF *  4, p.NDF *  2, 4, 2, 1)  #   32  32  32   ->  64  64  16
-        self.deconv5 = nn.ConvTranspose2d(p.NDF *  2, p.NDF *  1, 4, 2, 1)  #   64  64  16   ->  128 128 8
-        self.deconv6 = nn.ConvTranspose2d(p.NDF *  1,        3, 4, 2, 1)  #   128 128 8    ->  256 256 3
+        self.deconv1 = nn.ConvTranspose2d(NDF * 32, NDF * 16, 4, 2, 1)  #   4   4   256  ->  8   8   128
+        self.deconv2 = nn.ConvTranspose2d(NDF * 16, NDF *  8, 4, 2, 1)  #   8   8   128  ->  16  16  64
+        self.deconv3 = nn.ConvTranspose2d(NDF *  8, NDF *  4, 4, 2, 1)  #   16  16  64   ->  32  32  32
+        self.deconv4 = nn.ConvTranspose2d(NDF *  4, NDF *  2, 4, 2, 1)  #   32  32  32   ->  64  64  16
+        self.deconv5 = nn.ConvTranspose2d(NDF *  2, NDF *  1, 4, 2, 1)  #   64  64  16   ->  128 128 8
+        self.deconv6 = nn.ConvTranspose2d(NDF *  1,        3, 4, 2, 1)  #   128 128 8    ->  256 256 3
 
-        self.conv1 = nn.Conv2d(        3, p.NDF *   1, 4, 2, 1) # 256 -> 128
-        self.conv2 = nn.Conv2d(p.NDF *   1, p.NDF *   2, 4, 2, 1) # 256 -> 128
-        self.conv3 = nn.Conv2d(p.NDF *   2, p.NDF *   4, 4, 2, 1) # 256 -> 128
-        self.conv4 = nn.Conv2d(p.NDF *   4, p.NDF *   8, 4, 2, 1) # 256 -> 128
-        self.conv5 = nn.Conv2d(p.NDF *   8, p.NDF *  16, 4, 2, 1) # 256 -> 128
-        self.conv6 = nn.Conv2d(p.NDF *  16, p.NDF *  32, 4, 2, 1) # 256 -> 128
-        self.conv7 = nn.Conv2d(p.NDF *  32,         1, 4, 1, 0) # 256 -> 128
+        self.conv1 = nn.Conv2d(        3, NDF *   1, 4, 2, 1) # 256 -> 128
+        self.conv2 = nn.Conv2d(NDF *   1, NDF *   2, 4, 2, 1) # 256 -> 128
+        self.conv3 = nn.Conv2d(NDF *   2, NDF *   4, 4, 2, 1) # 256 -> 128
+        self.conv4 = nn.Conv2d(NDF *   4, NDF *   8, 4, 2, 1) # 256 -> 128
+        self.conv5 = nn.Conv2d(NDF *   8, NDF *  16, 4, 2, 1) # 256 -> 128
+        self.conv6 = nn.Conv2d(NDF *  16, NDF *  32, 4, 2, 1) # 256 -> 128
+        self.conv7 = nn.Conv2d(NDF *  32,         1, 4, 1, 0) # 256 -> 128
 
     def inverse_leaky_relu(self, x, val):
     
@@ -1567,3 +1411,165 @@ class TiedGAN(nn.Module):
             x = F.conv2d(self.inverse_leaky_relu(x, 0.2), self.deconv1.weight, stride=2, padding=1)
 
             return x
+
+
+
+
+
+################################# 
+##########    SPSR    ###########
+################################# 
+class Get_gradient(nn.Module):
+    def __init__(self):
+        super(Get_gradient, self).__init__()
+        kernel_v = [[0, -1, 0], 
+                    [0, 0, 0], 
+                    [0, 1, 0]]
+        kernel_h = [[0, 0, 0], 
+                    [-1, 0, 1], 
+                    [0, 0, 0]]
+        kernel_h = torch.FloatTensor(kernel_h).unsqueeze(0).unsqueeze(0)
+        kernel_v = torch.FloatTensor(kernel_v).unsqueeze(0).unsqueeze(0)
+        self.weight_h = nn.Parameter(data = kernel_h, requires_grad = False)
+        self.weight_v = nn.Parameter(data = kernel_v, requires_grad = False)
+
+    def forward(self, x):
+        x0 = x[:, 0]
+        x1 = x[:, 1]
+        x2 = x[:, 2]
+        x0_v = F.conv2d(x0.unsqueeze(1), self.weight_v, padding=2)
+        x0_h = F.conv2d(x0.unsqueeze(1), self.weight_h, padding=2)
+
+        x1_v = F.conv2d(x1.unsqueeze(1), self.weight_v, padding=2)
+        x1_h = F.conv2d(x1.unsqueeze(1), self.weight_h, padding=2)
+
+        x2_v = F.conv2d(x2.unsqueeze(1), self.weight_v, padding=2)
+        x2_h = F.conv2d(x2.unsqueeze(1), self.weight_h, padding=2)
+
+        x0 = torch.sqrt(torch.pow(x0_v, 2) + torch.pow(x0_h, 2) + 1e-6)
+        x1 = torch.sqrt(torch.pow(x1_v, 2) + torch.pow(x1_h, 2) + 1e-6)
+        x2 = torch.sqrt(torch.pow(x2_v, 2) + torch.pow(x2_h, 2) + 1e-6)
+
+        x = torch.cat([x0, x1, x2], dim=1)
+        return x
+
+class Get_gradient_nopadding(nn.Module):
+    def __init__(self):
+        super(Get_gradient_nopadding, self).__init__()
+        kernel_v = [[0, -1, 0], 
+                    [0, 0, 0], 
+                    [0, 1, 0]]
+        kernel_h = [[0, 0, 0], 
+                    [-1, 0, 1], 
+                    [0, 0, 0]]
+        kernel_h = torch.FloatTensor(kernel_h).unsqueeze(0).unsqueeze(0)
+        kernel_v = torch.FloatTensor(kernel_v).unsqueeze(0).unsqueeze(0)
+        self.weight_h = nn.Parameter(data = kernel_h, requires_grad = False)
+        self.weight_v = nn.Parameter(data = kernel_v, requires_grad = False)
+
+    def forward(self, x):
+        x0 = x[:, 0]
+        x1 = x[:, 1]
+        x2 = x[:, 2]
+        x0_v = F.conv2d(x0.unsqueeze(1), self.weight_v, padding = 1)
+        x0_h = F.conv2d(x0.unsqueeze(1), self.weight_h, padding = 1)
+
+        x1_v = F.conv2d(x1.unsqueeze(1), self.weight_v, padding = 1)
+        x1_h = F.conv2d(x1.unsqueeze(1), self.weight_h, padding = 1)
+
+        x2_v = F.conv2d(x2.unsqueeze(1), self.weight_v, padding = 1)
+        x2_h = F.conv2d(x2.unsqueeze(1), self.weight_h, padding = 1)
+
+        x0 = torch.sqrt(torch.pow(x0_v, 2) + torch.pow(x0_h, 2) + 1e-6)
+        x1 = torch.sqrt(torch.pow(x1_v, 2) + torch.pow(x1_h, 2) + 1e-6)
+        x2 = torch.sqrt(torch.pow(x2_v, 2) + torch.pow(x2_h, 2) + 1e-6)
+
+        x = torch.cat([x0, x1, x2], dim=1)
+        return x
+
+
+class RetinaFace(nn.Module):
+    def __init__(self, backboneModel = 'mobilenet0.25', phase = 'train'):
+        """
+        :param cfg:  Network related settings.
+        :param phase: train or test.
+        """
+        super(RetinaFace,self).__init__()
+        if backboneModel == "mobilenet0.25":
+            cfg = cfg_mnet
+        elif backboneModel == "resnet50":
+            cfg = cfg_re50
+        
+        self.phase = phase
+        backbone = None
+        if cfg['name'] == 'mobilenet0.25':
+            backbone = MobileNetV1()
+            if cfg['pretrain']:
+                checkpoint = torch.load("/home/projSR/dataset/pretrained/"+"mobilenetV1X0.25_pretrain.tar", map_location=torch.device('cpu'))
+                from collections import OrderedDict
+                new_state_dict = OrderedDict()
+                for k, v in checkpoint['state_dict'].items():
+                    name = k[7:]  # remove module.
+                    new_state_dict[name] = v
+                # load params
+                backbone.load_state_dict(new_state_dict)
+        elif cfg['name'] == 'Resnet50':
+            import torchvision.models as models
+            backbone = models.resnet50(pretrained=cfg['pretrain'])
+
+        self.body = _utils.IntermediateLayerGetter(backbone, cfg['return_layers'])
+        in_channels_stage2 = cfg['in_channel']
+        in_channels_list = [
+            in_channels_stage2 * 2,
+            in_channels_stage2 * 4,
+            in_channels_stage2 * 8,
+        ]
+        out_channels = cfg['out_channel']
+        self.fpn = FPN(in_channels_list,out_channels)
+        self.ssh1 = SSH(out_channels, out_channels)
+        self.ssh2 = SSH(out_channels, out_channels)
+        self.ssh3 = SSH(out_channels, out_channels)
+
+        self.ClassHead = self._make_class_head(fpn_num=3, inchannels=cfg['out_channel'])
+        self.BboxHead = self._make_bbox_head(fpn_num=3, inchannels=cfg['out_channel'])
+        self.LandmarkHead = self._make_landmark_head(fpn_num=3, inchannels=cfg['out_channel'])
+
+    def _make_class_head(self,fpn_num=3,inchannels=64,anchor_num=2):
+        classhead = nn.ModuleList()
+        for i in range(fpn_num):
+            classhead.append(ClassHead(inchannels,anchor_num))
+        return classhead
+    
+    def _make_bbox_head(self,fpn_num=3,inchannels=64,anchor_num=2):
+        bboxhead = nn.ModuleList()
+        for i in range(fpn_num):
+            bboxhead.append(BboxHead(inchannels,anchor_num))
+        return bboxhead
+
+    def _make_landmark_head(self,fpn_num=3,inchannels=64,anchor_num=2):
+        landmarkhead = nn.ModuleList()
+        for i in range(fpn_num):
+            landmarkhead.append(LandmarkHead(inchannels,anchor_num))
+        return landmarkhead
+
+    def forward(self,inputs):
+        out = self.body(inputs)
+
+        # FPN
+        fpn = self.fpn(out)
+
+        # SSH
+        feature1 = self.ssh1(fpn[0])
+        feature2 = self.ssh2(fpn[1])
+        feature3 = self.ssh3(fpn[2])
+        features = [feature1, feature2, feature3]
+
+        bbox_regressions = torch.cat([self.BboxHead[i](feature) for i, feature in enumerate(features)], dim=1)
+        classifications = torch.cat([self.ClassHead[i](feature) for i, feature in enumerate(features)],dim=1)
+        ldm_regressions = torch.cat([self.LandmarkHead[i](feature) for i, feature in enumerate(features)], dim=1)
+
+        if self.phase == 'train':
+            output = (bbox_regressions, classifications, ldm_regressions)
+        else:
+            output = (bbox_regressions, F.softmax(classifications, dim=-1), ldm_regressions)
+        return output

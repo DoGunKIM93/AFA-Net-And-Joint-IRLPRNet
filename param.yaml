@@ -1,0 +1,429 @@
+#################################################################################
+#                               *** param.yaml ***                              #
+#################################################################################
+version : 2.06.201006
+ 
+
+
+
+
+#################################################################################
+#                                     GENERAL                                   #
+#################################################################################
+general:
+    #maxMemoryCachingSizeGB: 64
+    #maxVRAMCachingSizeGB: 8 # will be devide by # of GPU
+    GPUNum: 3 # comma-separated
+
+
+
+
+
+#################################################################################
+#                                       DATA                                    #
+#################################################################################
+data:
+    path: 
+        datasetPath: /home/projSR/dataset/
+        pretrainedPath: /home/projSR/dataset/pretrained/
+    
+    datasetComponent:
+
+        DIV2K_SR_train:
+            dataConfig: DIV2K_SR
+            mode: train # 'train' || 'validation' || 'test'.  # See above table
+            classParameter:
+                scaleMethod: 
+                    - bicubic
+                scaleFactor: 
+                    - 4
+            colorMode: color  # 'color' || 'grayscale'
+
+        DIV2K_SR_train_noised:
+            dataConfig: DIV2K_SR
+            mode: train
+            classParameter:
+                scaleMethod:
+                    - mild
+                    - difficult
+                    - unknown
+                scaleFactor: 
+                    - 4
+            colorMode: color  # 'color' || 'grayscale'
+
+        DIV2K_SR_validation:
+            dataConfig: DIV2K_SR
+            mode: validation
+            classParameter:
+                scaleMethod: 
+                    - bicubic
+                scaleFactor: 
+                    - 4
+            colorMode: color  # 'color' || 'grayscale'
+
+        FFHQ_Face_SR_virtual_train:
+            dataConfig: FFHQ_FACE_SR
+            mode: train # 'train' || 'validation' || 'test'.  # See above table
+            classParameter:
+                class:
+                    - GT
+            colorMode: color  # 'color' || 'grayscale'
+
+        DIV2K_Cleanser_train:
+            dataConfig: DIV2K_SR
+            mode: train # 'train' || 'validation' || 'test'.  # See above table
+            classParameter:
+                scaleMethod: 
+                    - mild
+                    - difficult
+                    - unknown
+                scaleFactor: 
+                    - 4
+            labelClassName: bicubic/4
+            colorMode: color  # 'color' || 'grayscale'
+
+        DIV2K_Cleanser_validation:
+            dataConfig: DIV2K_SR
+            mode: validation # 'train' || 'validation' || 'test'.  # See above table
+            classParameter:
+                scaleMethod: 
+                    - mild
+                    - difficult
+                    - unknown
+                scaleFactor: 
+                    - 4
+            labelClassName: bicubic/4
+            colorMode: color  # 'color' || 'grayscale'
+
+
+        DIV2K_SR_train_virtual:
+            dataConfig: DIV2K_SR_V
+            mode: train # 'train' || 'validation' || 'test'.  # See above table
+            classParameter:
+                class: 
+                    - GT
+            colorMode: color  # 'color' || 'grayscale'
+
+        291_SR_train_virtual:
+            dataConfig: 291_SR
+            mode: train
+            classParameter:
+                class: 
+                    - GT
+            colorMode: color
+
+        REDS_SR_train:
+            dataConfig: REDS_SR
+            mode: train
+            classParameter:
+                degradationMethod:
+                    - sharp_bicubic
+                scaleFactor:
+                    - 4
+            colorMode: color
+
+
+        REDS_SR_validation:
+            dataConfig: REDS_SR
+            mode: validation
+            classParameter:
+                degradationMethod:
+                    - sharp_bicubic
+                scaleFactor:
+                    - 4
+            colorMode: color
+
+
+        VID4_SR_test:
+            dataConfig: VID4_SR
+            mode: test
+            classParameter:
+                degradationMethod:
+                    - bicubic
+                scaleFactor:
+                    - 4
+            colorMode: color
+
+
+        Set5_SR_test:
+            dataConfig: Set5_SR
+            mode: test
+            classParameter:
+                scaleMethod:
+                    - bicubic
+                scaleFactor:
+                    - 4
+            colorMode: color
+
+        Set5_SR_test_virtual:
+            dataConfig: Set5_SR_V
+            mode: test
+            classParameter:
+                class:
+                    - GT
+            colorMode: color
+
+
+        Blending_SR_test:
+            dataConfig: Blending_SR
+            mode: test
+            classParameter:
+                scaleMethod:
+                    - bicubic
+                scaleFactor:
+                    - 4
+            colorMode: color
+        
+
+
+
+
+
+
+
+
+    dataLoader:
+        
+        train_x:
+            datasetComponent: # Must be list
+                - FFHQ_Face_SR_virtual_train
+                - DIV2K_SR_train_virtual
+            batchSize: 33
+            valueRangeType : 0~1
+            isEval: False
+            makePreprocessedFile: True
+            augmentation: # Must be list of dict   /   toTensor() Must be here
+                - randomCropWithRandomSize(256, 256, 512, 512, 4)
+                - shrinkWithRandomMethod(256, 256)
+                - virtualScaling(4)
+                - randomFlip()
+                - toTensor()
+
+
+        train_x:
+            datasetComponent: # Must be list
+                - DIV2K_SR_train_noised
+                - DIV2K_SR_train
+            batchSize: 384
+            valueRangeType : 0~1
+            isEval: False
+            makePreprocessedFile: True
+            augmentation: # Must be list of dict   /   toTensor() Must be here
+                - randomCropWithRandomSize(64, 64, 384, 384, 4)
+                - shrinkWithRandomMethod(64, 64)
+                - randomFlip()
+                - toTensor()
+
+        train_x:
+            datasetComponent: # Must be list
+                - FFHQ_Face_SR_virtual_train
+            batchSize: 384
+            valueRangeType : 0~1
+            isEval: False
+            makePreprocessedFile: False
+            augmentation: # Must be list of dict   /   toTensor() Must be here
+                - randomCropWithRandomSize(64, 64, 384, 384, 4)
+                - shrinkWithRandomMethod(64, 64)
+                - virtualScaling(4)
+                - randomFlip()
+                - toTensor()
+
+        train:
+            datasetComponent: # Must be list
+                - DIV2K_SR_train_virtual
+                - 291_SR_train_virtual
+            batchSize: 128
+            valueRangeType : -1~1
+            isEval: False
+            makePreprocessedFile: True
+            augmentation: # Must be list of dict   /   toTensor() Must be here
+                - randomCrop(64,64)
+                - virtualScaling(4) 
+                - randomFlip()
+                - toTensor()
+                #- sizeMatch()
+
+        train_x:
+            datasetComponent: # Must be list0
+                - DIV2K_Cleanser_train
+            batchSize: 128
+            valueRangeType : 0~1
+            isEval: False
+            makePreprocessedFile: True
+            augmentation: # Must be list of dict   /   toTensor() Must be here
+                - randomCropWithRandomSize(64, 64, 128, 128)
+                - shrink(64, 64)
+                - randomFlip()
+                - toTensor()
+                
+
+        train_x:
+            datasetComponent: # Must be list
+                - FFHQ_Face_SR_virtual_train
+            batchSize: 576
+            valueRangeType : 0~1
+            isEval: False
+            makePreprocessedFile: False
+            augmentation: # Must be list of dict   /   toTensor() Must be here
+                - randomCropWithRandomSize(64, 64, 512, 512)
+                - shrink(64, 64)
+                - virtualScaling(4) # [GT,GT] -> [LR,GT]
+                - randomFlip()
+                - toTensor()
+
+
+        validation_x:
+            datasetComponent: # Must be list
+                - Blending_SR_test #_virtual
+            batchSize: 1
+            valueRangeType : -1~1
+            isEval: True
+            makePreprocessedFile: True
+            augmentation: # Must be list of dict   /   toTensor() Must be here
+                #- centerCropToMultipleOf(16)
+                #- virtualScaling(4)
+                - toTensor()
+
+
+        validation_x:
+            datasetComponent:
+                - DIV2K_SR_validation
+            batchSize: 1
+            valueRangeType : 0~1
+            isEval: True
+            makePreprocessedFile: True
+            #sequenceLength: 5
+            augmentation: # Must be list of dict   /   toTensor() Must be here
+                #- centerCrop(96, 96)
+                #- sizeMatch()
+                - toTensor()
+
+        validation_x:
+            datasetComponent:
+                - DIV2K_Cleanser_validation
+            batchSize: 1
+            valueRangeType : 0~1
+            isEval: True
+            makePreprocessedFile: True
+            #sequenceLength: 5
+            augmentation: # Must be list of dict   /   toTensor() Must be here
+                #- centerCrop(96, 96)
+                #- sizeMatch()
+                - toTensor()
+
+        validation:
+            datasetComponent: # Must be list
+                - Set5_SR_test #_virtual
+            batchSize: 1
+            valueRangeType : -1~1
+            isEval: True
+            makePreprocessedFile: True
+            augmentation: # Must be list of dict   /   toTensor() Must be here
+                #- centerCropToMultipleOf(16)
+                #- virtualScaling(4)
+                - toTensor()
+
+        validation_x:
+            datasetComponent: # Must be list
+                - REDS_SR_validation #_virtual
+            batchSize: 1
+            valueRangeType: 0~1
+            sequenceLength: 7
+            isEval: True
+            makePreprocessedFile: True
+            augmentation: # Must be list of dict   /   toTensor() Must be here
+                #- centerCropToMultipleOf(16)
+                #- virtualScaling(4)
+                - toTensor()
+
+        inference_x:
+            datasetComponent: # Must be list
+                - Set5_SR_test #_virtual
+            batchSize: 1
+            valueRangeType : 0~1
+            isEval: True
+            makePreprocessedFile: True
+            augmentation: # Must be list of dict   /   toTensor() Must be here
+                #- centerCropToMultipleOf(16)
+                #- virtualScaling(4)
+                - toTensor()
+
+        inference_x:
+            datasetComponent:
+                - DIV2K_SR_validation
+            batchSize: 1
+            valueRangeType : 0~1
+            isEval: True
+            makePreprocessedFile: True
+            #sequenceLength: 5
+            augmentation: # Must be list of dict   /   toTensor() Must be here
+                #- centerCrop(96, 96)
+                #- sizeMatch()
+                - resizeToMultipleOf(4, 3)
+                - toTensor()
+
+        inference:
+            datasetComponent: # Must be list
+                - REDS_SR_validation #_virtual
+            batchSize: 1
+            valueRangeType: 0~1
+            sequenceLength: 7
+            isEval: True
+            makePreprocessedFile: False
+            augmentation: # Must be list of dict   /   toTensor() Must be here
+                #- centerCropToMultipleOf(16)
+                #- virtualScaling(4)
+                - toTensor()
+
+
+        #validation:
+        #    datasetComponent:
+        #        - Vid4, REDS # PARALLEL TODO:
+        #        - Set5       # Serial with List
+        #    batchSize: 1
+        #    valueRangeType : -1~1
+        #    isEval: False
+        #    makePreprocessedFile: False
+        #    augmentation:
+        #        - resizeByMaxPixelCount(590000)
+
+        
+
+            
+#################################################################################
+#                                     TRAIN                                     #
+#################################################################################
+train:
+
+    step:
+        maxEpoch: 180000
+        validationStep: 100
+        archiveStep: 400
+
+    method:
+        mixedPrecision: False 
+
+    dataLoaderNumWorkers: 16
+
+
+    
+
+#################################################################################
+#                                     SAVE                                      #
+#################################################################################
+save:
+
+    font:
+        path: "/backbone/misc/LatinModernRomanItalic.otf"
+
+    maxSaveImageNumberTrain: 30
+
+
+
+
+
+
+
+#################################################################################
+#                               *** THANK YOU ***                               #
+#################################################################################

@@ -1,325 +1,60 @@
 '''
 utils.py
 '''
-version = "1.31.200526"
+version = "1.36.201006"
 
-import torch.nn as nn
-import torch
-from torch.autograd import Variable
+
+#From Python
 import argparse
-
-import types
 import math
 import numpy as np
-from torch._six import inf
-from functools import wraps
-import warnings
-import weakref
-from collections import Counter
-from bisect import bisect_right
-
-from torch.optim.optimizer import Optimizer
-from torch.optim.lr_scheduler import _LRScheduler
-
 import apex.amp as amp
-from apex.parallel import DistributedDataParallel as DDP
+import os
+import subprocess
+import psutil
 
-import param as p
+#from apex.parallel import DistributedDataParallel as DDP
+from shutil import copyfile
+from PIL import Image, ImageOps, ImageDraw, ImageFont
 
+#From Pytorch
+import torch
+import torch.nn as nn
 
-#local function
-def to_var(x):
-    if torch.cuda.is_available():
-        x = x.cuda()
-    return Variable(x)
-
-def denorm(x):
-    out = x
-    if p.valueRangeType == '-1~1':
-        out = (x + 1) / 2
-    
-    return out.clamp(0, 1)
-
-'''
-def norm(x):
-    out = (x - 0.5) * 2
-    print(out)
-    return out.clamp(-1,1)
-'''
-
-def calculateImagePSNR(a, b):
-
-    pred = a.cpu().data[0].numpy().astype(np.float32)
-    gt = b.cpu().data[0].numpy().astype(np.float32)
-
-    np.nan_to_num(pred, copy=False)
-    np.nan_to_num(gt, copy=False)
-
-    if p.valueRangeType == '-1~1':
-        pred = (pred + 1)/2
-        gt = (gt + 1)/2
-
-    if p.colorMode == 'grayscale':
-        pred = np.round(pred * 219.)
-        pred[pred < 0] = 0
-        pred[pred > 219.] = 219.
-        pred = pred[0,:,:] + 16
-            
-        gt = np.round(gt * 219.)
-        gt[gt < 0] = 0
-        gt[gt > 219.] = 219.
-        gt = gt[0,:,:] + 16
-    elif p.colorMode == 'color':
-        pred = 16 + 65.481*pred[0:1,:,:] + 128.553*pred[1:2,:,:] + 24.966*pred[2:3,:,:]
-        pred[pred < 16.] = 16.
-        pred[pred > 235.] = 235.
-
-        gt = 16 + 65.481*gt[0:1,:,:] + 128.553*gt[1:2,:,:] + 24.966*gt[2:3,:,:]
-        gt[gt < 16.] = 16.
-        gt[gt > 235.] = 235.
-
-    
-
-    imdff = pred - gt
-    rmse = math.sqrt(np.mean(imdff ** 2))
-    if rmse == 0:
-        return 100
-    #print(20 * math.log10(255.0/ rmse), cv2.PSNR(gt, pred), cv2.PSNR(cv2.imread('sr.png'), cv2.imread('hr.png')))
-    return 20 * math.log10(255.0/ rmse)
-    
-class NotOneCycleLR(_LRScheduler):
-    r"""Sets the learning rate of each parameter group according to the
-    1cycle learning rate policy. The 1cycle policy anneals the learning
-    rate from an initial learning rate to some maximum learning rate and then
-    from that maximum learning rate to some minimum learning rate much lower
-    than the initial learning rate.
-    This policy was initially described in the paper `Super-Convergence:
-    Very Fast Training of Neural Networks Using Large Learning Rates`_.
-
-    The 1cycle learning rate policy changes the learning rate after every batch.
-    `step` should be called after a batch has been used for training.
-
-    This scheduler is not chainable.
-
-    Note also that the total number of steps in the cycle can be determined in one
-    of two ways (listed in order of precedence):
-
-    #. A value for total_steps is explicitly provided.
-    #. A number of epochs (epochs) and a number of steps per epoch
-       (steps_per_epoch) are provided.
-       In this case, the number of total steps is inferred by
-       total_steps = epochs * steps_per_epoch
-
-    You must either provide a value for total_steps or provide a value for both
-    epochs and steps_per_epoch.
-
-    Args:
-        optimizer (Optimizer): Wrapped optimizer.
-        max_lr (float or list): Upper learning rate boundaries in the cycle
-            for each parameter group.
-        total_steps (int): The total number of steps in the cycle. Note that
-            if a value is provided here, then it must be inferred by providing
-            a value for epochs and steps_per_epoch.
-            Default: None
-        epochs (int): The number of epochs to train for. This is used along
-            with steps_per_epoch in order to infer the total number of steps in the cycle
-            if a value for total_steps is not provided.
-            Default: None
-        steps_per_epoch (int): The number of steps per epoch to train for. This is
-            used along with epochs in order to infer the total number of steps in the
-            cycle if a value for total_steps is not provided.
-            Default: None
-        pct_start (float): The percentage of the cycle (in number of steps) spent
-            increasing the learning rate.
-            Default: 0.3
-        anneal_strategy (str): {'cos', 'linear'}
-            Specifies the annealing strategy: "cos" for cosine annealing, "linear" for
-            linear annealing.
-            Default: 'cos'
-        cycle_momentum (bool): If ``True``, momentum is cycled inversely
-            to learning rate between 'base_momentum' and 'max_momentum'.
-            Default: True
-        base_momentum (float or list): Lower momentum boundaries in the cycle
-            for each parameter group. Note that momentum is cycled inversely
-            to learning rate; at the peak of a cycle, momentum is
-            'base_momentum' and learning rate is 'max_lr'.
-            Default: 0.85
-        max_momentum (float or list): Upper momentum boundaries in the cycle
-            for each parameter group. Functionally,
-            it defines the cycle amplitude (max_momentum - base_momentum).
-            Note that momentum is cycled inversely
-            to learning rate; at the start of a cycle, momentum is 'max_momentum'
-            and learning rate is 'base_lr'
-            Default: 0.95
-        div_factor (float): Determines the initial learning rate via
-            initial_lr = max_lr/div_factor
-            Default: 25
-        final_div_factor (float): Determines the minimum learning rate via
-            min_lr = initial_lr/final_div_factor
-            Default: 1e4
-        last_epoch (int): The index of the last batch. This parameter is used when
-            resuming a training job. Since `step()` should be invoked after each
-            batch instead of after each epoch, this number represents the total
-            number of *batches* computed, not the total number of epochs computed.
-            When last_epoch=-1, the schedule is started from the beginning.
-            Default: -1
-
-    Example:
-        >>> data_loader = torch.utils.data.DataLoader(...)
-        >>> optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
-        >>> scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.01, steps_per_epoch=len(data_loader), epochs=10)
-        >>> for epoch in range(10):
-        >>>     for batch in data_loader:
-        >>>         train_batch(...)
-        >>>         scheduler.step()
+from torch.utils.tensorboard import SummaryWriter
+from torchvision.transforms import ToPILImage
+from torchvision.utils import save_image
+from torch.autograd import Variable
 
 
-    .. _Super-Convergence\: Very Fast Training of Neural Networks Using Large Learning Rates:
-        https://arxiv.org/abs/1708.07120
-    """
-    def __init__(self,
-                 optimizer,
-                 max_lr,
-                 total_steps=None,
-                 epochs=None,
-                 steps_per_epoch=None,
-                 pct_start=0.3,
-                 anneal_strategy='cos',
-                 cycle_momentum=True,
-                 base_momentum=0.85,
-                 max_momentum=0.95,
-                 div_factor=25.,
-                 final_div_factor=1e4,
-                 last_epoch=-1):
+#From This Project
+from backbone.config import Config
+from backbone.torchvision_injected import functional as vF
 
-        # Validate optimizer
-        if not isinstance(optimizer, Optimizer):
-            raise TypeError('{} is not an Optimizer'.format(
-                type(optimizer).__name__))
-        self.optimizer = optimizer
 
-        # Validate total_steps
-        if total_steps is None and epochs is None and steps_per_epoch is None:
-            raise ValueError("You must define either total_steps OR (epochs AND steps_per_epoch)")
-        elif total_steps is not None:
-            if total_steps <= 0 or not isinstance(total_steps, int):
-                raise ValueError("Expected non-negative integer total_steps, but got {}".format(total_steps))
-            self.total_steps = total_steps
-        else:
-            if epochs <= 0 or not isinstance(epochs, int):
-                raise ValueError("Expected non-negative integer epochs, but got {}".format(epochs))
-            if steps_per_epoch <= 0 or not isinstance(steps_per_epoch, int):
-                raise ValueError("Expected non-negative integer steps_per_epoch, but got {}".format(steps_per_epoch))
-            self.total_steps = epochs * steps_per_epoch
-        self.step_size_up = float(pct_start * self.total_steps) - 1
-        self.step_size_down = float(self.total_steps - self.step_size_up) - 1
 
-        # Validate pct_start
-        if pct_start < 0 or pct_start > 1 or not isinstance(pct_start, float):
-            raise ValueError("Expected float between 0 and 1 pct_start, but got {}".format(pct_start))
 
-        # Validate anneal_strategy
-        if anneal_strategy not in ['cos', 'linear']:
-            raise ValueError("anneal_strategy must by one of 'cos' or 'linear', instead got {}".format(anneal_strategy))
-        elif anneal_strategy == 'cos':
-            self.anneal_func = self._annealing_cos
-        elif anneal_strategy == 'linear':
-            self.anneal_func = self._annealing_linear
 
-        # Initialize learning rate variables
-        max_lrs = self._format_param('max_lr', self.optimizer, max_lr)
-        if last_epoch == -1:
-            for idx, group in enumerate(self.optimizer.param_groups):
-                group['initial_lr'] = max_lrs[idx] / div_factor
-                group['max_lr'] = max_lrs[idx]
-                group['min_lr'] = group['initial_lr'] / final_div_factor
+######################################################################################################################################################################## 
 
-        # Initialize momentum variables
-        self.cycle_momentum = cycle_momentum
-        if self.cycle_momentum:
-            if 'momentum' not in self.optimizer.defaults and 'betas' not in self.optimizer.defaults:
-                raise ValueError('optimizer must support momentum with `cycle_momentum` option enabled')
-            self.use_beta1 = 'betas' in self.optimizer.defaults
-            max_momentums = self._format_param('max_momentum', optimizer, max_momentum)
-            base_momentums = self._format_param('base_momentum', optimizer, base_momentum)
-            if last_epoch == -1:
-                for m_momentum, b_momentum, group in zip(max_momentums, base_momentums, optimizer.param_groups):
-                    if self.use_beta1:
-                        _, beta2 = group['betas']
-                        group['betas'] = (m_momentum, beta2)
-                    else:
-                        group['momentum'] = m_momentum
-                    group['max_momentum'] = m_momentum
-                    group['base_momentum'] = b_momentum
+# Logging
 
-        super(NotOneCycleLR, self).__init__(optimizer, last_epoch)
+######################################################################################################################################################################## 
 
-    def _format_param(self, name, optimizer, param):
-        """Return correctly formatted lr/momentum for each param group."""
-        if isinstance(param, (list, tuple)):
-            if len(param) != len(optimizer.param_groups):
-                raise ValueError("expected {} values for {}, got {}".format(
-                    len(optimizer.param_groups), name, len(param)))
-            return param
-        else:
-            return [param] * len(optimizer.param_groups)
 
-    def _annealing_cos(self, start, end, pct):
-        "Cosine anneal from `start` to `end` as pct goes from 0.0 to 1.0."
-        cos_out = math.cos(math.pi * pct) + 1
-        return end + (start - end) / 2.0 * cos_out
+# 텐서보드 관련 초기화
+def initTensorboard(ver, subversion):
+    for proc in psutil.process_iter():
+        # check whether the process name matches
+        if proc.name() == "tensorboard":
+            proc.kill()
 
-    def _annealing_linear(self, start, end, pct):
-        "Linearly anneal from `start` to `end` as pct goes from 0.0 to 1.0."
-        return (end - start) * pct + start
+    logdir = f'./data/{ ver }/log'
+    subprocess.Popen(["tensorboard","--logdir=" + logdir,"--port=6006"])
+    writer = SummaryWriter(f'{ logdir }/{ subversion }/')
 
-    def get_lr(self):
-        if not self._get_lr_called_within_step:
-            warnings.warn("To get the last learning rate computed by the scheduler, "
-                          "please use `get_last_lr()`.", DeprecationWarning)
 
-        lrs = []
-        step_num = self.last_epoch % self.total_steps
-
-        if step_num > self.total_steps:
-            raise ValueError("Tried to step {} times. The specified number of total steps is {}"
-                             .format(step_num + 1, self.total_steps))
-
-        for group in self.optimizer.param_groups:
-            if step_num <= self.step_size_up:
-                computed_lr = self.anneal_func(group['initial_lr'], group['max_lr'], step_num / self.step_size_up)
-                if self.cycle_momentum:
-                    computed_momentum = self.anneal_func(group['max_momentum'], group['base_momentum'],
-                                                         step_num / self.step_size_up)
-            else:
-                down_step_num = step_num - self.step_size_up
-                computed_lr = self.anneal_func(group['max_lr'], group['min_lr'], down_step_num / self.step_size_down)
-                if self.cycle_momentum:
-                    computed_momentum = self.anneal_func(group['base_momentum'], group['max_momentum'],
-                                                         down_step_num / self.step_size_down)
-
-            lrs.append(computed_lr)
-            if self.cycle_momentum:
-                if self.use_beta1:
-                    _, beta2 = group['betas']
-                    group['betas'] = (computed_momentum, beta2)
-                else:
-                    group['momentum'] = computed_momentum
-
-        return lrs
-
-class CharbonnierLoss(nn.Module):
-    """Charbonnier Loss (L1)"""
-
-    def __init__(self, eps=1e-6):
-        super(CharbonnierLoss, self).__init__()
-        self.eps = eps
-
-    def forward(self, x, y):
-        diff = x - y
-        
-        loss = torch.mean(torch.sqrt(diff * diff + self.eps))
-        return loss
+    return writer
 
 
 
@@ -330,6 +65,90 @@ def logImages(writer, imageTuple, iter):
     saveImages = torch.clamp(imageTuple[1], 0, 1)
     for i in range(imageTuple[1].size(0)):
         writer.add_image(imageTuple[0], imageTuple[1][i,:,:,:], iter)
+
+
+
+
+######################################################################################################################################################################## 
+
+# Saves & Loads
+
+######################################################################################################################################################################## 
+
+
+def addCaptionToImageTensor(imageTensor, caption, DEFAULT_TEXT_SIZE = 24):
+
+    assert imageTensor.dim() == 4
+
+    IMAGE_HEIGHT, IMAGE_WIDTH = imageTensor.size()[-2:]
+
+    #DEFAULT_TEXT_SIZE = 24
+    TEXT_SIZE = max(12, int(DEFAULT_TEXT_SIZE * (IMAGE_WIDTH / 256)))
+    PAD_LEFT = int(DEFAULT_TEXT_SIZE * 0.75)
+    PAD_TOP = int(DEFAULT_TEXT_SIZE * 0.25)
+    PAD_BOTTOM = int(DEFAULT_TEXT_SIZE * 0.75)
+
+    
+
+    ToPILImageFunc = ToPILImage()
+    pilImageList = list( [ToPILImageFunc(x) for x in imageTensor] )
+
+    tmpPilImageList = []
+    for pilImage in pilImageList:
+
+        pilImage = ImageOps.expand(pilImage, (0,0,0,TEXT_SIZE + PAD_TOP + PAD_BOTTOM)) # L, T, R, B
+        ImageDraw.Draw(pilImage).text( xy = (PAD_LEFT, IMAGE_HEIGHT + PAD_TOP),
+                                        text = caption,
+                                        fill = (255, 255, 255),
+                                        font = ImageFont.truetype('.' + Config.param.save.font.path, TEXT_SIZE) )
+
+        tmpPilImageList.append(pilImage)
+
+    return torch.stack( list( vF.to_tensor(x) for x in tmpPilImageList )  )
+
+def addFrameCaptionToImageSequenceTensor(imageSequenceTensor):
+    '''
+    ADD Frame caption
+    &&
+    Cat horiziotal
+    '''
+    assert imageSequenceTensor.dim() == 5
+
+    return torch.cat( list( addCaptionToImageTensor(x, f"Frame {i}") for i, x in enumerate(imageSequenceTensor.split(1, dim=1).squeeze(1)) ) , 3)
+
+
+def saveImageTensorToFile(dataDict, fileName, colorMode='color', valueRangeType='-1~1'):
+
+    rst = []
+
+    MAX_HEIGHT = max( list( x.size(-2) for x in dataDict.values() ) )
+    MAX_WIDTH = max( list( x.size(-1) for x in dataDict.values() ) )
+        
+
+    for name in dataDict:
+        dim = dataDict[name].dim()
+        
+        rstElem = dataDict[name]
+
+        #denorm & pp for save
+        rstElem = utils.denorm(rstElem.cpu().view(rstElem.size(0), 1 if colorMode =='grayscale' else 3, rstElem.size(2), rstElem.size(3)), valueRangeType)
+        if dim == 4:
+            if rstElem.size(-2) != MAX_HEIGHT or rstElem.size(-1) != MAX_WIDTH:
+                F.interpolate(rstElem, size=(MAX_HEIGHT, MAX_WIDTH), mode='bicubic')
+        elif dim == 5:
+            rstElem = torch.cat( list( F.interpolate(x, size=(MAX_HEIGHT, MAX_WIDTH), mode='bicubic') for x in rstElem.split(1, dim=1).squeeze(1) if (x.size(-2) != MAX_HEIGHT or x.size(-1) != MAX_WIDTH)  ) , 3)
+
+        #ADD Frame Caption to ImageSequence
+        if dim == 5:
+            rstElem = addFrameCaptionToImageSequenceTensor(rstElem)
+
+        rstElem = addCaptionToImageTensor(rstElem, caption = name)
+
+        rst.append(rstElem)
+    
+    rst = torch.cat(rst, 3)
+    save_image(rst, fileName)
+
 
 
 def loadModels(modelList, version, subversion, loadModelNum, isTest):
@@ -344,14 +163,13 @@ def loadModels(modelList, version, subversion, loadModelNum, isTest):
 
         modelObj.cuda()
 
-
-
-
+        checkpoint = None
         if (loadModelNum is not 'None' or len([attr for attr in vars(modelList) if attr == (mdlStr+"_pretrained")]) > 0 ): # 로드 할거야
             
             isPretrainedLoad = False
             if optimizer is None:
-                isPretrainedLoad = True
+                if modelList.getPretrainedPath(mdlStr) is not None:
+                    isPretrainedLoad = True
             else:
                 try:
                     if(loadModelNum == '-1'):
@@ -379,71 +197,85 @@ def loadModels(modelList, version, subversion, loadModelNum, isTest):
                     print(mk[i], ck[i])
             
             '''
-                
-
-            try:
-                modelObj.load_state_dict(checkpoint['model'],strict=True)
-            except:
+            if checkpoint is not None:
+                #print(checkpoint)
                 try:
-                    print("utils.py :: try another method... load model in GLOBAL STRUCTURE mode..")
-                    modelObj.load_state_dict(checkpoint ,strict=True)
+                    mthd = 'NORMAL'
+                    modelObj.load_state_dict(checkpoint['model'],strict=True)
                 except:
                     try:
-                        print("utils.py :: try another method... load model in INNER MODEL GLOBAL STRUCTURE mode..")
-                        modelObj.module.load_state_dict(checkpoint ,strict=True)
+                        mthd = 'GLOBAL STRUCTURE'
+                        modelObj.load_state_dict(checkpoint ,strict=True)
                     except:
                         try:
-                            print("utils.py :: model load failed... load model in UNSTRICT mode.. (WARNING : load weights imperfectly)")
-                            modelObj.load_state_dict(checkpoint['model'],strict=False)
+                            mthd = 'INNER MODEL GLOBAL STRUCTURE'
+                            modelObj.module.load_state_dict(checkpoint ,strict=True)
                         except:
                             try:
-                                print("utils.py :: model load failed... load model in GLOBAL STRUCTURE UNSTRICT mode.. (WARNING : load weights imperfectly)")
-                                modelObj.load_state_dict(checkpoint ,strict=False)
+                                mthd = 'UNSTRICT (WARNING : load weights imperfectly)'
+                                modelObj.load_state_dict(checkpoint['model'],strict=False)
                             except:
-                                print("utils.py :: model load failed..... I'm sorry~")
-
-            
-
-            # LOAD OPTIMIZER
-            if optimizer is not None:
-                try:
-                    optimizer.load_state_dict(checkpoint['optim'])
-                    for param_group in optimizer.param_groups: param_group['lr'] = p.learningRate
-                except:
-                    optimDict = optimizer.state_dict()
-                    preTrainedDict = {k: v for k, v in checkpoint.items() if k in optimDict}
-
-                    optimDict.update(preTrainedDict)
-
-            if len([attr for attr in vars(modelList) if attr == (mdlStr+"_pretrained")]) == 0:
-            # LOAD VARs..
-                try:
-                    startEpoch = checkpoint['epoch']
-                except:
-                    pass#startEpoch = 0
-
-                try:
-                    lastLoss = checkpoint['lastLoss']
-                except:
-                    pass#lastLoss = torch.ones(1)*100
+                                try:
+                                    mthd = 'GLOBAL STRUCTURE UNSTRICT (WARNING : load weights imperfectly)'
+                                    modelObj.load_state_dict(checkpoint ,strict=False)
+                                except:
+                                    mthd = 'FAILED'
+                                    print("utils.py :: model load failed..... I'm sorry~")
                 
-                try:
-                    bestPSNR = checkpoint['bestPSNR']
-                except:
-                    pass#bestPSNR = 0
-            
-            
-            if scheduler is not None:
-                #scheduler.load_state_dict(checkpoint['scheduler'])
-                scheduler.last_epoch = startEpoch
-                scheduler.max_lr = p.learningRate
-                scheduler.total_steps = p.schedulerPeriod
+                print(f"{mdlStr} Loaded with {mthd} mode." if mthd != 'FAILED' else f"{mdlStr} Load Failed.")
 
-            try:
-                if p.mixedPrecision is True:
-                    amp.load_state_dict(checkpoint['amp'])
-            except:
-                pass
+                
+
+                # LOAD OPTIMIZER
+                if optimizer is not None:
+                    try:
+                        lrList = [param_group['lr'] for param_group in optimizer.param_groups]
+                        assert [lrList[0]] * len(lrList) == lrList, 'utils.py :: Error, optimizer has different values of learning rates. Tell me... I\'ll fix it.'
+                        lr = lrList[0]
+
+                        optimizer.load_state_dict(checkpoint['optim'])
+                        for param_group in optimizer.param_groups: param_group['lr'] = lr
+                    except:
+                        optimDict = optimizer.state_dict()
+                        preTrainedDict = {k: v for k, v in checkpoint.items() if k in optimDict}
+
+                        optimDict.update(preTrainedDict)
+
+
+                        if scheduler is not None:
+                            #scheduler.load_state_dict(checkpoint['scheduler'])
+                            scheduler.last_epoch = startEpoch
+                            scheduler.max_lr = lr
+                            #scheduler.total_steps = p.schedulerPeriod
+
+
+
+                #if len([attr for attr in vars(modelList) if attr == (mdlStr+"_pretrained")]) == 0:
+                # LOAD VARs..
+                if isPretrainedLoad is False:
+                    try:
+                        startEpoch = checkpoint['epoch']
+                    except:
+                        pass#startEpoch = 0
+
+                    try:
+                        lastLoss = checkpoint['lastLoss']
+                    except:
+                        pass#lastLoss = torch.ones(1)*100
+                    
+                    try:
+                        bestPSNR = checkpoint['bestPSNR']
+                    except:
+                        pass#bestPSNR = 0
+                
+                
+
+
+                try:
+                    if Config.param.train.method.mixedPrecision is True:
+                        amp.load_state_dict(checkpoint['amp'])
+                except:
+                    pass
 
         #modelObj = nn.DataParallel(modelObj)  
         
@@ -475,15 +307,55 @@ def saveModels(modelList, version, subversion, epoch, lastLoss, bestPSNR):
             saveData.update({'epoch': epoch + 1})
             saveData.update({'lastLoss': lastLoss})
             saveData.update({'bestPSNR': bestPSNR})
-            if p.mixedPrecision is True:
+            if Config.param.train.method.mixedPrecision is True:
                 saveData.update({'amp': amp.state_dict()})
             saveData.update({'epoch': epoch + 1})
 
 
             torch.save(saveData, './data/'+version+'/model/'+subversion+'/' + mdlStr + '.pth')
-            if epoch % p.archiveStep == 0:
+            if epoch % Config.param.train.step.archiveStep == 0:
                 torch.save(saveData, './data/'+version+'/model/'+subversion+'/'+ mdlStr +'-%d.pth' % (epoch + 1))
 
+def saveTensorToNPY(tnsr, fileName):
+    #print(tnsr.cpu().numpy())
+    np.save(fileName, tnsr.cpu().numpy())
+
+def loadNPYToTensor(fileName):
+    #print(np.load(fileName, mmap_mode='r+'))
+    return torch.tensor(np.load(fileName, mmap_mode='r+'))
+
+def loadNPY(fileName):
+    #print(np.load(fileName, mmap_mode='r+'))
+    return np.load(fileName, mmap_mode='r+')
+
+
+
+
+
+
+
+######################################################################################################################################################################## 
+
+# Tensor Calculations
+
+######################################################################################################################################################################## 
+
+#local function
+def to_var(x):
+    if torch.cuda.is_available():
+        x = x.cuda()
+    return Variable(x)
+
+def denorm(x, valueRangeType):
+    out = x
+    if valueRangeType == '-1~1':
+        out = (x + 1) / 2
+    
+    return out.clamp(0, 1)
+
+
+def pSigmoid(input, c1):
+    return (1 / (1 + torch.exp(-1 * c1 * input)))
 
 
 def backproagateAndWeightUpdate(modelList, loss, modelNames = None):
@@ -510,7 +382,7 @@ def backproagateAndWeightUpdate(modelList, loss, modelNames = None):
         modelObj.zero_grad()
 
     #backprop and calculate weight diff
-    if p.mixedPrecision == False:
+    if Config.param.train.method.mixedPrecision == False:
         loss.backward()
     else:
         with amp.scale_loss(loss, optimizers) as scaled_loss:
@@ -521,11 +393,83 @@ def backproagateAndWeightUpdate(modelList, loss, modelNames = None):
         optimizer.step()
 
 
-        
-                
 
 
 
+
+
+######################################################################################################################################################################## 
+
+# Etc.
+
+######################################################################################################################################################################## 
+
+
+def calculateImagePSNR(a, b, valueRangeType, colorMode):
+
+    pred = a.cpu().data[0].numpy().astype(np.float32)
+    gt = b.cpu().data[0].numpy().astype(np.float32)
+
+    np.nan_to_num(pred, copy=False)
+    np.nan_to_num(gt, copy=False)
+
+    if valueRangeType == '-1~1':
+        pred = (pred + 1)/2
+        gt = (gt + 1)/2
+
+    if colorMode == 'grayscale':
+        pred = np.round(pred * 219.)
+        pred[pred < 0] = 0
+        pred[pred > 219.] = 219.
+        pred = pred[0,:,:] + 16
+            
+        gt = np.round(gt * 219.)
+        gt[gt < 0] = 0
+        gt[gt > 219.] = 219.
+        gt = gt[0,:,:] + 16
+    elif colorMode == 'color':
+        pred = 16 + 65.481*pred[0:1,:,:] + 128.553*pred[1:2,:,:] + 24.966*pred[2:3,:,:]
+        pred[pred < 16.] = 16.
+        pred[pred > 235.] = 235.
+
+        gt = 16 + 65.481*gt[0:1,:,:] + 128.553*gt[1:2,:,:] + 24.966*gt[2:3,:,:]
+        gt[gt < 16.] = 16.
+        gt[gt > 235.] = 235.
+
+    
+
+    imdff = pred - gt
+    rmse = math.sqrt(np.mean(imdff ** 2))
+    if rmse == 0:
+        return 100
+    #print(20 * math.log10(255.0/ rmse), cv2.PSNR(gt, pred), cv2.PSNR(cv2.imread('sr.png'), cv2.imread('hr.png')))
+    return 20 * math.log10(255.0/ rmse)
+
+# 시작시 폴더와 파일들을 지정된 경로로 복사 (백업)
+def initFolderAndFiles(ver, subversion):
+
+    subDirList = ['model', 'log', 'result', 'checkpoint']
+    list(os.makedirs(f'./data/{ver}/{x}/{subversion}') for x in subDirList if not os.path.exists(f'./data/{ver}/{x}/{subversion}'))
+
+    subDirUnderModelList = ['backbone']
+    list(os.makedirs(f'./data/{ver}/model/{subversion}/{x}') for x in subDirUnderModelList if not os.path.exists(f'./data/{ver}/model/{subversion}/{x}'))
+
+    list(copyfile(f'./{x}', f'./data/{ver}/model/{subversion}/{x}') for x in os.listdir('.') if x.endswith('.py'))
+    list(copyfile(f'./backbone/{x}', f'./data/{ver}/model/{subversion}/backbone/{x}') for x in os.listdir('./backbone') if x.endswith('.py'))
+
+def initArgParser():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('--inferenceTest', '-it', action='store_true', help="Model Inference")
+    parser.add_argument('--load', '-l', nargs='?', default='None', const='-1', help="load 여부")
+    parser.add_argument('--irene', '-i', action='store_true', help="키지마세요")
+    parser.add_argument('--nosave', '-n', action='store_true', help="epoch마다 validation 과정에 생기는 이미지를 가장 최근 이미지만 저장")
+    parser.add_argument('--debug', '-d', action='store_true', help="VS코드 디버그 모드")
+
+    args = parser.parse_args()
+
+    return parser, args
+    
 
 
 

@@ -1,4 +1,10 @@
- # 사용법
+<div align="center"><img src='airlogo.png' width=600></div>
+
+
+
+
+
+# 사용법
 
 1. model.py에 모델을 추가
 2. edit.py에서 ModelList class 내에 model.py에서 만든 모델을 추가

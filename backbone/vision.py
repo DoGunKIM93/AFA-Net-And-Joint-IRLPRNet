@@ -1,7 +1,7 @@
 '''
-module.py
+vision.py
 '''
-version = '1.73.200706'
+version = '1.90.201006'
 
 #from Python
 import time
@@ -26,12 +26,46 @@ from torchvision.utils import save_image
 #from Image Library
 import cv2
 from PIL import Image, ImageDraw
+from fast_slic import Slic
+from fast_slic.avx2 import SlicAvx2
 
 #from this project
-import param as p
+from backbone.config import Config
 import backbone.utils as utils
 
-#eps = 1e-6 if p.mixedPrecision == False else 1e-4
+eps = 1e-6 if Config.param.train.method.mixedPrecision == False else 1e-4
+
+
+
+def SLIC(input, numCompo, compactness, isAvx2 = False, colorMode = 'color'):
+
+    rst = []
+    for i in range(input.size(0)):
+        input_t = np.ascontiguousarray((input[i,:,:,:] * 255).permute(1,2,0).int().cpu().numpy().astype(np.uint8))
+        slic = Slic(num_components=numCompo, compactness=compactness) if isAvx2 is False else SlicAvx2(num_components=numCompo, compactness=compactness)
+        assignment = slic.iterate(input_t) # Cluster Map
+        rst.append( torch.tensor(assignment).view(1,1,*assignment.shape).repeat(1,3 if colorMode == 'color' else 1,1,1) )
+    
+    return torch.cat(rst,0).cuda()#, slic.slic_model.clusters #cluster map / The cluster information of superpixels.
+
+
+     
+
+
+def E2EBlending(input1, input2, IQAMap, superPixelMap, softMode = False):
+
+    assert input1.dim() == 4 and input2.dim() == 4, f'vision.py :: tensor dim must be 4 (current: {input1.dim()}, {input2.dim()})'
+    
+    scoreMap = torch.zeros_like(IQAMap)
+    for i in range(torch.max(superPixelMap)):
+        meanScoreInGivenArea = torch.sum(IQAMap * (superPixelMap == i), dim=(1,2,3), keepdim=True) / (torch.sum(superPixelMap == i, dim=(1,2,3), keepdim=True) + eps)
+        scoreMap += meanScoreInGivenArea * (superPixelMap == i)
+
+    scoreMap = scoreMap if softMode is True else torch.round(scoreMap)
+    rst = input1 * scoreMap + input2 * (1 - scoreMap)
+
+    return rst, scoreMap
+
 
 def Laplacian(input,ksize):
 
@@ -438,6 +472,7 @@ def gaussianKernelSpray(height, width, kernelMinCount, kernelMaxCount, rois):
     
     chikChik = random.randint(kernelMinCount, kernelMaxCount)
     dowhajee = np.zeros((height, width))
+    sigmaScale = (4.3, 4.1) # sigma 기준 정립 필요 %5.0 4.8
     
     for i in range(chikChik):        
         scale_x = 1
@@ -449,16 +484,15 @@ def gaussianKernelSpray(height, width, kernelMinCount, kernelMaxCount, rois):
             longLen = max([height, width])
             sigma = random.uniform(longLen / 50, longLen / 5)
         elif np.size(rois) > 1:
-            x = rois[4*i]
-            y = rois[4*i+1]
-            x_width = rois[4*i+2]
-            y_height = rois[4*i+3]
+            x = rois[i][0]
+            y = rois[i][1]
+            x_width = rois[i][2]
+            y_height = rois[i][3]
 
             centerY = int(y + y_height/2)
             centerX = int(x + x_width/2)
             #-4σ ~ +4σ의 범위 값은 전체 분포의 약 99.99%를 차지하기 때문에 적절한 커널 크기로 σ의 4배 * 2배가 되어야 함
-            sigma = random.uniform((x_width +y_height)/6, (x_width +y_height)/5.5) # sigma 기준 정립 필요 
-            
+            sigma = random.uniform((x_width +y_height)/sigmaScale[0], (x_width +y_height)/sigmaScale[1]) 
             # rois에 따른 scale_factor 기준 정립 필요
             if y_height/x_width > x_width/y_height:
                 scale_factor = y_height/x_width
@@ -473,7 +507,7 @@ def gaussianKernelSpray(height, width, kernelMinCount, kernelMaxCount, rois):
         ay = np.arange(0 - centerY, height - centerY)
 
         ## x에 배수하면 가우시안 커널의 좌우 너비 조정, y에 배수하면 가우시안 커널의 상하 너비 조정 
-        xx, yy = np.meshgrid(ax*scale_x, ay*scale_y) 
+        xx, yy = np.meshgrid(ax*scale_x, ay*scale_y)
         kernel = np.exp(-(xx**2 + yy**2) / (2. * sigma**2))
         dowhajee = np.maximum(dowhajee, kernel)    
 
@@ -481,63 +515,114 @@ def gaussianKernelSpray(height, width, kernelMinCount, kernelMaxCount, rois):
     return dowhajee
     #output = F.conv3d(input.view(input.size()[0],1,3,input.size()[2],input.size()[3]),kernel,padding = [0, int(ksize/2), int(ksize/2)]).view(input.size()[0],-1,input.size()[2],input.size()[3])
 
+def rectangleKernelSpray(height, width, kernelMinCount, kernelMaxCount, rois):
+    # rois -> rectangle 커널의 기본 area을 설정 
+    # rois = [left x, left y, width, height, ...] -> 해당 기능 사용 O : np.size(rois) > 1
+    
+    chikChik = random.randint(kernelMinCount, kernelMaxCount)
+    dowhajee = np.zeros((height, width))
+    
+    for i in range(chikChik):        
+        x = rois[i][0]
+        y = rois[i][1]
+        x_width = rois[i][2]
+        y_height = rois[i][3]
 
-def BlendingMethod(blending_method, source, destination, roi):
+        percent = 3
+        kernelWidth = int(x_width + (x_width/10)*2*percent)
+        kernelHeight = int(y_height + (y_height/10)*2*percent)
+
+        expandedkernel = np.zeros((kernelHeight, kernelWidth))
+        rectangularKernel = np.zeros((kernelHeight, kernelWidth))
+
+        x_ratio = x_width/(x_width + y_height)
+        y_ratio = y_height/(x_width + y_height)
+
+        compoundXY = x_width * x_ratio + y_height * y_ratio
+        scaling = int((compoundXY/10.0)*percent)
+
+        for i in range(scaling):
+            scaledValue = i/scaling
+            rectangularKernel[i:kernelHeight-i, i:kernelWidth-i] = scaledValue
+        
+        start_height = int((kernelHeight - y_height)/2)
+        start_width = int((kernelWidth - x_width)/2)
+        expandedkernel = np.maximum(expandedkernel, rectangularKernel)
+        dowhajee[y-start_height:y-start_height+kernelHeight, x-start_width:x-start_width+kernelWidth] = expandedkernel
+
+    dowhajee = Variable((torch.from_numpy(dowhajee).float()).cuda()).view(1,1,height,width)
+    return dowhajee
+
+
+def BlendingMethod(blending_method, source, destination, rois, colorMode):
     # 차후 불 필요한 형변환 수정 필요 (pil,cv2,pytorch tensor 사이의 형 변환)
-    blending_method_list = ['simpleBlending', 'gaussianBlending', 'possionBlending']
+    blending_method_list = ['simpleBlending', 'gaussianBlending', 'rectangleBlending', 'poissonBlending']
 
     if blending_method not in blending_method_list:
         raise ValueError("blending mothod name error")
 
     method = blending_method
     width, height = (destination.shape[3], destination.shape[2]) # width, height (torch image기준 -> 수, 채널, 높이, 너비) 
-    rois = roi #(start_width, start_height, width, height) 반복
-    numberOfRoi = int(len(rois)/4)
+    numberOfRoi = int(np.size(rois)/4)
     center = (int(destination.shape[3]/2), int(destination.shape[2]/2)) # width/2, height/2
     blended_img = Image.new(mode='RGB', size=(width, height), color ='black')
 
     if method == "simpleBlending":
         print("simpleBlending")
+        destination_temp = destination.clone()
         for i in range(0, numberOfRoi):
-            x = roi[4*i]
-            y = roi[4*i+1]
-            width = roi[4*i+2]
-            height = roi[4*i+3]
+            x = rois[i][0]
+            y = rois[i][1]
+            width = rois[i][2]
+            height = rois[i][3]
                         
-            cropped_image = source[:,:,y:y+height, x:x+width]
-            destination[:,:,y:y+height, x:x+width] = cropped_image
-        blended_img = destination
+            cropped_image = source[:,:,y:y+height, x:x+width] 
+            destination_copy[:,:,y:y+height, x:x+width] = cropped_image
+        blended_img = destination_copy
     elif method == "gaussianBlending":
         print("gaussianBlending mothod")
         # create gaussian map 
         gaussian = gaussianKernelSpray(destination.shape[2], destination.shape[3], numberOfRoi, numberOfRoi, rois).repeat(1,3,1,1)
         gaussianSprayKernel = gaussian
-
+        #save_image(gaussianSprayKernel, "/home/projSR/dataset/CUSTOM/detectionTest/gaussian.png")
         # create blending image
         gaussianback = destination * gaussianSprayKernel + source * (1 - gaussianSprayKernel)
         gaussianfore = source * gaussianSprayKernel + destination * (1 - gaussianSprayKernel)
 
         blended_img = gaussianfore
+    elif method == "rectangleBlending":
+        print("rectangleBlending mothod")
+        # create rectangle map 
+        rectangle = rectangleKernelSpray(destination.shape[2], destination.shape[3], numberOfRoi, numberOfRoi, rois).repeat(1,3,1,1)
+        rectangleSprayKernel = rectangle
+        #save_image(rectangleSprayKernel, "/home/projSR/dataset/CUSTOM/detectionTest/rectangle.png")
+        # create blending image
+        rectangleback = destination * rectangleSprayKernel + source * (1 - rectangleSprayKernel)
+        rectanglefore = source * rectangleSprayKernel + destination * (1 - rectangleSprayKernel)
 
-    elif method == "possionBlending":
-        print("possionBlending mothod")
+        blended_img = rectanglefore
+    elif method == "poissonBlending":
+        print("poissonBlending mothod")
         # pytorch tensor to cv2
-        destination = utils.denorm(destination.cpu().view(destination.size(0), 1 if p.colorMode=='grayscale' else 3, destination.size(2), destination.size(3))) 
-        source = utils.denorm(source.cpu().view(source.size(0), 1 if p.colorMode=='grayscale' else 3, source.size(2), source.size(3)))
+        destination = utils.denorm(destination.cpu().view(destination.size(0), 1 if colorMode=='grayscale' else 3, destination.size(2), destination.size(3))) 
+        source = utils.denorm(source.cpu().view(source.size(0), 1 if colorMode=='grayscale' else 3, source.size(2), source.size(3)))
         
         destination_cv2 = destination.squeeze().cpu().numpy().transpose(1, 2, 0) * 255
         destination_cv2 = cv2.cvtColor(destination_cv2, cv2.COLOR_RGB2BGR).astype(np.uint8)
         source_cv2 = source.squeeze().cpu().numpy().transpose(1, 2, 0) * 255
         source_cv2 = cv2.cvtColor(source_cv2, cv2.COLOR_RGB2BGR).astype(np.uint8)
         
-        mixed_clone = destination_cv2
-        for i in range(0, numberOfRoi):
-            x = rois[4*i]
-            y = rois[4*i+1]
-            width = rois[4*i+2]
-            height = rois[4*i+3]
+        source_cv2_temp = source_cv2.copy()
+        destination_cv2_temp = destination_cv2.copy()
 
-            cropped_image = source_cv2[y:y+height, x:x+width, :]
+        mixed_clone = destination_cv2_temp
+        for i in range(0, numberOfRoi):
+            x = rois[i][0]
+            y = rois[i][1]
+            width = rois[i][2]
+            height = rois[i][3]
+
+            cropped_image = source_cv2_temp[y:y+height, x:x+width, :]
             area = (cropped_image.shape[0], cropped_image.shape[1], 3)            
             a = int(((x+x+width)/2))
             b = int(((y+y+height)/2))
@@ -546,7 +631,11 @@ def BlendingMethod(blending_method, source, destination, roi):
             mask_cv2 = 255 * np.ones(area, dtype=np.uint8)
             source_mask_cv2 = cropped_image
             destination_cv2 = mixed_clone
-            mixed_clone = cv2.seamlessClone(source_mask_cv2, destination_cv2, mask_cv2, center, cv2.MIXED_CLONE)
+            #cv2.imwrite('/home/projSR/dgk/git/sr-research-framework/data/30-EndtoEntDeepBlending/result/2-shiftmoduletrainassssment/mask_cv2.png',mask_cv2)
+            #cv2.imwrite('/home/projSR/dgk/git/sr-research-framework/data/30-EndtoEntDeepBlending/result/2-shiftmoduletrainassssment/source_mask_cv2.png',source_mask_cv2)
+            #cv2.imwrite('/home/projSR/dgk/git/sr-research-framework/data/30-EndtoEntDeepBlending/result/2-shiftmoduletrainassssment/destination_cv2.png',destination_cv2)
+            mixed_clone = cv2.seamlessClone(source_mask_cv2, destination_cv2, mask_cv2, center, cv2.MIXED_CLONE) # 수정사항 존재(Framework 내부)
+            #cv2.imwrite('/home/projSR/dgk/git/sr-research-framework/data/30-EndtoEntDeepBlending/result/2-shiftmoduletrainassssment/1.png',mixed_clone)
 
         mixed_clone = cv2.cvtColor(mixed_clone, cv2.COLOR_BGR2RGB).astype(np.float32)/255.0
         mixed_clone = torch.from_numpy(mixed_clone.transpose(2, 0, 1)).unsqueeze_(0)

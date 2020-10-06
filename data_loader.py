@@ -1,1137 +1,1111 @@
 '''
 data_loader.py
 '''
-version = "1.58.200707"
+version = "2.31.200916"
+
 
 #FROM Python LIBRARY
 import os
 import random
 import math
 import numpy as np
+import yaml 
+import inspect
+import itertools
+import glob
+import time
 
 from PIL import Image
 from PIL import PngImagePlugin
+from typing import List, Dict, Tuple, Union, Optional
 
 
 #FROM PyTorch
 import torch
 
-from torch.utils.data import Dataset
-from torch.utils.data import DataLoader
+from torch._utils import ExceptionWrapper
+from torch.utils.data import Dataset as torchDataset
+from torch.utils.data import DataLoader as torchDataLoader
+from torch.utils.data.dataloader import _BaseDataLoaderIter, _MultiProcessingDataLoaderIter, _DatasetKind
 from torchvision import transforms
 from torchvision import datasets
 from torchvision.datasets import ImageFolder
 
 
-import param as p
+#FROM This Project
+import backbone.preprocessing
+import backbone.augmentation
+import backbone.utils as utils
+from backbone.config import Config
 
 
 
-
-
-
+# Prevent memory Error in PIL
 PngImagePlugin.MAX_TEXT_CHUNK = 100 * (1024**2)
 
-
-class JointImageDataset(Dataset):
-
-    def __init__(self,
-                DatasetList,
-                mode, 
-                shuffle):
-
-        self.DatasetList = DatasetList
-        self.shuffle = shuffle
-
-
-        self.totalDatasetLength = 0
-        for ds in self.DatasetList:
-            print(self.DatasetList)
-            if len(ds) >= self.totalDatasetLength:
-                self.totalDatasetLength = len(ds)
-
-        
-
-        print(f'Joint Dataset Loaded: {len(self.DatasetList)}')
-           
-
-
-    def __getitem__(self, index):
-        rstList = []
-        for ds in self.DatasetList:
-            elems = ds.__getitem__(index % len(ds))
-            for elem in elems:
-                rstList.append(elem)
-        
-        return rstList
-        
+# Read Preprocessings from backbone.preprocessing and Augmentations from backbone.augmentation automatically
+PREPROCESSING_DICT = dict(x for x in inspect.getmembers(backbone.preprocessing) if (not x[0].startswith('__')) and (inspect.isclass(x[1])) )
+AUGMENTATION_DICT = dict(x for x in inspect.getmembers(backbone.augmentation) if (not x[0].startswith('_')) and (inspect.isfunction(x[1])) )
 
 
 
 
-    def __len__(self):
-        return self.totalDatasetLength
 
 
 
-class NonPairedSingleImageDataset(Dataset):
-    def __init__(self,
-                LRDatapath,
-                cropTransform,
-                commonTransform,
-                LRTransform):
-
-        self.imageType = 'Single'
-
-        self.LRDatapath = LRDatapath
-        self.cropTransform = cropTransform
-        self.commonTransform = commonTransform
-        self.LRTransform = LRTransform
-        self.numDataLR = 0
-        self.LRImageFileNames = []
-
-        self.LRImageFileNames = os.listdir(self.LRDatapath)
-        self.LRImageFileNames = [file for file in self.LRImageFileNames if (file.endswith(".png") or file.endswith(".jpg") or file.endswith(".jpeg") or file.endswith(".bmp"))]
-        self.numDataLR = len(self.LRImageFileNames)
-        self.LRImageFileNames.sort()
-        print('LR Image prepared : %d images'%self.numDataLR)
-
-    def __getitem__(self, index):
-        dot = "" 
-        for i in range(index%5):
-            dot += "."
-        print(f"preprocessing{dot}     ", end="\r")
-        LRImageOri = Image.open(os.path.join(self.LRDatapath, self.LRImageFileNames[index]))
-
-        if self.cropTransform == None:
-            Images = self.commonTransform(LRImageOri)
-            LRImage = self.LRTransform(Images)
-
-            if p.colorMode == 'grayscale' and LRImage.size(0) == 3:
-                return [(LRImage[0:1,:,:] + LRImage[1:2,:,:] + LRImage[2:3,:,:]) / 3]
-            elif p.colorMode == 'color' and LRImage.size(0) == 1:
-                LRImage = torch.cat((LRImage,LRImage,LRImage),0)
-                return [LRImage]
-            else:
-                return [LRImage]
-        else:
-            rst = []
-            for LRImage in self.cropTransform(LRImageOri):
-                Images = self.commonTransform(LRImage)
-                LRImage = self.LRTransform(Images)
-
-                if p.colorMode == 'grayscale' and LRImage.size(0) == 3:
-                    rst.append([(LRImage[0:1,:,:] + LRImage[1:2,:,:] + LRImage[2:3,:,:]) / 3])
-                elif p.colorMode == 'color' and LRImage.size(0) == 1:
-                    LRImage = torch.cat((LRImage,LRImage,LRImage),0)
-                    rst.append([LRImage])
-                else:
-                    rst.append([LRImage])
-            return rst  
-
-    def __len__(self):
-        return self.numDataLR
+class DatasetConfig():
 
 
-class SingleImageDataset(Dataset):
-    def __init__(self,
-                LRDatapath,
-                HRDatapath,
-                cropTransform,
-                commonTransform,
-                LRTransform,
-                HRTransform):
-
-        self.imageType = 'Single'
-
-        self.LRDatapath = LRDatapath
-        self.HRDatapath = HRDatapath
-        self.cropTransform = cropTransform
-        self.commonTransform = commonTransform
-        self.LRTransform = LRTransform
-        self.HRTransform = HRTransform
-
-        self.numDataLR = 0
-        self.numDataHR = 0
-        self.LRImageFileNames = []
-        self.HRImageFileNames = []
-
-
-        self.LRImageFileNames = os.listdir(self.LRDatapath)
-        self.LRImageFileNames = [file for file in self.LRImageFileNames if (file.endswith(".png") or file.endswith(".jpg") or file.endswith(".jpeg") or file.endswith(".bmp"))]
-        self.numDataLR = len(self.LRImageFileNames)
-        self.LRImageFileNames.sort()
-        print('LR Image prepared : %d images'%self.numDataLR)
-
-        self.HRImageFileNames = os.listdir(self.HRDatapath)
-        self.HRImageFileNames = [file for file in self.HRImageFileNames if (file.endswith(".png") or file.endswith(".jpg") or file.endswith(".jpeg") or file.endswith(".bmp"))]
-        self.numDataHR = len(self.HRImageFileNames)
-        self.HRImageFileNames.sort()
-        print('HR Image prepared : %d images'%self.numDataHR)
-           
-
-    def __getitem__(self, index):
-        dot = "" 
-        for i in range(index%5):
-            dot += "."
-        print(f"preprocessing{dot}     ", end="\r")
-        LRImageOri = Image.open(os.path.join(self.LRDatapath, self.LRImageFileNames[index]))
-        HRImageOri = Image.open(os.path.join(self.HRDatapath, self.HRImageFileNames[index]))
-
-        if self.cropTransform == None:
-            Images = self.commonTransform([LRImageOri, HRImageOri])
-            LRImage = self.LRTransform(Images[0])
-            HRImage = self.HRTransform(Images[1])
-
-            if p.colorMode == 'grayscale' and HRImage.size(0) == 3:
-                return [[(LRImage[0:1,:,:] + LRImage[1:2,:,:] + LRImage[2:3,:,:]) / 3, (HRImage[0:1,:,:] + HRImage[1:2,:,:] + HRImage[2:3,:,:]) / 3]]
-            elif p.colorMode == 'color' and HRImage.size(0) == 1:
-                HRImage = torch.cat((HRImage,HRImage,HRImage),0)
-                return [[LRImage, HRImage]]
-            else:
-                return [[LRImage, HRImage]]
-        else:
-            rst = []
-            for LRImage, HRImage in self.cropTransform([LRImageOri, HRImageOri]):
-                Images = self.commonTransform([LRImage, HRImage])
-                LRImage = self.LRTransform(Images[0])
-                HRImage = self.HRTransform(Images[1])
-                if p.colorMode == 'grayscale' and HRImage.size(0) == 3:
-                    rst.append([(LRImage[0:1,:,:] + LRImage[1:2,:,:] + LRImage[2:3,:,:]) / 3, (HRImage[0:1,:,:] + HRImage[1:2,:,:] + HRImage[2:3,:,:]) / 3])
-                elif p.colorMode == 'color' and HRImage.size(0) == 1:
-                    HRImage = torch.cat((HRImage,HRImage,HRImage),0)
-                    rst.append([LRImage, HRImage])
-                else:
-                    rst.append([LRImage, HRImage])
-            return rst  
-
-    def __len__(self):
-        return self.numDataLR
-
-
-class MultiImageDataset(Dataset):
-    def __init__(self,
-                LRDatapath,
-                HRDatapath,
-                cropTransform,
-                commonTransform,
-                LRTransform,
-                HRTransform,
-                sequenceLength,
-                isEval):
-
-        self.imageType = 'Multi'
-
-        self.LRDatapath = LRDatapath
-        self.HRDatapath = HRDatapath
-        self.cropTransform = cropTransform
-        self.commonTransform = commonTransform
-        self.LRTransform = LRTransform
-        self.HRTransform = HRTransform
-        self.sequenceLength = sequenceLength
-        self.isEval = isEval
-
-        self.numDataLR = 0
-        self.numDataHR = 0
-        self.LRImageFileNames = []
-        self.HRImageFileNames = []
-        self.seqlenList = []
-
-        LRSubDirList = os.listdir(self.LRDatapath)
-        LRSubDirList.sort()
-        HRSubDirList = os.listdir(self.HRDatapath)
-        HRSubDirList.sort()
-
-        for sdir in LRSubDirList:
-            self.LRImageFileNames.append(os.listdir(self.LRDatapath + sdir + "/"))
-        for sdir in HRSubDirList:
-            self.HRImageFileNames.append(os.listdir(self.HRDatapath + sdir + "/"))
-
-        if self.isEval == False:
-            self.numDataLR = len(self.LRImageFileNames)
-            self.numDataHR = len(self.HRImageFileNames)
-        else:
-            self.numDataLR = 0
-            self.numDataHR = 0
-
-        for i, sdir in enumerate(self.LRImageFileNames):
-            self.LRImageFileNames[i] = [file for file in sdir if (file.endswith(".png") or file.endswith(".jpg") or file.endswith(".jpeg") or file.endswith(".bmp"))]
-            self.LRImageFileNames[i].sort()
-            if self.isEval : self.numDataLR += len(sdir)
-            self.seqlenList.append(len(sdir))
-        if self.isEval : print(f"LR Sequence prepared : {self.numDataLR} Images")
-        else : print(f"LR Sequence prepared : {self.numDataLR} Sequences")
-        
-        for i, sdir in enumerate(self.HRImageFileNames):
-            self.HRImageFileNames[i] = [file for file in sdir if (file.endswith(".png") or file.endswith(".jpg") or file.endswith(".jpeg") or file.endswith(".bmp"))]
-            self.HRImageFileNames[i].sort()
-            if self.isEval : self.numDataHR += len(sdir)
-        if self.isEval : print(f"HR Sequence prepared : {self.numDataHR} Images")
-        else : print(f"HR Sequence prepared : {self.numDataHR} Sequences")
-           
-
-    def __getitem__(self, index):
-        dot = "" 
-        for i in range(index%5):
-            dot += "."
-        print(f"preprocessing{dot}     ", end="\r")
-
-        if self.isEval == False:
-            LRImageSeqFileName = self.LRImageFileNames[index]
-            HRImageSeqFileName = self.HRImageFileNames[index]
-            if self.isEval == True:
-                seqStartIdx = 0
-            else:
-                seqStartIdx = random.randint(0, len(LRImageSeqFileName) - self.sequenceLength)
-            seqEndIdx = seqStartIdx + self.sequenceLength
-
-            ImagesSeqOri = []
-            for i in range(seqStartIdx, seqEndIdx):
-                ImagesSeqOri.append( [ Image.open(os.path.join(self.LRDatapath + str(index).zfill(3), LRImageSeqFileName[i])), Image.open(os.path.join(self.HRDatapath + str(index).zfill(3), HRImageSeqFileName[i])) ] )
-        
-        else:
-            wendy = index
-            for i, length in enumerate(self.seqlenList):
-                if (wendy - length < 0):
-                    break
-                else:
-                    wendy -= length
-            folderIndex = i
-            imageIndex = wendy
-
-            ImagesSeqOri = []
-            LRImageSeqFileName = self.LRImageFileNames[folderIndex]
-            HRImageSeqFileName = self.HRImageFileNames[folderIndex]
-
-            for i in range(imageIndex - self.sequenceLength//2, imageIndex + self.sequenceLength//2 + 1):
-                
-                if i < 0:
-                    offset = 0
-                elif i >= len(self.LRImageFileNames[folderIndex]):
-                    offset = len(self.LRImageFileNames[folderIndex]) - 1
-                else:
-                    offset = i
-
-                #print(index, folderIndex, offset, len(self.LRImageFileNames[folderIndex]), str(folderIndex).zfill(3) + "/" + LRImageSeqFileName[offset])
-
-                ImagesSeqOri.append( [ Image.open(os.path.join(self.LRDatapath + str(folderIndex).zfill(3), LRImageSeqFileName[offset])), 
-                                       Image.open(os.path.join(self.HRDatapath + str(folderIndex).zfill(3), HRImageSeqFileName[offset])) ] )
-
-
-        if self.cropTransform == None:
-            ImagesSeq = self.commonTransform(ImagesSeqOri)
-            
-            LRImageSeq = []
-            HRImageSeq = []
-
-            for LRImage, HRImage in ImagesSeq:
-
-                HRH = HRImage.size(2)
-                HRW = HRImage.size(3)
-                LRH = LRImage.size(2)
-                LRW = LRImage.size(3)
-
-                HRR = HRH / HRW
-                LRR = LRH / LRW
-
-                HRrszSize = [math.floor(math.sqrt(p.testMaxPixelCount / HRR)), math.floor(math.sqrt(p.testMaxPixelCount / HRR) * HRR)]
-                LRrszSize = [math.floor(math.sqrt(p.testMaxPixelCount / LRR)), math.floor(math.sqrt(p.testMaxPixelCount / LRR) * LRR)]
-
-                LRImage = transforms.Resize(size=p.LRrszSize,interpolation=3)(LRImage)
-                HRImage = transforms.Resize(size=p.HRrszSize,interpolation=3)(HRImage)
-                LRImage = self.LRTransform(LRImage)
-                HRImage = self.HRTransform(HRImage)
+    def __init__(self, 
+                 name: str, 
+                 origin : Optional[str] = None, 
+                 dataType : Optional[Dict[str, str]] = None, 
+                 labelType : Optional[Dict[str, str]] = None, 
+                 availableMode : Optional[List[str]] = None, 
+                 classes : Optional[List[str]] = None, 
+                 preprocessings : Optional[List[str]] = None,
+                 useDatasetConfig : bool = True):
                  
-                if HRImage.size(0) > 3:
-                    LRImage = LRImage[0:3,:,:]
-                    HRImage = HRImage[0:3,:,:]  
-                if p.colorMode == 'grayscale' and HRImage.size(0) == 3:
-                    LRImage = (LRImage[0:1,:,:] + LRImage[1:2,:,:] + LRImage[2:3,:,:]) / 3
-                    HRImage = (HRImage[0:1,:,:] + HRImage[1:2,:,:] + HRImage[2:3,:,:]) / 3
+        self.name = name
 
-                LRImageSeq.append(torch.unsqueeze(LRImage, 0))
-                HRImageSeq.append(torch.unsqueeze(HRImage, 0))
+        self.origin = origin
+        self.dataType = dataType
+        self.labelType = labelType
+        self.availableMode = availableMode
+        self.classes = classes
+        self.preprocessings = preprocessings
 
-            LRImageSeq = torch.cat(LRImageSeq, 0)
-            HRImageSeq = torch.cat(HRImageSeq, 0)
+        self.useDatasetConfig = useDatasetConfig
 
-            return [[LRImageSeq, HRImageSeq]]
-                
+        if self.useDatasetConfig is True:
+            self._getDatasetConfig()
+
+
+
+    def _splitDataType(self, dataType: Dict[str, str]):
+        #return form of {'dataName': 'LR', dataType': 'text', 'tensorType': 'int'}
+        
+        dataTypeList = ['Text', 'Image', 'ImageSequence'] 
+        tensorTypeList = ['Float', 'Int', 'Long', 'Double']
+
+
+
+        if dataType is not None:
+            for key in dataType:
+                assert dataType[key].split('-')[0] in dataTypeList, f'data_loader.py :: dataset config {self.name} has invalid dataType.'
+                assert dataType[key].split('-')[1] in tensorTypeList, f'data_loader.py :: dataset config {self.name} has invalid tensorType.'
+            return dict(zip(['dataName', 'dataType', 'tensorType'], [key] + dataType[key].split('-') ))
         else:
-            rst = []
-            for ImagesSeq in self.cropTransform(ImagesSeqOri):
-                Images = self.commonTransform(ImagesSeq)
+            return {}
 
-                LRImageSeq = []
-                HRImageSeq = []
+    def _getDatasetConfig(self):
 
-                for LRImage, HRImage in ImagesSeq:
-                    LRImage = transforms.Resize(size=p.trainSize,interpolation=3)(LRImage)
-                    HRImage = transforms.Resize(size=p.trainSize,interpolation=3)(HRImage)
-                    LRImage = self.LRTransform(LRImage)
-                    HRImage = self.HRTransform(HRImage)
+        yamlData = Config.datasetConfigDict[f'{self.name}']
 
-                    if HRImage.size(0) > 3:
-                        LRImage = LRImage[0:3,:,:]
-                        HRImage = HRImage[0:3,:,:]
-                    if p.colorMode == 'grayscale' and HRImage.size(0) == 3:
-                        LRImage = (LRImage[0:1,:,:] + LRImage[1:2,:,:] + LRImage[2:3,:,:]) / 3
-                        HRImage = (HRImage[0:1,:,:] + HRImage[1:2,:,:] + HRImage[2:3,:,:]) / 3
+        self.origin = str(yamlData['origin'])
 
-                    LRImageSeq.append(torch.unsqueeze(LRImage, 0))
-                    HRImageSeq.append(torch.unsqueeze(HRImage, 0))
+        self.dataType = self._splitDataType(yamlData['dataType'])
 
-                LRImageSeq = torch.cat(LRImageSeq, 0)
-                HRImageSeq = torch.cat(HRImageSeq, 0)
+        self.labelType = self._splitDataType(yamlData['labelType'])
 
+
+        self.availableMode = list(map(str, yamlData['availableMode']))
+        self.classes = list(map(str, yamlData['classes']))
+        self.preprocessings = list(map(str, yamlData['preprocessings'])) if yamlData['preprocessings'] is not None else []
+
+        
+
+
+
+
+
+#Representation of single dataset property
+class DatasetComponent():
+
+
+    def __init__(self, name, mode, classParameter, labelClassName, sequenceLength):
+
+        self.name = name
+
+        self.datasetConfig = None
+        self._getDatasetConfigByComponentName()
+        
+
+        self.mode = mode
+        self.classParameter = classParameter
+        self.labelClassName = labelClassName
+        self.sequenceLength = sequenceLength
+
+        self.dataFileList = None 
+        self.labelFileList = None
+        self._getDataFileList()
+        
+
+        self.preprocessingList = None
+        self._makePreprocessingList()
+    
+    def _getDatasetConfigByComponentName(self):
+        self.datasetConfig = DatasetConfig(Config.paramDict['data']['datasetComponent'][self.name]['dataConfig'])
+
+    def _getDataFileList(self):
+
+        # get origin path
+        mainPath = Config.param.data.path.datasetPath
+        path = f"{self.datasetConfig.origin}/{self.mode}/"
+
+
+
+        datasetConfigClasses = self.datasetConfig.classes
+        # dynamic construction of class path based on defined classes
+        for i in range(len(datasetConfigClasses)):
+            classPathList = list(itertools.chain.from_iterable(list(map( lambda y : list(map(lambda x : str(x) if type(x) is int else x + '/' + str(y) if type(y) is int else y , classPathList)), self.classParameter[datasetConfigClasses[i]])))) if i is not 0 else self.classParameter[datasetConfigClasses[i]]
+            # Sorry for who read this
+
+        # add origin path in front of all elements of class path list
+        pathList = list(map( lambda x : path + x , classPathList))
+
+
+
+        if self.datasetConfig.dataType['dataType'] == 'Text':
+            # construct all of readable file lists in class path lists
+            dataFileLists = list(map( lambda x :  list(filter( lambda x:(x.endswith(".txt")), list(map( lambda y : x + "/" + y, sorted(os.listdir(mainPath + x)))) )), pathList))
+
+        elif self.datasetConfig.dataType['dataType'] == 'Image':
+            # construct all of readable file lists in class path lists
+            dataFileLists = list(map( lambda x :  list(filter( lambda x:(x.endswith(".png") or x.endswith(".jpg") or x.endswith(".jpeg") or x.endswith(".bmp")), list(map( lambda y : x + "/" + y, sorted(os.listdir(mainPath + x)))) )), pathList))
+        elif self.datasetConfig.dataType['dataType'] == 'ImageSequence':
+            # construct all of sequence folders in class path lists
+            dataFileLists = list(map( lambda x : list(map( lambda y : x + "/" + y, sorted(os.listdir(mainPath + x)) )), pathList))
+            dataFileLists = [ list(map(lambda x : [ x + '/' + z for z in list(filter(lambda y : (y.endswith(".png") or y.endswith(".jpg") or y.endswith(".jpeg") or y.endswith(".bmp")), sorted(os.listdir(mainPath + x)))) ] , xlist)) for xlist in dataFileLists ]
+
+
+        
+        #if label Exists
+        if len(self.datasetConfig.labelType) > 0:
+
+            labelPath = f'{path}{self.labelClassName}/'
+            
+            if self.datasetConfig.labelType['dataType'] == 'Text':
+                # construct all of readable file lists in class path lists
+                labelFiles = sorted(list(filter( lambda x:(x.endswith(".txt")), os.listdir(mainPath + labelPath))))
+                # add origin path in front of all elements of label file list
+                labelFiles = list(map( lambda x : labelPath + x , labelFiles))
+
+            elif self.datasetConfig.labelType['dataType'] == 'Image':
+                # construct all of readable file lists in class path lists
+                labelFiles = sorted(list(filter( lambda x:(x.endswith(".png") or x.endswith(".jpg") or x.endswith(".jpeg") or x.endswith(".bmp")), os.listdir(mainPath + labelPath))))
+                # add origin path in front of all elements of label file list
+                labelFiles = list(map( lambda x : labelPath + x , labelFiles))
+
+            elif self.datasetConfig.labelType['dataType'] == 'ImageSequence':
+                # construct all of sequence folders in class path lists
+                labelFiles = sorted(os.listdir(mainPath + labelPath))
+                labelFiles = list(map(lambda x : [ labelPath + x + '/' + z for z in list(filter(lambda y : (y.endswith(".png") or y.endswith(".jpg") or y.endswith(".jpeg") or y.endswith(".bmp")), sorted(os.listdir(mainPath + labelPath + x)))) ] , labelFiles))
+
+                #print(labelFiles)
+
+            
+
+
+            if len(labelFiles) == 1:
+                #Label case ex (.txt file)
+                labelFiles = labelFiles * len(dataFileLists[0])
+            else:
+                #Label case for same count of image files (GT)
+                assert [len(dataFileLists[0])] * len(dataFileLists) == list(map(len, dataFileLists)), f'data_loader.py :: ERROR! dataset {self.name} has NOT same count of data files for each classes.'
+                assert [len(labelFiles)] * len(dataFileLists) == list(map(len, dataFileLists)), f'data_loader.py :: ERROR! label and data files should be had same count. (dataset {self.name})'
                 
-                    
-                rst.append( [LRImageSeq, HRImageSeq] )
+            
+        else:
+            labelFiles = [None] * len(dataFileLists[0])
 
-            return rst  
+        labelFiles = [labelFiles] * len(dataFileLists)
+
+        dataFileDictList = list( map( lambda x: dict(zip(['dataFilePath','labelFilePath'], x)), list(zip( itertools.chain.from_iterable(dataFileLists), itertools.chain.from_iterable(labelFiles) )) ))
+
+        # set dataFileList without main path
+        self.dataFileList = dataFileDictList
+
+
+
+    def _makePreprocessingList(self):
+        self.preprocessingList = list(map((lambda x: PREPROCESSING_DICT[x.split('(')[0]](*list(filter(lambda y : y != '', x.split('(')[1][:-1].replace(' ','').split(','))))), self.datasetConfig.preprocessings))
+
+
+    def _getSeqDataLen(self):
+        cnt = 0
+        for seqFileDict in self.dataFileList:
+            #for key in seqFileDict:
+            cnt += len(seqFileDict[list(seqFileDict.keys())[0]]) - (self.sequenceLength - 1)
+        #print(cnt)
+        return cnt
 
     def __len__(self):
-        return self.numDataLR
+        return len(self.dataFileList) if self.datasetConfig.dataType['dataType'] != 'ImageSequence' else self._getSeqDataLen()
 
 
 
 
 
 
-def SRDataset(dataset,
-                datasetType,
-                dataPath,
-                scaleFactor,
-                scaleMethod, # 'bicubic' || 'unknown' || 'mild' || 'wild' || 'difficult' || 'virtual' -> software
-                batchSize,
-                mode, # 'train' || 'valid' || 'test' || 'inference'
-                cropSize=None, #[H,W] || None
-                MaxPixelCount=None, #[H,W] || None
-                colorMode='color', # 'color' || 'grayscale'
-                sameOutputSize=False,
-                samplingCount=p.samplingCount,
-                num_workers=16,
-                valueRangeType=p.valueRangeType
-                ):
-    """Build and return data set."""
-    
+
+#TODO: Distribution
+#TODO: On-memory Supply 
+class Dataset(torchDataset):
 
 
-    ############ datapath ##############
+    def __init__(self, 
+                 datasetComponentParamList: List, 
+                 batchSize: int, 
+                 valueRangeType:str, 
+                 isEval:bool, 
+                 augmentation:List[str], 
+                 numWorkers:int,
+                 makePreprocessedFile:bool):
+        self.datasetComponentParamList = datasetComponentParamList
 
-    LRDatapath = dataPath
-    HRDatapath = dataPath
+        self.datasetComponentObjectList = None
+        self._constructDatasetComponents()
+        self._datasetComponentObjectListIntegrityTest()
+
+        self.batchSize = batchSize
+        self.valueRangeType = valueRangeType
+        self.isEval = isEval
+        self.augmentation = augmentation
+        self.numWorkers = numWorkers
+
+        self.makePreprocessedFile = makePreprocessedFile
+
+        self.globalFileList = None
 
 
-    if (dataset == 'DIV2K'):
+        self._makeGlobalFileList()
+        self.mapper = None
+        self._makeFileListIndexer()
+        #print(self.globalFileList)
 
-        # mode
-        if (datasetType == 'train') or (datasetType == 'valid'):
 
-            LRDatapath += f'DIV2K/{datasetType}/'
-            HRDatapath += f'DIV2K/{datasetType}/'
-            
-        else:
-            print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
-            return
-    
-        # scale method
-        if (scaleMethod == 'virtual' or scaleFactor == 1):
-            LRDatapath += 'GT/'
+        self.LabelDataDictList = None
+        #self._makeGlobalLabelDataDictList()
+        #print(self.LabelDataDictList)
 
-        elif scaleMethod == 'bicubic':
-            if not(scaleFactor == 2 or scaleFactor == 3 or scaleFactor == 4 or scaleFactor == 8) :
-                print(f"data_loader.py :: ERROR : {dataset} {scaleMethod} support only X2, X3, X4, X8 Scale")
-                return
-            else:
-                LRDatapath += f'{scaleMethod}/{str(scaleFactor)}/'
 
-        elif scaleMethod == 'unknown':
-            if not(scaleFactor == 2 or scaleFactor == 3 or scaleFactor == 4 ) :
-                print(f"data_loader.py :: ERROR : {dataset} {scaleMethod} support only X2, X3, X4 Scale")
-                return
-            else:
-                LRDatapath += f'{scaleMethod}/{str(scaleFactor)}/'
+        self.PILImageToTensorFunction = transforms.ToTensor()
 
-        elif (scaleMethod == 'mild' or
-             scaleMethod == 'wild' or
-             scaleMethod == 'difficult'):
-            
-            if scaleFactor != 4:
-                print(f"data_loader.py :: ERROR : {dataset} {scaleMethod} support only X4 Scale")
-                return
-            else:
-                LRDatapath += f'{scaleMethod}/{str(scaleFactor)}/'
+
+    def _makeGlobalFileList(self):
+        gFL = [x.dataFileList for x in self.datasetComponentObjectList]
+        self.globalFileList = gFL
+
+
+    def _makeLabelDataDict(self, labelPath):
+        '''
+        Arguments:
+            labelPath: (string) text file path of images and annotations
+        Return:
+            A dict containing:
+                file path, label value
+                1) string
+                2) list of float
+
+        intput : label path
+        output : dict (file path(str), label value[list of list])
+        '''
+        labels = []
+        LabelDict = {}
+        labels_copy = []
+        fullPath = ''
+        isFirst = True
         
-        else:
-            print(f"data_loader.py :: ERROR : {dataset} scaling method not found")
-            return     
-    
-    elif (dataset == '291'):
-        # mode
-        LRDatapath += '291/'
-        HRDatapath += '291/GT/'
-    
-        if (datasetType != 'train'):
-            print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
-            return
 
-        # scale method
-        if (scaleMethod == 'virtual'):
-            LRDatapath += 'GT/'
-        else:
-            print(f"data_loader.py :: ERROR : {dataset} only provide \"virtual\" scaling method ")
-            return    
+        upperName= labelPath.split('/')[-2] #GT
+        modeName = labelPath.split('/')[-1] #label_train
 
-    elif (dataset == 'REDS'):
-
-        LRDatapath += 'REDS/'
-        HRDatapath += 'REDS/'
-
-        if (datasetType == 'train'):
-            LRDatapath += 'train/'
-            HRDatapath += 'train/'
-        elif (datasetType == 'valid'):
-            LRDatapath += 'validation/'
-            HRDatapath += 'validation/'
-        elif (datasetType == 'test' or datasetType == 'inference'):
-            LRDatapath += 'test/'
-            HRDatapath += 'test/'
-        else:
-            print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
-            return
-
-        if (scaleMethod == 'blur'):
-            LRDatapath += 'blur/1/'
-            HRDatapath += 'GT/'
-        elif (scaleMethod == 'blur_comp'):
-            LRDatapath += 'blur_comp/1/'
-            HRDatapath += 'GT/'
-        elif (scaleMethod == 'virtual'):
-            if (datasetType == 'test' or datasetType == 'inference'):
-                print(f"data_loader.py :: ERROR : {dataset}:{datasetType} doesn't provide \"virtual\" scaling method ")
-                return   
-            LRDatapath += 'GT/'
-            HRDatapath += 'GT/'
-        else:
-            print(f"data_loader.py :: ERROR : {dataset} only provide \"virtual\" scaling method ")
-            return   
-    
-    elif (dataset == 'Vid4'):
-        LRDatapath += 'Vid4/test/'
-        HRDatapath += 'Vid4/test/'
-
-        if (datasetType != 'test' and datasetType != 'inference'):
-            print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
-            return
+        f = open(labelPath,'r')
+        lines = f.readlines()
         
-        if (scaleMethod == 'bicubic'):
-            if (scaleFactor != 4):
-                print(f"data_loader.py :: ERROR : {dataset} {scaleMethod} support only X4 Scale")
-                return
-            LRDatapath += 'bicubic/4/'
-            HRDatapath += 'GT/'
-        elif (scaleMethod == 'virtual'):
-            LRDatapath += 'GT/'
-            HRDatapath += 'GT/'
-        else:
-            print(f"data_loader.py :: ERROR : {dataset} scaling method not found")
-            return     
-
-    elif (dataset == 'DiaDora'):
-        LRDatapath += 'DiaDora/'
-        HRDatapath += 'DiaDora/'
-
-        if (datasetType != 'train' and datasetType != 'test' and datasetType != 'inference'):
-            print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
-            return
-
-        if (scaleMethod != 'virtual'):
-            print(f"data_loader.py :: ERROR : {dataset} only provide \"virtual\" scaling method ")
-            return    
-
-        if (datasetType == 'train'):
-            LRDatapath += 'train/GT/'
-            HRDatapath += 'train/GT/'
-        elif (datasetType == 'test' or datasetType == 'inference'):
-            LRDatapath += 'test/GT/'
-            HRDatapath += 'test/GT/'
-
-    elif (dataset == 'CelebA'):
-
-        if scaleMethod != 'virtual':
-            print(f"data_loader.py :: ERROR : {dataset} only provide \"virtual\" scaling method ")
-            return   
-        else:
-            LRDatapath += "CelebA/CelebA/Img/img_align_celeba_png.7z/"
-            HRDatapath = LRDatapath
-
-        if (datasetType == 'test' or datasetType == 'inference'):
-            LRDatapath += 'test/GT/'
-            HRDatapath += 'test/GT/'
-        elif datasetType == 'train':
-            LRDatapath += 'train/GT/'
-            HRDatapath += 'train/GT/'
-        else:
-            print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
-            return
-
-    elif (dataset == 'FFHQ-Face'):
-
-        if scaleMethod != 'virtual':
-            print(f"data_loader.py :: ERROR : {dataset} only provide \"virtual\" scaling method ")
-            return   
-        else:
-            LRDatapath += "FFHQ/Face/"
-            HRDatapath = LRDatapath
-
-        if (datasetType == 'test' or datasetType == 'inference'):
-            LRDatapath += 'test/GT/'
-            HRDatapath += 'test/GT/'
-        elif datasetType == 'train':
-            LRDatapath += 'train/GT/'
-            HRDatapath += 'train/GT/'
-        else:
-            print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
-            return
-
-    elif (dataset == 'FFHQ-General'):
-
-        if scaleMethod != 'virtual':
-            print(f"data_loader.py :: ERROR : {dataset} only provide \"virtual\" scaling method ")
-            return   
-        else:
-            LRDatapath += "FFHQ/General/"
-            HRDatapath = LRDatapath
-
-        if (datasetType == 'test' or datasetType == 'inference'):
-            LRDatapath += 'test/GT/'
-            HRDatapath += 'test/GT/'
-        elif datasetType == 'train':
-            LRDatapath += 'train/GT/'
-            HRDatapath += 'train/GT/'
-        else:
-            print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
-            return
-
-    elif (dataset == 'Set5' or
-         dataset == 'Set14' or
-         dataset == 'Urban100' or
-         dataset == 'Manga109' or
-         dataset == 'historical' or
-         dataset == 'BSDS100'):
-        LRDatapath += 'benchmark/' + dataset + '/test/'
-        HRDatapath += 'benchmark/' + dataset + '/test/GT/'
-
-        if (datasetType != 'test' and datasetType != 'inference'):
-            print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
-            return
-
-        if (scaleMethod == 'virtual' or scaleFactor == 1):
-            LRDatapath += 'GT/'
-
-        elif scaleMethod == 'bicubic':
-            if not(scaleFactor == 2 or scaleFactor == 3 or scaleFactor == 4 or scaleFactor == 8) :
-                print(f"data_loader.py :: ERROR : {dataset} {scaleMethod} support only X2, X3, X4, X8 Scale")
-                return
+        for line in lines:
+            line = line.rstrip()
+            if line.startswith('#'):
+                if isFirst is True:
+                    isFirst = False
+                else:
+                    labels_copy = labels.copy()
+                    LabelDict.update({fullPath:labels_copy})
+                    labels.clear()
+                path = line[2:]
+                fullPath = labelPath.replace(upperName + '/' + modeName,'') + path
             else:
-                LRDatapath += scaleMethod + '/' + str(scaleFactor) + '/'
+                line = line.split(' ')
+                label = [float(x) for x in line]
+                labels.append(label)
+
+        labels_copy = labels.copy()
+        LabelDict.update({fullPath:labels_copy})
+
+        return LabelDict
+
+
+    def _makeGlobalLabelDataDictList(self):
+        '''
+        # Commponent Count 후 각 Commponent에 접근의 Label에 접근
+        # output : list [dict, dict, ..., dict] # dict{filepath : values}
+        # firstIndex -> Component에 대한 type는 동일하게만 들어옴 (txt)
+        '''
+        if self.datasetComponentObjectList[0].datasetConfig.dataType['dataType'] == 'Text':
+            firstIndex = 0
+            LabelDataPathList = []
+            componentList = len(self.datasetComponentObjectList)
         
+            LabelDataPathList = list(map(lambda x:Config.param.data.path.datasetPath + self.globalFileList[x][firstIndex]['labelFilePath'], range(componentList)))
+            LabelDataDictList = list(map(lambda x:self._makeLabelDataDict(x), LabelDataPathList))
+        
+            self.LabelDataDictList = LabelDataDictList
         else:
-            print(f"data_loader.py :: ERROR : {dataset} scaling method not found")
-            return
-    
-    elif (dataset == 'CUSTOM'):
-        if (datasetType != 'test' and datasetType != 'inference'):
-            print(f"data_loader.py :: ERROR : {dataset} doesn't provide {datasetType} dataset")
-            return
+            self.LabelDataDictList = {}
 
-        if scaleMethod != 'virtual':
-            print(f"data_loader.py :: ERROR : {dataset} only provide \"virtual\" scaling method ")
-            return 
-        else:
-            LRDatapath += p.customPath
-            if not os.path.exists(LRDatapath):
-                os.makedirs(LRDatapath)
-    else:
-        print("data_loader.py :: ERROR : Dataset not found")
-        return
-
-    ##################################
+    def _makeFileListIndexer(self):
 
 
-    ################TRANSFORMS##################
+        mapper = [] 
 
-    transformList = []
-    commonTransformList = []
-    resizingSize = 0
-    outputSize = 0
+        dcCount = 0 #datasetComponent의 갯수
+        dcLenFilesList = [] #datasetComponent 각각이 가지고 있는 총 파일의 갯 수 리스트
+        dcLenSeqsList = [] #datasetComponent가 가지고 있는 각각의 시퀀스 갯수 리스트
+        SeqLenFilesList = [] #각 dc의 시퀀스 밑에 몇개의 파일이 있는지 리스트 (2-d)
+
+        ####################################################################
+        # SEQUENCE
+        ####################################################################
+        if self.datasetComponentObjectList[0].datasetConfig.dataType['dataType'] == 'ImageSequence':
+                
+            for dcL in self.globalFileList:
+                dcCount += 1
+                dcLenSeqsList.append(len(dcL))
+
+                tempLenFiles = 0
+                tempSeqLenFiles = []
+                for seqL in dcL:
+                    ln = len(seqL[list(seqL.keys())[0]]) - (self.datasetComponentObjectList[0].sequenceLength - 1)
+                    tempSeqLenFiles.append(ln)
+                    tempLenFiles += ln
+                SeqLenFilesList.append(tempSeqLenFiles)
+                dcLenFilesList.append(tempLenFiles)
 
 
+            ####################################################################
+            # EVAL MODE   :    len -> sum(len(datasetComponents))
+            ####################################################################
+            if self.isEval is True:
 
-    cropTransform = None
-    if mode == 'train':
-        if cropSize != None:
-            cropTransform = PairedRandomCrop(cropSize, samplingCount=samplingCount, ResizeMinMax=p.randomResizeMinMax)
+                ######## SEQ         [     [dc [seq [file, file] ],[seq] ],[dc]    ]
+                for i in range(self.__len__()):
 
+                    for j in range(len(dcLenFilesList)):
+                        if i < sum(dcLenFilesList[:j + 1]):
+                            break
+                    dcIdx = j
+                    
+                    tMapperElem = []
 
+                    tmp = i // dcCount % dcLenFilesList[dcIdx]
+                    for j in range(len(SeqLenFilesList[dcIdx]) - 1): 
+                        if tmp < sum(SeqLenFilesList[dcIdx][:j + 1]):
+                            break
+                    seqIdx = j
 
-    if mode == 'train':
-        commonTransformList.append(PairedRandomFlip())
-        commonTransformList.append(PairedRandomRotate())
-    elif mode == 'valid':
-        commonTransformList.append(PairedCenterCrop(cropSize))
-    if scaleMethod != 'virtual' and sameOutputSize == True:
-        commonTransformList.append(PairedSizeMatch())
-    commonTransform = transforms.Compose(commonTransformList)
+                    
+                    fileIdx = tmp - sum(SeqLenFilesList[dcIdx][:j]) 
 
+                    for s in range(self.datasetComponentObjectList[dcIdx].sequenceLength):
+                        tMapperElem.append([dcIdx, seqIdx, fileIdx + s])
 
+                    mapper.append(tMapperElem)
 
-    LRTransformList = transformList.copy()
-
-    
-    if scaleMethod == 'virtual':
-        if datasetType != 'inference':
-            if sameOutputSize == True:
-                LRTransformList.append(ResizeByScaleFactor(1/p.scaleFactor, same_outputSize=True))
+            ####################################################################
+            # TRAIN MODE   :    len -> max(len(datasetComponents)) * 2
+            ####################################################################
             else:
-                LRTransformList.append(ResizeByScaleFactor(1/p.scaleFactor, same_outputSize=False))
-    
-    LRTransformList.append(transforms.ToTensor())
-    if valueRangeType == '0~1':
-        pass
-    elif valueRangeType == '-1~1':
-        LRTransformList.append(transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)))
-    LRTransform = transforms.Compose(LRTransformList)
+                
+                for i in range(self.__len__()):
+                    
+                    tMapperElem = []
+
+                    dcIdx = i % dcCount
+
+                    tmp = i // dcCount % dcLenFilesList[dcIdx]
+                    for j in range(len(SeqLenFilesList[dcIdx])): 
+                        if tmp < sum(SeqLenFilesList[dcIdx][:j + 1]):
+                            break
+                    seqIdx = j
+
+                    
+                    fileIdx = tmp - sum(SeqLenFilesList[dcIdx][:j]) 
+
+                    for s in range(self.datasetComponentObjectList[dcIdx].sequenceLength):
+                        tMapperElem.append([dcIdx, seqIdx, fileIdx + s])
+
+                    mapper.append(tMapperElem)
 
 
-    
-    HRTransformList = transformList.copy()
-    
-    HRTransformList.append(transforms.ToTensor())
-    if valueRangeType == '0~1':
-        pass
-    elif valueRangeType == '-1~1':
-        HRTransformList.append(transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)))
-    
-    HRTransform = transforms.Compose(HRTransformList)
 
-
-
-
-    ##################################
-    
-    if (dataset == 'REDS' or dataset == 'Vid4' or dataset == 'DiaDora'):
-        if mode == 'train':
-            dataset = MultiImageDataset(LRDatapath, HRDatapath, cropTransform, commonTransform, LRTransform, HRTransform, p.sequenceLength, False)
+        ####################################################################
+        # Non-SEQUENCE
+        ####################################################################
         else:
-            dataset = MultiImageDataset(LRDatapath, HRDatapath, cropTransform, commonTransform, LRTransform, HRTransform, p.sequenceLength, True)
-    else:
-        if (dataset == 'CUSTOM'):
-            dataset = NonPairedSingleImageDataset(LRDatapath, cropTransform, commonTransform, LRTransform)
-        else:
-            dataset = SingleImageDataset(LRDatapath, HRDatapath, cropTransform, commonTransform, LRTransform, HRTransform)
+
+            for dcL in self.globalFileList:
+                dcCount += 1
+                dcLenFilesList.append(len(dcL))
+
+            ####################################################################
+            # EVAL MODE   :    len -> sum(len(datasetComponents))
+            ####################################################################
+            if self.isEval is True:
+
+                for i in range(self.__len__()):
+
+                    for j in range(len(dcLenFilesList)):
+                        if i < sum(dcLenFilesList[:j + 1]):
+                            break
+                    dcIdx = j
+                    
+                    fileIdx = i - sum(dcLenFilesList[:j]) 
+
+                    mapper.append([dcIdx, fileIdx])
 
 
-    return dataset
+            ####################################################################
+            # TRAIN MODE   :    len -> max(len(datasetComponents)) * 2
+            ####################################################################
+            else:
+
+                for i in range(self.__len__()):
+
+                    dcIdx = i % dcCount
+
+                    fileIdx = i // dcCount % dcLenFilesList[dcIdx]
+
+
+                    mapper.append([dcIdx, fileIdx])
 
 
 
-def SRDataLoader(dataset,
-                datasetType,
-                dataPath,
-                scaleFactor,
-                scaleMethod, # 'bicubic' || 'unknown' || 'mild' || 'wild' || 'difficult' || 'virtual' -> software
-                batchSize,
-                mode, # 'train' || 'valid' || 'test'
-                cropSize=None, #[H,W] || None
-                MaxPixelCount=None, #[H,W] || None
-                colorMode='color', # 'color' || 'grayscale'
-                sameOutputSize=False,
-                samplingCount=p.samplingCount,
-                num_workers=16,
-                valueRangeType=p.valueRangeType
-                ):
 
-    dataset = SRDataset(dataset,
-                datasetType,
-                dataPath,
-                scaleFactor,
-                scaleMethod,
-                batchSize,
-                mode,
-                cropSize,
-                MaxPixelCount,
-                colorMode, 
-                sameOutputSize,
-                samplingCount,
-                num_workers,
-                valueRangeType)
 
-    """Build and return data loader."""
 
-    if mode == 'train':
-        shuffle = True
-    elif (mode == 'test' or mode == 'valid' or mode == 'inference'):
-        shuffle = False
-
-    #dataset = JointImageDataset([dataset, dataset], True, True)
-    #print(len(dataset))
         
-    data_loader = DataLoader(dataset=dataset,
-                             batch_size=batchSize,
-                             shuffle=shuffle,
-                             num_workers=num_workers)
-    return data_loader
+        self.mapper = mapper
+        #print(self.mapper)
+        #print("str(len(self.mapper))" + str(len(self.mapper)))
+
+                    
+    def _popItemInGlobalFileListByIndex(self, index):
 
 
-class PairedRandomCrop(object):
 
-    def __init__(self, outputSize, samplingCount, ResizeMinMax = None, ResizeBlurFactor = None):
-
-        assert isinstance(outputSize, (int, tuple, list))
-        self.samplingCount = samplingCount
-        self.ResizeMinMax = ResizeMinMax
-        self.ResizeBlurFactor = ResizeBlurFactor
-
-        if isinstance(outputSize, int):
-            self.outputSize = (outputSize, outputSize)
-        else:
-            assert len(outputSize) == 2
-            self.outputSize = outputSize
-
-
-    def __call__(self, sample):
-
-        resizeFactor = random.uniform(self.ResizeMinMax[0], self.ResizeMinMax[1])
+        datasetComponentType = self.datasetComponentObjectList[0].datasetConfig.dataType['dataType']
         
-        cropSize = [self.outputSize[0], self.outputSize[1]] 
-        if self.ResizeMinMax is not None:
-            cropSize[0] = math.ceil(cropSize[0] * resizeFactor)
-            cropSize[1] = math.ceil(cropSize[1] * resizeFactor)
-            
 
-        if isinstance(sample[0], (tuple, list)):
-            LRImage = sample[0][0]
-            HRImage = sample[0][1]
 
-            ratio = LRImage.size[0] / HRImage.size[0]
 
-            HRWidth, HRHeight = HRImage.size[:2]
-            LRWidth, LRHeight = LRImage.size[:2]
+        if datasetComponentType != 'ImageSequence':
+
+
+            componentIndex, componentFileListIndex = self.mapper[index]
+            #print(componentIndex, componentFileListIndex)
+
+            #componentFileListIndex = ( index // len(datasetComponentLengthList) ) % datasetComponentLengthList[componentIndex]
+
+            dFP = self.globalFileList[componentIndex][componentFileListIndex]['dataFilePath']
+            dFP = Config.param.data.path.datasetPath + dFP if isinstance(dFP, str) else [Config.param.data.path.datasetPath + x for x in dFP]
+
+            lFP = self.globalFileList[componentIndex][componentFileListIndex]['labelFilePath'] if self.globalFileList[componentIndex][componentFileListIndex]['labelFilePath'] is not None else None
+            lFP = (Config.param.data.path.datasetPath + lFP if isinstance(lFP, str) else [Config.param.data.path.datasetPath + x for x in lFP]) if lFP is not None else None
+
+
+
+        else:
+
+            dFPList = []
+            lFPList = []
+
+            for componentIndex, seqIdx, fileIdx in self.mapper[index]:
              
-            newHRHeight, newHRWidth = cropSize
-            newLRHeight = math.ceil(cropSize[0] * ratio)
-            newLRWidth = math.ceil(cropSize[1] * ratio)
 
- 
-            assert HRHeight >= newHRHeight and HRWidth >= newHRWidth, 'ERROR :: data_loader.py : Crop Size must be smaller than image data Size'
+                '''
+                datasetComponentSequenceLengthList = []
+                for dComponent in range(len(self.globalFileList)):
+                    tdC = []
+                    for dSeq in range(len(self.globalFileList[dComponent])):
+                        tdC.append(len(self.globalFileList[dComponent][dSeq]))
+                    datasetComponentSequenceLengthList.append(tdC)
+                        
+                sequenceListIndex = ( index // len(datasetComponentLengthList) ) % datasetComponentLengthList[componentIndex]
+                sequenceFileIndex = 
+                '''
 
-            rst = []
+                #print(componentIndex, seqIdx, fileIdx)
 
-            for i in range(self.samplingCount):
-                
-                if HRHeight == newHRHeight: 
-                    topHR = 0
+                dFP = self.globalFileList[componentIndex][seqIdx]['dataFilePath'][fileIdx]
+                dFP = Config.param.data.path.datasetPath + dFP if isinstance(dFP, str) else [Config.param.data.path.datasetPath + x for x in dFP]
+
+                lFP = self.globalFileList[componentIndex][seqIdx]['labelFilePath'][fileIdx] if self.globalFileList[componentIndex][seqIdx]['labelFilePath'][fileIdx] is not None else None
+                lFP = (Config.param.data.path.datasetPath + lFP if isinstance(lFP, str) else [Config.param.data.path.datasetPath + x for x in lFP]) if lFP is not None else None
+
+                dFPList.append(dFP)
+                lFPList.append(lFP)
+
+            dFP = dFPList
+            lFP = lFPList
+        
+        return {'dataFilePath':  dFP, 
+                'labelFilePath': lFP 
+                }
+
+
+
+    def _constructDatasetComponents(self):
+        self.datasetComponentObjectList = [DatasetComponent(*x) for x in self.datasetComponentParamList]
+
+    def _datasetComponentObjectListIntegrityTest(self):
+        # Test All dataComponents have same 
+        # dataType
+        # TensorType
+        # name
+        datasetComponentdataTypeList =  [x.datasetConfig.dataType for x in self.datasetComponentObjectList]
+        assert [datasetComponentdataTypeList[0]] * len(datasetComponentdataTypeList) == datasetComponentdataTypeList, 'data_loader.py :: All datasets in dataloader must have same dataType.'
+
+        datasetComponentlabelTypeList =  [x.datasetConfig.labelType for x in self.datasetComponentObjectList]
+        assert [datasetComponentlabelTypeList[0]] * len(datasetComponentlabelTypeList) == datasetComponentlabelTypeList, 'data_loader.py :: All datasets in dataloader must have same tensorType.'
+       
+
+
+    
+    def _calculateMemorySizePerTensor(self, dtype:torch.dtype, expectedShape:List[int]): #WARN: EXCEPT BATCH SIIZEEEEEE!!!!!!!!!!!!!!!!!!!!!!!
+        sizeOfOneElementDict = {torch.float32 : 4,
+                                torch.float   : 4,
+                                torch.float64 : 8,
+                                torch.double  : 8,
+                                torch.float16 : 2,
+                                torch.half    : 2,
+                                torch.uint8   : 1,
+                                torch.int8    : 1,
+                                torch.int16   : 2,
+                                torch.short   : 2,
+                                torch.int32   : 4,
+                                torch.int     : 4,
+                                torch.int64   : 8,
+                                torch.long    : 8,
+                                torch.bool    : 2,
+                                }
+        elemSize = sizeOfOneElementDict(dtype)
+
+        totalSize = reduce(lambda x, y: x * y, expectedShape) * elemSize
+
+        return totalSize
+
+    
+
+    def _torchvisionPreprocessing(self, pilImage, preProc):
+
+        x = pilImage
+        for preProcFunc in preProc:
+            x = preProcFunc(x)
+
+        return x
+
+    
+
+
+
+    def _applyAugmentationFunction(self, tnsr, augmentationFuncStr:str):
+
+        assert augmentationFuncStr.split('(')[0] in AUGMENTATION_DICT.keys(), "data_loader.py :: invalid Augmentation Function!! chcek param.yaml."
+
+        augFunc = AUGMENTATION_DICT[augmentationFuncStr.split('(')[0]]
+        args = list( int(x) for x in list(filter(lambda y : y != '', augmentationFuncStr.split('(')[1][:-1].replace(' ','').split(',') )) )
+
+        tnsr = augFunc(tnsr, *args)
+
+        return tnsr
+
+    # DATA AUGMENTATION ON CPU - Multiprocessing with Forked Worker processes - 
+    # Before toTensor() Augmentation
+    # CROP OPERATION usually be here
+    # Make Sure that ALL output Size (C, H, W) are same.
+    def _dataAugmentation(self, tnsrList, augmentations: List[str]):
+        
+        # If input is a list of two tensors -> make it to list of list of two tensors
+        # The standard Input type is list of list of two tensors -> [  [data_1, label_1], ... , [data_N, label_N]  ]
+        if not isinstance(tnsrList[0], list):
+            xList = [tnsrList]
+        else:
+            xList = tnsrList
+
+        augedXList = []
+
+        for x in xList:
+            for augmentation in augmentations:
+                x = self._applyAugmentationFunction(x, augmentation)
+                #print(augmentation)
+                if augmentation == 'toTensor()':
+                    break
+            augedXList.append(x)
+
+        
+        
+        
+        #TRANSPOSE
+        augedXList = list(map(list, zip(*augedXList)))
+
+        augedXTensorList = [torch.stack(x) for x in augedXList]
+
+        return augedXTensorList
+
+
+    def _setTensorValueRange(self, tnsr, valueRangeType:str):
+
+        if valueRangeType == '-1~1':
+            tnsr = tnsr * 2 - 1
+
+        return tnsr
+    
+
+    def _loadPILImagesFromHDD(self, filePath):
+        return Image.open(filePath)
+
+    def _saveTensorsToHDD(self, tnsr, filePath):
+        print(f'Write Tensor to {filePath}.npy...')
+        utils.saveTensorToNPY(tnsr, filePath)
+
+    def _loadNPArrayFromHDD(self, filePath):
+        return utils.loadNPY(filePath)
+
+    def _PIL2Tensor(self, pilImage):
+        return self.PILImageToTensorFunction(pilImage)
+
+
+
+
+
+
+    def _NPYMaker(self, filePath, preProc):
+        PILImage = self._loadPILImagesFromHDD(filePath) #PIL
+        PPedPILImage = self._torchvisionPreprocessing(PILImage, preProc)
+        rstTensor = self._PIL2Tensor(PPedPILImage)
+
+        self._saveTensorsToHDD(rstTensor, filePath)
+
+        return rstTensor
+
+
+    def _methodNPYExists(self, filePath):
+        npa = self._loadNPArrayFromHDD(filePath)
+        
+        return npa
+
+
+    def _methodNPYNotExists(self, filePath, preProc):
+        PILImage = self._loadPILImagesFromHDD(filePath)
+        PPedPILImage = self._torchvisionPreprocessing(PILImage, preProc)
+
+        return PPedPILImage
+
+    def _methodLoadLabel(self, componentIndex, filePath, preProc):
+        labelValueList = self.LabelDataDictList[componentIndex][filePath] #label values(list(list))
+
+        for preProcFunc in preProc:
+            LabelList = preProcFunc(labelValueList) #preProc(labelValueList)
+
+        return LabelList
+
+
+    
+    def _readItem(self, Type, FilePath, index, preProc):
+        # data information defined in config
+        if FilePath is not None:
+
+
+            ###################################################################################
+            # CASE TEXT
+            ###################################################################################
+            if Type['dataType'] == 'Text':
+                componentIndex = index % len(self.datasetComponentObjectList)
+                popped = self._popItemInGlobalFileListByIndex(index)
+                dataFilePath = popped['dataFilePath']
+                rst = self._methodLoadLabel(componentIndex, dataFilePath, preProc)
+
+
+            ###################################################################################
+            # CASE IMAGE
+            ###################################################################################
+            elif Type['dataType'] == 'Image':
+
+                if os.path.isfile(FilePath + '.npy') is True:
+                    rst = self._methodNPYExists(FilePath + '.npy') #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
                 else:
-                    topHR = np.random.randint(0, HRHeight - newHRHeight)
-                if HRWidth == newHRWidth: 
-                    leftHR = 0
-                else:
-                    leftHR = np.random.randint(0, HRWidth - newHRWidth)
+                    if self.makePreprocessedFile is True:
+                        rst = self._NPYMaker(FilePath, preProc) # if .npy doesn't Exists and self.makePreprocessedFile is True, make .npy file and augmentating tensor and return
+                    else:
+                        rst = self._methodNPYNotExists(FilePath, preProc) #if .npy doesn't Exists, load Image File as PIL Image -> Preprocess PIL Image on CPU -> convert to Tensor -> load to GPU -> Augmentation on GPU -> return
 
-                topLR = math.ceil(topHR * ratio)
-                leftLR = math.ceil(leftHR * ratio)
 
-                frames = []
-                for imagePair in sample:
-                    LRImage = imagePair[0]
-                    HRImage = imagePair[1]
+            ###################################################################################
+            # CASE IMAGESEQUENCE
+            ###################################################################################
+            elif Type['dataType'] == 'ImageSequence':
 
-                    LRImageSampled = LRImage.crop((leftLR, topLR, leftLR + newLRWidth, topLR + newLRHeight))
-                    HRImageSampled = HRImage.crop((leftHR, topHR, leftHR + newHRWidth, topHR + newHRHeight))
+                seqFileList = FilePath
+                rstList = []
 
-                    if self.ResizeMinMax is not None:
-                        LRImageSampled = LRImageSampled.resize((math.ceil(self.outputSize[0] * ratio), math.ceil(self.outputSize[1]  * ratio)), resample = Image.BICUBIC)
-                        HRImageSampled = HRImageSampled.resize(self.outputSize, resample = Image.BICUBIC)
-
-                        if self.ResizeBlurFactor is not None and resizeFactor > 1:
-                            blurFactor = 1 / math.sqrt(resizeFactor)
-
-                            LRImageSampled = LRImageSampled.resize((math.ceil(self.outputSize[0] * ratio * blurFactor), math.ceil(self.outputSize[1] * ratio * blurFactor)), resample = Image.BICUBIC)
-                            HRImageSampled = HRImageSampled.resize((math.ceil(self.outputSize[0] * blurFactor), math.ceil(self.outputSize[1] * blurFactor)), resample = Image.BICUBIC)   
-
-                            LRImageSampled = LRImageSampled.resize((math.ceil(self.outputSize[0] * ratio), math.ceil(self.outputSize[1]  * ratio)), resample = Image.BICUBIC)
-                            HRImageSampled = HRImageSampled.resize(self.outputSize, resample = Image.BICUBIC)    
-
-                    frames.append([LRImageSampled, HRImageSampled])
-                
-                rst.append(frames)
-
-            return rst
+                for seqFilePath in seqFileList:
+                    #seqFilePath = FilePath + '/' + seqFile
+                    if os.path.isfile(seqFilePath + '.npy') is True:
+                        rst = self._methodNPYExists(seqFilePath + '.npy') #if .npy Exists, load preprocessed .npy File as Pytorch Tensor -> load to GPU directly -> Augmentation on GPU -> return
+                    else:
+                        if self.makePreprocessedFile is True:
+                            rst = self._NPYMaker(seqFilePath, preProc) # if .npy doesn't Exists and self.makePreprocessedFile is True, make .npy file and augmentating tensor and return
+                        else:
+                            rst = self._methodNPYNotExists(seqFilePath, preProc) #if .npy doesn't Exists, load Image File as PIL Image -> Preprocess PIL Image on CPU -> convert to Tensor -> load to GPU -> Augmentation on GPU -> return
+                    rstList.append(rst)
+                rst = rstList
+            
+        # data information not defined in config
         else:
-            LRImages = []
-            HRImages = []
+            rst = None
 
-            LRImage = sample[0]
-            HRImage = sample[1]
-
-            ratio = LRImage.size[0] / HRImage.size[0]
-
-            HRWidth, HRHeight = HRImage.size[:2]
-            LRWidth, LRHeight = LRImage.size[:2]
-            
-            newHRHeight, newHRWidth = cropSize
-            newLRHeight = math.ceil(cropSize[0] * ratio)
-            newLRWidth = math.ceil(cropSize[1] * ratio)
-
-            assert HRHeight >= newHRHeight and HRWidth >= newHRWidth, 'ERROR :: data_loader.py : Crop Size must be smaller than image data Size'
-
-            rst = []
-
-            for i in range(self.samplingCount):
-                
-                if HRHeight == newHRHeight: 
-                    topHR = 0
-                else:
-                    topHR = np.random.randint(0, HRHeight - newHRHeight)
-                if HRWidth == newHRWidth: 
-                    leftHR = 0
-                else:
-                    leftHR = np.random.randint(0, HRWidth - newHRWidth)
-
-                topLR = math.ceil(topHR * ratio)
-                leftLR = math.ceil(leftHR * ratio)
-
-                LRImageSampled = LRImage.crop((leftLR, topLR, leftLR + newLRWidth, topLR + newLRHeight))
-                HRImageSampled = HRImage.crop((leftHR, topHR, leftHR + newHRWidth, topHR + newHRHeight))
-
-                if self.ResizeMinMax is not None:
-                    LRImageSampled = LRImageSampled.resize((math.ceil(self.outputSize[0] * ratio), math.ceil(self.outputSize[1]  * ratio)), resample = Image.BICUBIC)
-                    HRImageSampled = HRImageSampled.resize(self.outputSize, resample = Image.BICUBIC)
-
-                rst.append([LRImageSampled, HRImageSampled])
-
-            return rst
+        return rst
 
 
-class PairedCenterCrop(object):
 
-    def __init__(self, outputSize):
-        assert isinstance(outputSize, (int, tuple, list))
-        if isinstance(outputSize, int):
-            self.outputSize = (outputSize, outputSize)
+
+
+    def __getitem__(self, index):
+
+        #popping File Path at GFL(self.globalFileList) by index
+        popped = self._popItemInGlobalFileListByIndex(index)
+        dataFilePath = popped['dataFilePath']
+        labelFilePath = popped['labelFilePath']
+
+        componentIndex = index % len(self.datasetComponentObjectList)
+
+        preProc = self.datasetComponentObjectList[componentIndex].preprocessingList
+        dataType = self.datasetComponentObjectList[componentIndex].datasetConfig.dataType
+        labelType = self.datasetComponentObjectList[componentIndex].datasetConfig.labelType
+
+        rstDict = {}
+
+
+        filePathList = [dataFilePath, labelFilePath]
+        typeList = [dataType, labelType]
+
+
+        ###################################################################################
+        # ADD DATA & LABEL
+        ###################################################################################
+
+
+        for Type, FilePath in zip(typeList, filePathList):
+            rstDict[Type['dataName']] = self._readItem(Type, FilePath, index, preProc)
+
+
+
+        #print(rstDict[dataType['dataName']])
+
+
+        ###################################################################################
+        # Data Augmentation
+        ###################################################################################--------------------------------------------------------------
+        #print(len((list(self._dataAugmentation( x , self.augmentation ) for x in list(zip(rstDict[dataType['dataName']], rstDict[labelType['dataName']]))))[0]))
+        
+        if isinstance(rstDict[dataType['dataName']], list):
+            rstDict[dataType['dataName']], rstDict[labelType['dataName']] =  list(zip(*list(self._dataAugmentation( x , self.augmentation ) for x in list(zip(rstDict[dataType['dataName']], rstDict[labelType['dataName']])))))
+            rstDict[dataType['dataName']] = list ( self._setTensorValueRange( x , self.valueRangeType) for x in rstDict[dataType['dataName']] )
+            rstDict[labelType['dataName']] = list ( self._setTensorValueRange( x , self.valueRangeType) for x in rstDict[labelType['dataName']] )
         else:
-            assert len(outputSize) == 2
-            self.outputSize = outputSize
-
-    def __call__(self, sample):
-        if isinstance(sample[0], (tuple, list)):
-            LRImage = sample[0][0]
-            HRImage = sample[0][1]
-
-            ratio = LRImage.size[0] / HRImage.size[0]
-
-            HRWidth, HRHeight = HRImage.size[:2]
-            LRWidth, LRHeight = LRImage.size[:2]
-            
-            newHRHeight, newHRWidth = self.outputSize
-            newLRHeight = math.ceil(self.outputSize[0] * ratio)
-            newLRWidth = math.ceil(self.outputSize[1] * ratio)
-
-            assert HRHeight >= newHRHeight and HRWidth >= newHRWidth, 'ERROR :: data_loader.py : Crop Size must be smaller than image data Size'
-            
-            if HRHeight == newHRHeight: 
-                topHR = 0
-            else:
-                topHR = HRHeight//2 - newHRHeight//2
-            if HRWidth == newHRWidth: 
-                leftHR = 0
-            else:
-                leftHR = HRWidth//2 - newHRWidth//2
+            rstDict[dataType['dataName']], rstDict[labelType['dataName']] =  self._dataAugmentation( (rstDict[dataType['dataName']], rstDict[labelType['dataName']]) , self.augmentation )
+            rstDict[dataType['dataName']] = self._setTensorValueRange(rstDict[dataType['dataName']], self.valueRangeType)
+            rstDict[labelType['dataName']] = self._setTensorValueRange(rstDict[labelType['dataName']], self.valueRangeType)
 
 
-            topLR = math.ceil(topHR * ratio)
-            leftLR = math.ceil(leftHR * ratio)
 
-            rst = []
-            for imagePair in sample:
-                LRImage = imagePair[0]
-                HRImage = imagePair[1]
 
-                rst.append([LRImage.crop((leftLR, topLR, leftLR + newLRWidth, topLR + newLRHeight)), 
-                            HRImage.crop((leftHR, topHR, leftHR + newHRWidth, topHR + newHRHeight))])
-            
 
-            return rst
+
+        ###################################################################################
+        # Data Demension Align
+        ###################################################################################
+
+        if isinstance(rstDict[dataType['dataName']], list):
+            if dataType['dataType'] == 'Text':
+                pass
+            elif dataType['dataType'] == 'Image':
+                assert len(rstDict[dataType['dataName']][0].size()) == 4
+                rstDict[dataType['dataName']] = rstDict[dataType['dataName']].squeeze(0)
+            elif dataType['dataType'] == 'ImageSequence':
+                assert len(rstDict[dataType['dataName']][0].size()) == 4
+
+
+            if labelType['dataType'] == 'Text':
+                pass
+            elif labelType['dataType'] == 'Image':
+                assert len(rstDict[labelType['dataName']][0].size()) == 4
+                rstDict[labelType['dataName']] = rstDict[labelType['dataName']].squeeze(0)
+            elif labelType['dataType'] == 'ImageSequence':
+                assert len(rstDict[labelType['dataName']][0].size()) == 4
+
         else:
-            LRImage = sample[0]
-            HRImage = sample[1]
-
-            ratio = LRImage.size[0] / HRImage.size[0]
-
-
-            HRWidth, HRHeight = HRImage.size[:2]
-            LRWidth, LRHeight = LRImage.size[:2]
-
-            newHRHeight, newHRWidth = self.outputSize
-            newLRHeight = math.ceil(self.outputSize[0] * ratio)
-            newLRWidth = math.ceil(self.outputSize[1] * ratio)
-
-            assert HRHeight >= newHRHeight and HRWidth >= newHRWidth, 'ERROR :: data_loader.py : Crop Size must be smaller than image data Size'
-            
-            if HRHeight == newHRHeight: 
-                topHR = 0
-            else:
-                topHR = HRHeight//2 - newHRHeight//2
-            if HRWidth == newHRWidth: 
-                leftHR = 0
-            else:
-                leftHR = HRWidth//2 - newHRWidth//2
+            if dataType['dataType'] == 'Text':
+                pass
+            elif dataType['dataType'] == 'Image':
+                assert len(rstDict[dataType['dataName']].size()) == 4
+                rstDict[dataType['dataName']] = rstDict[dataType['dataName']].squeeze(0)
+            elif dataType['dataType'] == 'ImageSequence':
+                assert len(rstDict[dataType['dataName']].size()) == 4
 
 
-            topLR = math.ceil(topHR * ratio)
-            leftLR = math.ceil(leftHR * ratio)
+            if labelType['dataType'] == 'Text':
+                pass
+            elif labelType['dataType'] == 'Image':
+                assert len(rstDict[labelType['dataName']].size()) == 4
+                rstDict[labelType['dataName']] = rstDict[labelType['dataName']].squeeze(0)
+            elif labelType['dataType'] == 'ImageSequence':
+                assert len(rstDict[labelType['dataName']].size()) == 4
 
-            LRImage = LRImage.crop((leftLR, topLR, leftLR + newLRWidth, topLR + newLRHeight))
-            
-            HRImage = HRImage.crop((leftHR, topHR, leftHR + newHRWidth, topHR + newHRHeight))
+        return rstDict
 
-            return [LRImage, HRImage]
+    def __len__(self):
 
-
-class PairedRandomFlip(object):
-
-    def __call__(self, sample):
-        if isinstance(sample[0], (tuple, list)):
-            if random.random() > 0.5:
-                frames = []
-                for imagePair in sample:
-                    LRImage = imagePair[0]
-                    HRImage = imagePair[1]
-                    frames.append([LRImage.transpose(Image.FLIP_LEFT_RIGHT), HRImage.transpose(Image.FLIP_LEFT_RIGHT)])
-            else:
-                frames = sample
-
-            if random.random() > 0.5:
-                rst = []
-                for imagePair in frames:
-                    LRImage = imagePair[0]
-                    HRImage = imagePair[1]
-                    rst.append([LRImage.transpose(Image.FLIP_TOP_BOTTOM), HRImage.transpose(Image.FLIP_TOP_BOTTOM)])
-            else:
-                rst = frames
-
-            return rst
+        if self.isEval is True:
+            cnt = 0
+            for dcL in list(map(len, self.datasetComponentObjectList)):
+                cnt += dcL
+        
         else:
-            LRImage = sample[0]
-            HRImage = sample[1]
+            cnt = max(list(map(len, self.datasetComponentObjectList))) * len(self.datasetComponentObjectList)
 
-            if random.random() > 0.5:
-                LRImage = LRImage.transpose(Image.FLIP_LEFT_RIGHT)
-                HRImage = HRImage.transpose(Image.FLIP_LEFT_RIGHT)
-
-            if random.random() > 0.5:
-                LRImage = LRImage.transpose(Image.FLIP_TOP_BOTTOM)
-                HRImage = HRImage.transpose(Image.FLIP_TOP_BOTTOM)
-
-            return [LRImage, HRImage]
+        return cnt
+        
+    
 
 
-class PairedRandomRotate(object):
+class DataLoader(torchDataLoader):
+    def __init__(self, 
+                 dataLoaderName: str, 
+                 fromParam : bool = True, 
+                 datasetComponentParamList: Optional[List[str]] = None,
+                 batchSize: Optional[int] = None,
+                 valueRangeType: Optional[str] = None,
+                 isEval: Optional[bool] = None,
+                 augmentation: Optional[List[str]] = None,
+                 numWorkers: Optional[int] = None,
+                 makePreprocessedFile: Optional[bool] = None):
 
-    def __call__(self, sample):
-        if isinstance(sample[0], (tuple, list)):
-            if random.random() > 0.5:
-                frames = []
-                for imagePair in sample:
-                    LRImage = imagePair[0]
-                    HRImage = imagePair[1]
-                    frames.append([LRImage.rotate(90, expand=True), HRImage.rotate(90, expand=True)])
+        
+        
+
+        # INIT PARAMs #
+        self.name = dataLoaderName
+        print(f"Preparing Dataloader {self.name}... ")
+
+        self.datasetComponentParamList = datasetComponentParamList
+        self.batchSize = batchSize
+        self.valueRangeType = valueRangeType
+        self.isEval = isEval
+        self.augmentation = augmentation
+        self.numWorkers = numWorkers
+        self.makePreprocessedFile = makePreprocessedFile
+
+        self.fromParam = fromParam
+
+        if self.fromParam is True:
+            self._getDataloaderParams()
+
+
+        # CONSTRUCT DATASET #
+        self.dataset = None
+        self._constructDataset()
+
+        super(DataLoader, self).__init__(
+                         dataset = self.dataset,
+                         batch_size = self.batchSize,
+                         shuffle = False if self.isEval else True,
+                         num_workers = self.numWorkers,
+                         collate_fn = self.Collater)
+
+        print(f"    - Data prepared : {len(self.dataset)} data")
+        
+    
+
+
+    def Collater(self, samples):
+        rstDict = {}
+        
+        for key in samples[0]:
+            tnsrList = [sample[key] for sample in samples]
+            rstDict[key] = tnsrList
+
+        return rstDict
+
+
+    def _getDataloaderParams(self):
+
+        yamlData = Config.paramDict['data']['dataLoader'][f'{self.name}']
+
+        datasetNameList = list(map(str, yamlData['datasetComponent']))
+        datasetModeList = list( Config.paramDict['data']['datasetComponent'][name]['mode'] for name in datasetNameList  )
+        datasetClassParameterList = list( Config.paramDict['data']['datasetComponent'][name]['classParameter'] for name in datasetNameList  )
+        datasetLabelClassNameList = list( (Config.paramDict['data']['datasetComponent'][name]['labelClassName'] if 'labelClassName' in Config.paramDict['data']['datasetComponent'][name].keys() else 'GT') for name in datasetNameList )
+        sequenceLength = [ yamlData['sequenceLength'] if 'sequenceLength' in yamlData.keys() else None ] * len(datasetNameList)
+
+        self.datasetComponentParamList = zip(datasetNameList, datasetModeList, datasetClassParameterList, datasetLabelClassNameList, sequenceLength)
+
+
+        self.batchSize = int(yamlData['batchSize'])
+        self.valueRangeType = str(yamlData['valueRangeType'])
+        self.isEval = yamlData['isEval']
+        self.augmentation = yamlData['augmentation'] 
+        self.numWorkers = Config.param.train.dataLoaderNumWorkers
+        self.makePreprocessedFile = yamlData['makePreprocessedFile'] 
+        
+
+    
+    def _constructDataset(self):
+        
+        self.dataset = Dataset(datasetComponentParamList = self.datasetComponentParamList, 
+                               batchSize = self.batchSize, 
+                               valueRangeType = self.valueRangeType, 
+                               isEval = self.isEval, 
+                               augmentation = self.augmentation, 
+                               numWorkers = self.numWorkers,
+                               makePreprocessedFile = self.makePreprocessedFile)
+        
+        
+        for dc in self.dataset.datasetComponentObjectList:
+            print(f"    - {dc.name}: {len(dc)} data")
+
+
+    def __iter__(self) -> '_BaseDataLoaderIter':
+        assert self.num_workers > 0, "data_loader.py :: Current Version of Data Loader Only Support more than one num_workers."
+        if self.num_workers == 0:
+            return _SingleProcessDataLoaderIter(self)
+        else:
+            return _MultiProcessingDataLoaderIterWithDataAugmentation(self, self.augmentation)
+
+
+
+
+    
+
+
+
+class _MultiProcessingDataLoaderIterWithDataAugmentation(_MultiProcessingDataLoaderIter):
+
+    def __init__(self, loader, augmentation):
+        self.augmentation = augmentation
+        super(_MultiProcessingDataLoaderIterWithDataAugmentation, self).__init__(loader)
+
+
+    def _applyAugmentationFunction(self, tnsr, augmentationFuncStr:str):
+
+        assert augmentationFuncStr.split('(')[0] in AUGMENTATION_DICT.keys(), "data_loader.py :: invalid Augmentation Function!! chcek param.yaml."
+
+        augFunc = AUGMENTATION_DICT[augmentationFuncStr.split('(')[0]]
+        args = list( int(x) for x in list(filter(lambda y : y != '', augmentationFuncStr.split('(')[1][:-1].replace(' ','').split(',') )) )
+
+        tnsr = augFunc(tnsr, *args)
+
+        return tnsr
+
+
+    def _GPUDataAugmentation(self, tnsrList, augmentations: List[str]):
+
+        x = tnsrList
+
+        augmentationsAfterToTensor = augmentations[augmentations.index('toTensor()') + 1:]
+
+        for augmentation in augmentationsAfterToTensor:
+            x = self._applyAugmentationFunction(x, augmentation)
+
+        return x
+
+
+
+    def _process_data(self, data):
+        self._rcvd_idx += 1
+        self._try_put_index()
+        if isinstance(data, ExceptionWrapper):
+            data.reraise()
+        
+        shapeList = []
+        tempLabelList = []
+        labelMaxLShape = 0
+        for key in data:
+            
+            if key == 'Text':
+                shapeList = list(map(lambda x:data[key][x].shape[1], range(len(data[key]))))
+                labelMaxLShape = max(shapeList)
+                tempLabelList = list(map(lambda x:torch.zeros(1, labelMaxLShape, 15), range(len(data[key]))))
+                for i in range(len(data[key])):
+                    tempLabelList[i][:, 0:data[key][i].shape[1], :] = data[key][i]
+                data[key] = tempLabelList
+            
+        #a = time.perf_counter()
+        AugedTensor = {}
+        if isinstance(data[list(data.keys())[0]][0], list):
+            AugedTList = self._GPUDataAugmentation( [ torch.cat( [torch.cat(x, 0).unsqueeze(0) for x in data[key]], 0 ).cuda() for key in data ], self.augmentation )
+        else:
+            AugedTList = self._GPUDataAugmentation( [ torch.stack(data[key]).cuda() for key in data ], self.augmentation )
+        
+        for i, key in enumerate(data):
+            AugedTensor[key] = AugedTList[i]
+
+        #print(time.perf_counter() - a)
+        return AugedTensor
+
+    def _next_data(self): 
+        while True:
+            # If the worker responsible for `self._rcvd_idx` has already ended
+            # and was unable to fulfill this task (due to exhausting an `IterableDataset`),
+            # we try to advance `self._rcvd_idx` to find the next valid index.
+            #
+            # This part needs to run in the loop because both the `self._get_data()`
+            # call and `_IterableDatasetStopIteration` check below can mark
+            # extra worker(s) as dead.
+            while self._rcvd_idx < self._send_idx:
+                info = self._task_info[self._rcvd_idx]
+                worker_id = info[0]
+                if len(info) == 2 or self._workers_status[worker_id]:  # has data or is still active
+                    break
+                del self._task_info[self._rcvd_idx]
+                self._rcvd_idx += 1
             else:
-                frames = sample
+                # no valid `self._rcvd_idx` is found (i.e., didn't break)
+                self._shutdown_workers()
+                raise StopIteration
 
-            return frames
-        else:
-            LRImage = sample[0]
-            HRImage = sample[1]
+            # Now `self._rcvd_idx` is the batch index we want to fetch
 
-            if random.random() > 0.5:
-                LRImage = LRImage.rotate(90, expand=True)
-                HRImage = HRImage.rotate(90, expand=True)
+            # Check if the next sample has already been generated
+            if len(self._task_info[self._rcvd_idx]) == 2:
+                data = self._task_info.pop(self._rcvd_idx)[1]
+                return self._process_data(data)
 
-            return [LRImage, HRImage]
+            assert not self._shutdown and self._tasks_outstanding > 0
+            idx, data = self._get_data()
+            self._tasks_outstanding -= 1
 
+            if self._dataset_kind == _DatasetKind.Iterable:
+                # Check for _IterableDatasetStopIteration
+                if isinstance(data, _utils.worker._IterableDatasetStopIteration):
+                    self._shutdown_worker(data.worker_id)
+                    self._try_put_index()
+                    continue
 
-class ResizeByScaleFactor(object):
-
-    def __init__(self, scale_factor, same_outputSize=False):
-        self.scale_factor = scale_factor
-        self.same_outputSize = same_outputSize
-
-    def __call__(self, sample):
-        if isinstance(sample, (tuple, list)):
-            W = sample[0].size[0]
-            H = sample[0].size[1]
-            rW = math.ceil(sample[0].size[0] * self.scale_factor)
-            rH = math.ceil(sample[0].size[1] * self.scale_factor)
-
-            rst = []
-
-            for img in sample:
-            
-                rszimg = img.resize((rW,rH), resample = Image.BICUBIC)
-
-                if(self.same_outputSize == True):
-                    rszimg = rszimg.resize((W,H), resample = Image.BICUBIC)
-
-                rst.append(rszimg)
-
-            return rst
-        else:
-            W = sample.size[0]
-            H = sample.size[1]
-            rW = math.ceil(sample.size[0] * self.scale_factor)
-            rH = math.ceil(sample.size[1] * self.scale_factor)
-            
-            sample = sample.resize((rW,rH), resample = Image.BICUBIC)
-
-            if(self.same_outputSize == True):
-                sample = sample.resize((W,H), resample = Image.BICUBIC)
-
-            return sample
-
-
-class testTransform(object):
-
-    def __init__(self, txt):
-        self.txt = txt
-
-    def __call__(self, sample):
-        print(self.txt, sample)
-
-        return sample
-
-class PairedSizeMatch(object):
-    '''
-    sample[0] 을 [1] 사이즈로 리사이즈 합니다 
-    '''
-    def __call__(self, sample):
-        if isinstance(sample[0], (tuple, list)):
-            rst = []
-            for imagePair in sample:
-                LRImage = imagePair[0]
-                HRImage = imagePair[1]
-
-                rst.append([LRImage.resize(HRImage.size[:2]), HRImage])
-
-            return rst
-        else:
-            LRImage = sample[0]
-            HRImage = sample[1]
-
-            LRImage = LRImage.resize(HRImage.size[:2])
-
-            return [LRImage, HRImage]
-
-
+            if idx != self._rcvd_idx:
+                # store out-of-order samples
+                self._task_info[idx] += (data,)
+            else:
+                del self._task_info[idx] 
+                return self._process_data(data) #CUDA MULTIPROC ERROR HERE!!
