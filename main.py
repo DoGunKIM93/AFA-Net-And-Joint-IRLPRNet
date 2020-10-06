@@ -1,86 +1,34 @@
 '''
 main.py
 '''
-mainversion = "1.52.200706"
+mainversion = "2.06.201006"
+
 
 
 #FROM Python LIBRARY
 import time
-import csv
 import os
-import math
-import numpy as np
-import sys
-import argparse
-import subprocess
-import psutil
+import inspect
+from importlib import import_module
 
-from shutil import copyfile
-from torch.utils.tensorboard import SummaryWriter
 
 #FROM PyTorch
 import torch
-import torchvision
-import torch.nn as nn
 import torch.nn.functional as F
 
-from torch.autograd import Variable
-from torchvision import datasets
-from torchvision import transforms
 from torchvision.utils import save_image
 
 
-
 #from this project
-from data_loader import SRDataLoader
+from backbone.config import Config
 import data_loader as dl
 import backbone.vision as vision
 import model
-import param as p
 import backbone.utils as utils
-from edit import editversion, version, subversion, trainStep, validationStep, ModelList, inferenceStep
 import backbone.module as module
 import backbone.structure as structure
 
-
-
-# 시작시 폴더와 파일들을 지정된 경로로 복사 (백업)
-# 텐서보드 관련 초기화
-def initFolderAndFiles():
-    
-    if not os.path.exists('data/' + version):
-        os.makedirs('./data/' + version)
-
-    if not os.path.exists('./data/' + version + '/model'):
-        os.makedirs('./data/' + version + '/model')
-    if not os.path.exists('./data/' + version + '/result'):
-        os.makedirs('./data/' + version + '/result')
-    if not os.path.exists('./data/' + version + '/log'):
-        os.makedirs('./data/' + version + '/log')
-    
-
-    
-    if not os.path.exists('./data/' + version + '/model/'+ subversion):
-        os.makedirs('./data/' + version + '/model/'+ subversion)
-    if not os.path.exists('./data/' + version + '/result/'+ subversion):
-        os.makedirs('./data/' + version + '/result/'+ subversion)
-    if not os.path.exists('./data/' + version + '/log/' + subversion):
-        os.makedirs('./data/' + version + '/log/' + subversion)
-    if not os.path.exists('./data/' + version + '/model/'+ subversion + '/backbone'):
-        os.makedirs('./data/' + version + '/model/'+ subversion + '/backbone')
-
-    if args.debug is True:
-        copyfile('./' + 'main.py', './data/' + version + '/model/' + subversion+'/'+ 'main.py')
-    else:
-        copyfile('./' + sys.argv[0], './data/' + version + '/model/' + subversion+'/'+ sys.argv[0])
-
-    copyfile('./data_loader.py', './data/' + version + '/model/'+ subversion +'/data_loader.py')
-    copyfile('./backbone/vision.py', './data/' + version + '/model/' + subversion +'/backbone/vision.py')
-    copyfile('./model.py', './data/' + version + '/model/' + subversion + '/model.py')
-    copyfile('./param.py', './data/' + version + '/model/'+ subversion +'/param.py')
-    copyfile('./backbone/utils.py', './data/' + version + '/model/'+ subversion +'/backbone/utils.py')
-    copyfile('./backbone/structure.py', './data/' + version + '/model/'+ subversion +'/backbone/structure.py')
-    copyfile('./edit.py', './data/' + version + '/model/'+ subversion +'/edit.py')
+from edit import editversion, version, subversion, trainStep, validationStep, ModelList, inferenceStep
 
 
 
@@ -95,44 +43,19 @@ def initFolderAndFiles():
 
 
 # GPU 지정
-os.environ["CUDA_VISIBLE_DEVICES"]=p.GPUNum
+os.environ["CUDA_VISIBLE_DEVICES"] = str(Config.param.general.GPUNum)
 
 #Arg parser init
-parser = argparse.ArgumentParser()
-
-parser.add_argument('--inferenceTest', '-it', action='store_true', help="Model Inference")
-parser.add_argument('--load', '-l', nargs='?', default='None', const='-1', help="load 여부")
-parser.add_argument('--irene', '-i', action='store_true', help="키지마세요")
-parser.add_argument('--nosave', '-n', action='store_true', help="epoch마다 validation 과정에 생기는 이미지를 가장 최근 이미지만 저장")
-parser.add_argument('--debug', '-d', action='store_true', help="VS코드 디버그 모드")
-
-args = parser.parse_args()
-
-
-
-
+parser, args = utils.initArgParser()
 
 #Tensorboard
-for proc in psutil.process_iter():
-    # check whether the process name matches
-    if proc.name() == "tensorboard":
-        proc.kill()
-
-logdir = './data/' + version + '/log'
-subprocess.Popen(["tensorboard","--logdir=" + logdir,"--port=6006"])
-writer = SummaryWriter(logdir + "/" + subversion + "/")
-
-if (p.testDataset == 'REDS' or p.testDataset == 'Vid4'):
-    w4b = SummaryWriter(logdir + "/bicubic_X4_1Frames/")
-    w4EDVR = SummaryWriter(logdir + "/EDVR_X4_7Frames/")
-elif (p.testDataset == 'Set5'):
-    w2 = SummaryWriter(logdir + "/bicubic_X2/")
-    w3 = SummaryWriter(logdir + "/bicubic_X3/")
-    w4 = SummaryWriter(logdir + "/bicubic_X4/")
-    w8 = SummaryWriter(logdir + "/bicubic_X8/")
+writer = utils.initTensorboard(version, subversion)
 
 #init Folder & Files
-initFolderAndFiles()
+utils.initFolderAndFiles(version, subversion)
+
+#for multiprocessing gpu augmentation in dataloader
+#if __name__ == '__main__':torch.multiprocessing.set_start_method('spawn')
 
 
 
@@ -146,18 +69,29 @@ print("         ProjSR")
 print("         Version : " + version)
 print("         sub Version : " + subversion)
 print("")
-print("         ----FRAMEWORK VERSIONs----")
-print("         main Version       : " + mainversion)
-print("         edit Version       : " + editversion)
-print("         dataloader Version : " + dl.version)
-print("         vision Version     : " + vision.version)
-print("         model Version      : " + model.version)
-print("         module Version     : " + module.version)
-print("         utils Version      : " + utils.version)
-print("         structure Version  : " + structure.version)
-print("         param Version      : " + p.version)
-print("")
-print("         ------SETTING DETAIL------")
+print("         -------- FRAMEWORK VERSIONs --------")
+
+
+
+#print module version
+exList = ['main.py', 'edit.py', 'data_loader_old.py', 'main_old.py', 'test.py']
+pyModuleStrList = list(x[:-3] for x in os.listdir('.') if x not in exList and x.endswith('.py')) + list(f'backbone.{x[:-3]}' for x in os.listdir('./backbone') if x.endswith('.py')) 
+pyModuleObjList = list(map(import_module, pyModuleStrList))
+
+versionDict = [['main', mainversion], ['edit', editversion]] + \
+            list(map(
+            lambda mdlStr, mdlObj: [mdlStr, mdlObj.version] if 'version' in dir(mdlObj) else [mdlStr, '-.--.------'], 
+            pyModuleStrList, 
+            pyModuleObjList )) + \
+            [['config', Config.param.version]]
+
+
+
+any(print(f'         {key.ljust(23)} : {val.split(".")[0]}.{val.split(".")[1].rjust(2)}.{val.split(".")[2]}') for key, val in versionDict)
+
+
+print("") 
+print("         ----------- SETTINGs DETAIL ----------")
 ############################################
 ############################################
 
@@ -167,41 +101,24 @@ print("         ------SETTING DETAIL------")
 
 #load DataLoader
 if args.inferenceTest == True:
-    print(f"load Test Dataset... {p.inferenceDataset} / {p.colorMode} X{p.scaleFactor} ({p.testScaleMethod})")
-    inferenceDataset = SRDataLoader(dataset   = p.inferenceDataset,
-                              datasetType   = p.inferenceDatasetType,
-                              dataPath      = p.dataPath,
-                              scaleFactor   = p.scaleFactor,
-                              scaleMethod   = p.inferenceScaleMethod,
-                              batchSize     = 1,
-                              mode          = 'inference',
-                              sameOutputSize= p.sameOutputSize,
-                              colorMode     = p.colorMode)
+    print(f"load Test Dataset...")
+    list(map( lambda k : print(f"    - {k}: {Config.paramDict['data']['dataLoader']['inference'][k]}"), Config.paramDict['data']['dataLoader']['inference']))
+    inferenceDataset = dl.DataLoader('inference')
+    print("")
+
 else:
-    print(f"load Train Dataset... {p.trainDataset} / {p.colorMode} X{p.scaleFactor} ({p.trainScaleMethod})")
-    trainDataLoader = SRDataLoader(dataset  = p.trainDataset,
-                              datasetType   = p.trainDatasetType,
-                              dataPath      = p.dataPath,
-                              scaleFactor   = p.scaleFactor,
-                              scaleMethod   = p.trainScaleMethod,
-                              batchSize     = p.batchSize,
-                              mode          = 'train',
-                              cropSize      = p.cropSize,
-                              sameOutputSize= p.sameOutputSize,
-                              colorMode     = p.colorMode)
 
-    print(f"load Valid Dataset... {p.testDataset} / {p.colorMode} X{p.scaleFactor} ({p.testScaleMethod})")
-    validDataLoader = SRDataLoader(dataset   = p.testDataset,
-                              datasetType   = p.testDatasetType,
-                              dataPath      = p.dataPath,
-                              scaleFactor   = p.scaleFactor,
-                              scaleMethod   = p.testScaleMethod,
-                              batchSize     = 1,
-                              mode          = 'test',
-                              sameOutputSize= p.sameOutputSize,
-                              colorMode     = p.colorMode)
+    print(f"load Train Dataset...")
+    list(map( lambda k : print(f"    - {k}: {Config.paramDict['data']['dataLoader']['train'][k]}"), Config.paramDict['data']['dataLoader']['train']))
+    trainDataLoader = dl.DataLoader('train')
+    print("")
+
+    print(f"load Valid Dataset...")
+    list(map( lambda k : print(f"    - {k}: {Config.paramDict['data']['dataLoader']['validation'][k]}"), Config.paramDict['data']['dataLoader']['validation']))
+    validDataLoader = dl.DataLoader('validation')
+    print("")
+    
 print("Dataset loaded.\n")
-
 
 
 
@@ -222,13 +139,17 @@ if args.inferenceTest == True :
 
     for i, Imagepairs in enumerate(inferenceDataset):
         eachStart = time.perf_counter()
+        
 
+
+        #TODO: 고치기
+        '''
         ########### Inference using CUSTOM dataset ############
         if p.inferenceDataset == 'CUSTOM':
             with torch.no_grad():
                 LRImages = []
                 for _LRi in Imagepairs:
-                    LRImages.append(_LRi)
+                    LRImages.append(_LRi0)
                 LRImages = torch.cat(LRImages, 0)
                 LRImages = utils.to_var(LRImages)
 
@@ -242,58 +163,57 @@ if args.inferenceTest == True :
                 if p.blendingMode == 'possionBlending':
                     sr_images = SRImages
                 else:
-                    sr_images = utils.denorm(SRImages.cpu().view(SRImages.size(0), 1 if p.colorMode=='grayscale' else 3, SRImages.size(2), SRImages.size(3))) 
+                    sr_images = utils.denorm(SRImages.cpu().view(SRImages.size(0), 1 if Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.inference.datasetComponent[0]]['colorMode'] =='grayscale' else 3, SRImages.size(2), SRImages.size(3))) 
                 
                 savePath = './data/'+version+'/result/'+subversion+'/SRed_inference_images-' + str(i) + '.png'            
                 save_image(sr_images, savePath)
+
         ########### Inference using Benchmark dataset ############
         else:
-            epoch = 1
-            PSNR = 0
-            with torch.no_grad():
-                LRImages = []
-                HRImages = []
-                for _LRi, _HRi in Imagepairs:
-                    LRImages.append(_LRi)
-                    HRImages.append(_HRi)
-                LRImages = torch.cat(LRImages, 0)
-                HRImages = torch.cat(HRImages, 0)
-                LRImages = utils.to_var(LRImages)
-                HRImages = utils.to_var(HRImages)
+        '''
+        epoch = 0
+        PSNR = 0
+        with torch.no_grad():
+            
+            LRImages = Imagepairs['LR']
 
-                ########### Inference STEP with paired GT ############
-                loss, SRImagesList = validationStep(epoch, modelList, LRImages, HRImages)
-                ###################################
+            HRImages = Imagepairs['HR']
 
-                SRImages = SRImagesList[-1]
+            #HRImages = F.interpolate(HRImages, size=tuple(4*x for x in LRImages.size()[-2:]), mode='bicubic')
+            epoch += 1
+            batchSize = LRImages.size(0)
 
-                if len(LRImages.size()) == 5:
-                    PSNR += utils.calculateImagePSNR(SRImages,HRImages[:,p.sequenceLength//2,:,:,:])
-                else:
-                    PSNR += utils.calculateImagePSNR(SRImages,HRImages)
+            ########### Inference STEP with paired GT ############
+            loss, SRImagesList = validationStep(epoch, modelList, LRImages, HRImages)
+            ###################################
 
-                SRImages = torch.cat(SRImagesList, 3)
-                
-                if p.blendingMode == 'possionBlending':
-                    sr_images = SRImages
-                else:
-                    sr_images = utils.denorm(SRImages.cpu().view(SRImages.size(0), 1 if p.colorMode=='grayscale' else 3, SRImages.size(2), SRImages.size(3))) 
-                
-                print('/SRed_inference_images-' + str(i) + '.png' + ", PSNR : ", PSNR)
-                savePath = './data/'+version+'/result/'+subversion+'/SRed_inference_images-' + str(i) + '.png'            
-                save_image(sr_images, savePath)
-        
+            SRImages = SRImagesList[-1]
+            '''
+            if len(LRImages.size()) == 5:
+                PSNR += utils.calculateImagePSNR(SRImages,HRImages[:,Config.param.data.dataLoader.inference.sequenceLength//2,:,:,:], Config.param.data.dataLoader.inference.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.inference.datasetComponent[0]]['colorMode'])
+            else:
+                PSNR += utils.calculateImagePSNR(SRImages,HRImages, Config.param.data.dataLoader.inference.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.inference.datasetComponent[0]]['colorMode'])
+            '''
+            SRImages = torch.cat(SRImagesList, 3)
+            
+            sr_images = utils.denorm(SRImages.cpu().view(SRImages.size(0), 1 if Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.inference.datasetComponent[0]]['colorMode'] =='grayscale' else 3, SRImages.size(2), SRImages.size(3)), Config.param.data.dataLoader.inference.valueRangeType) 
+            
+            #print('/SRed_inference_images-' + str(i) + '.png' + ", PSNR : ", PSNR)
+            savePath = './data/'+version+'/result/'+subversion+'/SRed_inference_images-' + str(i) + '.png'            
+            save_image(sr_images, savePath)
+    
         eachEnd = time.perf_counter()
         print('/SRed_inference_images-' + str(i) + '.png' + ', model inference completed : ', eachEnd - eachStart)
     
     end = time.perf_counter()
     print('All model inference completed : ', end - start)
+    #print(f'P S N R : {PSNR / epoch:.3f} dB')
 
 
 else : 
-    for epoch in range(startEpoch, p.MaxEpoch):
+    for epoch in range(startEpoch, Config.param.train.step.maxEpoch):
 
-
+        
         # ============= Train =============#
         # ============= Train =============#
         # ============= Train =============#
@@ -304,6 +224,10 @@ else :
 
         finali = 0
         PSNR = 0
+
+        PSNR_A = 0
+        PSNR_B = 0
+
         GlobalPSNRCount = 0
 
         Avgloss = [torch.zeros(1)]*256
@@ -311,17 +235,10 @@ else :
         
         for i, Imagepairs in enumerate(trainDataLoader):
 
-            #if i == 200: break
+            if i == 100: break
 
-            LRImages = []
-            HRImages = []
-            for _LRi, _HRi in Imagepairs:
-                LRImages.append(_LRi)
-                HRImages.append(_HRi)
-            LRImages = torch.cat(LRImages, 0)
-            HRImages = torch.cat(HRImages, 0)
-            LRImages = utils.to_var(LRImages)
-            HRImages = utils.to_var(HRImages)
+            LRImages = Imagepairs['LR']
+            HRImages = Imagepairs['HR']
             batchSize = LRImages.size(0)
                     
             ########### train STEP ############
@@ -329,10 +246,10 @@ else :
             ###################################
             SRImages = SRImagesList[-1]
             if len(LRImages.size()) == 5:
-                PSNR += utils.calculateImagePSNR(SRImages,HRImages[:,p.sequenceLength//2,:,:,:])
+                PSNR += utils.calculateImagePSNR(SRImages,HRImages[:,Config.param.data.dataLoader.train.sequenceLength//2,:,:,:], Config.param.data.dataLoader.train.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.train.datasetComponent[0]]['colorMode'])
             else:
-                PSNR += utils.calculateImagePSNR(SRImages,HRImages)
-            
+                PSNR += utils.calculateImagePSNR(SRImages,HRImages, Config.param.data.dataLoader.train.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.train.datasetComponent[0]]['colorMode'])
+
             GlobalPSNRCount += 1
 
             for lossIdx, loss in enumerate(lossList):
@@ -343,8 +260,8 @@ else :
             if (i + 1) % 1 == 0:
                 olda = a
                 a = time.perf_counter()
-                print('                      E[%d/%d][%.2f%%] NET:'
-                        % (epoch, p.MaxEpoch, (i + 1) / (len(trainDataLoader.dataset) / p.batchSize / 100)),  end=" ")
+                print('E[%d/%d][%.2f%%] NET:'
+                        % (epoch, Config.param.train.step.maxEpoch, (i + 1) / (len(trainDataLoader.dataset) / Config.param.data.dataLoader.train.batchSize / 100)),  end=" ")
 
                 # print('loss:%.5f' % (Avgloss[0]/finali), end = " ")
                 print('loss: [', end="")
@@ -359,7 +276,11 @@ else :
                         schd = getattr(modelList, mdlStr+"_scheduler")
                         print(f"{mdlStr}: {schd.get_lr()[0]:.6f} ",  end="")
                     elif len([attr for attr in vars(modelList) if attr == (mdlStr+"_optimizer")]) > 0:
-                        print(f"{mdlStr}: {p.learningRate:.6f} ",  end="")
+                        optimizer = getattr(modelList, mdlStr+"_optimizer")
+                        lrList = [param_group['lr'] for param_group in optimizer.param_groups]
+                        assert [lrList[0]] * len(lrList) == lrList, 'main.py :: Error, optimizer has different values of learning rates. Tell me... I\'ll fix it.'
+                        lr = lrList[0]
+                        print(f"{mdlStr}: {lr:.6f} ",  end="")
                 print(f"] time: {(a - olda):.2f} sec    ", end="\r")
 
 
@@ -369,7 +290,7 @@ else :
         b = time.perf_counter()      
 
         print('E[%d/%d] NET:'
-                % (epoch, p.MaxEpoch),  end=" ")
+                % (epoch, Config.param.train.step.maxEpoch),  end=" ")
 
         #print('loss: %.5f PSNR: %.2f dB' % (Avgloss[0], PSNR/GlobalPSNRCount), end = " ")
         print('loss: [', end="")
@@ -385,19 +306,19 @@ else :
                 schd = getattr(modelList, mdlStr+"_scheduler")
                 print(f"{mdlStr}: {schd.get_lr()[0]:.6f} ",  end="")
             elif len([attr for attr in vars(modelList) if attr == (mdlStr+"_optimizer")]) > 0:
-                print(f"{mdlStr}: {p.learningRate:.6f} ",  end="")
+                optimizer = getattr(modelList, mdlStr+"_optimizer")
+                lrList = [param_group['lr'] for param_group in optimizer.param_groups]
+                assert [lrList[0]] * len(lrList) == lrList, 'main.py :: Error, optimizer has different values of learning rates. Tell me... I\'ll fix it.'
+                lr = lrList[0]
+                print(f"{mdlStr}: {lr:.6f} ",  end="")
         print(f"] time: {(b - oldb):.2f} sec                    ")
 
 
 
         print('saving model, ', end="")
-        if (p.trainAccidentCoef is None or Avgloss[0] < lastLoss * p.trainAccidentCoef):
-            utils.saveModels(modelList, version, subversion, epoch, Avgloss[0], bestPSNR)
-            lastLoss = Avgloss[0]
-        else:
-            print('Something is Wrong... load last model and restart Epoch.')
-            startEpoch, lastLoss, bestPSNR = utils.loadModels(modelList, version, subversion, '-1', args.test)
-            continue
+        utils.saveModels(modelList, version, subversion, epoch, Avgloss[0], bestPSNR)
+        lastLoss = Avgloss[0]
+
 
         print('log, ', end="")
         
@@ -414,11 +335,11 @@ else :
         copyCoff = 1
         if len(LRImages.size()) == 5:
             #LRImages = torch.cat(LRImages.cpu().split(1, dim=1),4).squeeze(1)
-            LRImages = LRImages[:,p.sequenceLength//2,:,:,:]
-            HRImages = HRImages[:,p.sequenceLength//2,:,:,:]
-            copyCoff = 1#p.sequenceLength
-        lr_images = utils.denorm(LRImages.cpu().view(LRImages.size(0), 1 if p.colorMode=='grayscale' else 3, LRImages.size(2), LRImages.size(3)))
-        hr_images = utils.denorm(HRImages.cpu().view(HRImages.size(0), 1 if p.colorMode=='grayscale' else 3, HRImages.size(2), HRImages.size(3)))
+            LRImages = LRImages[:,Config.param.data.dataLoader.train.sequenceLength//2,:,:,:]
+            HRImages = HRImages[:,Config.param.data.dataLoader.train.sequenceLength//2,:,:,:]
+            copyCoff = 1
+        lr_images = utils.denorm(LRImages.cpu().view(LRImages.size(0), 1 if Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.train.datasetComponent[0]]['colorMode'] =='grayscale' else 3, LRImages.size(2), LRImages.size(3)), Config.param.data.dataLoader.train.valueRangeType)
+        hr_images = utils.denorm(HRImages.cpu().view(HRImages.size(0), 1 if Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.train.datasetComponent[0]]['colorMode'] =='grayscale' else 3, HRImages.size(2), HRImages.size(3)), Config.param.data.dataLoader.train.valueRangeType)
 
         for i, si in enumerate(SRImagesList):
             if (si.size(2) != HRImages.size(2) or si.size(3) != HRImages.size(3)):
@@ -426,32 +347,34 @@ else :
 
         SRImages = torch.cat(SRImagesList, 3)
 
-        sr_images = utils.denorm(SRImages.cpu().view(SRImages.size(0), 1 if p.colorMode=='grayscale' else 3, SRImages.size(2), SRImages.size(3)))
+        sr_images = utils.denorm(SRImages.cpu().view(SRImages.size(0), 1 if Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.train.datasetComponent[0]]['colorMode'] == 'grayscale' else 3, SRImages.size(2), SRImages.size(3)), Config.param.data.dataLoader.train.valueRangeType)
 
-        if p.sameOutputSize == False:
-            cated_images = torch.cat((nn.functional.interpolate(lr_images.data, size=(HRImages.size(2),HRImages.size(3) * copyCoff), mode='bicubic'),
-                                sr_images.data,
-                                hr_images.data
-                                ),3)    
+        cated_images = torch.cat((F.interpolate(lr_images.data, size=(HRImages.size(2), HRImages.size(3) * copyCoff), mode='bicubic'),
+                            sr_images.data,
+                            hr_images.data
+                            ),3)    
+        '''
         else:
             cated_images = torch.cat(( lr_images.data,
                                 sr_images.data,
                                 hr_images.data
                                 ),3)
+        '''
 
         if args.nosave :        
             savePath = './data/'+version+'/result/'+subversion+'/SRed_train_images.png'
         else :
             savePath = './data/'+version+'/result/'+subversion+'/SRed_train_images-' + str(epoch + 1) + '.png'
-            utils.logImages(writer, ['train_images', cated_images], epoch)
+            #utils.logImages(writer, ['train_images', cated_images], epoch)
 
-        save_image(cated_images, savePath)
+        save_image(cated_images[:Config.param.save.maxSaveImageNumberTrain], savePath, padding=12)
+        #save_image(utils.addCaptionToImageTensor(sr_images.data, 'Really Bad Boy 7월 7일 1234567890'), 'a.png')
 
         
 
         
 
-        if (epoch + 1) % p.validStep == 0:
+        if (epoch + 1) % Config.param.train.step.validationStep == 0:
             # ============= Valid =============#
             # ============= Valid =============#
             # ============= Valid =============#
@@ -462,6 +385,9 @@ else :
 
             finali = 0
             PSNR = 0
+            #PSNR_Hard = 0
+            #PSNR_A = 0
+            #PSNR_B = 0
             GlobalPSNRCount = 0
 
             Avgloss = [torch.zeros(1)]*256
@@ -470,6 +396,8 @@ else :
             for i, Imagepairs in enumerate(validDataLoader):
 
                 with torch.no_grad():
+
+                    '''
                     LRImages = []
                     HRImages = []
                     for _LRi, _HRi in Imagepairs:
@@ -479,6 +407,17 @@ else :
                     HRImages = torch.cat(HRImages, 0)
                     LRImages = utils.to_var(LRImages)
                     HRImages = utils.to_var(HRImages)
+                    '''
+                    LRImages = Imagepairs['LR']
+                    HRImages = Imagepairs['HR']
+
+                    # (TMP) cut Alpha channel
+                    LRImages = LRImages[:,0:3,:,:]
+                    HRImages = HRImages[:,0:3,:,:]
+
+
+                    #HRImages = F.interpolate(HRImages, size=tuple(4*x for x in LRImages.size()[-2:]), mode='bicubic')
+
 
                     batchSize = LRImages.size(0)
 
@@ -495,8 +434,8 @@ else :
                     if (i + 1) % 1 == 0:
                         olda = a
                         a = time.perf_counter()
-                        print('                       Test : [%d/%d][%.2f%%]'
-                                % (epoch, p.MaxEpoch, (i + 1) / (len(validDataLoader.dataset) / 1 / 100)),  end="\r")
+                        print('Test : [%d/%d][%.2f%%]'
+                                % (epoch, Config.param.train.step.maxEpoch, (i + 1) / (len(validDataLoader.dataset) / 1 / 100)),  end="\r")
 
                     #print('saving output images...')
                     # Save sampled images
@@ -505,14 +444,25 @@ else :
                     ###################################
                     SRImages = SRImagesList[-1]
                     if len(LRImages.size()) == 5:
-                        PSNR += utils.calculateImagePSNR(SRImages,HRImages[:,p.sequenceLength//2,:,:,:])
+                        t_PSNR = utils.calculateImagePSNR(SRImages,HRImages[:,Config.param.data.dataLoader.validation.sequenceLength//2,:,:,:], Config.param.data.dataLoader.validation.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.validation.datasetComponent[0]]['colorMode'])
                     else:
-                        PSNR += utils.calculateImagePSNR(SRImages,HRImages)
+                        t_PSNR = utils.calculateImagePSNR(SRImages,HRImages, Config.param.data.dataLoader.validation.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.validation.datasetComponent[0]]['colorMode'])
+                        #t_PSNR_Hard = utils.calculateImagePSNR(SRImagesList[3], HRImages, Config.param.data.dataLoader.validation.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.validation.datasetComponent[0]]['colorMode'])
+
+                        #t_PSNR_A = utils.calculateImagePSNR(SRImagesList[0], HRImages, Config.param.data.dataLoader.validation.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.validation.datasetComponent[0]]['colorMode'])
+                        #t_PSNR_B = utils.calculateImagePSNR(SRImagesList[1], HRImages, Config.param.data.dataLoader.validation.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.validation.datasetComponent[0]]['colorMode'])
+
+                    PSNR += t_PSNR
+                    #PSNR_Hard += t_PSNR_Hard
+                    #PSNR_A += t_PSNR_A
+                    #PSNR_B += t_PSNR_B
                     GlobalPSNRCount += 1
 
-                    lr_images = utils.denorm(LRImages.cpu().view(LRImages.size(0), 1 if p.colorMode=='grayscale' else 3, LRImages.size(2), LRImages.size(3)))
+                    print(f"PSNR: {GlobalPSNRCount-1} ({SRImages.size(2)}x{SRImages.size(3)}) : {t_PSNR:.3f} dB")
 
-                    hr_images = utils.denorm(HRImages.cpu().view(HRImages.size(0), 1 if p.colorMode=='grayscale' else 3, HRImages.size(2), HRImages.size(3)))
+                    lr_images = utils.denorm(LRImages.cpu().view(LRImages.size(0), 1 if Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.validation.datasetComponent[0]]['colorMode'] =='grayscale' else 3, LRImages.size(2), LRImages.size(3)), Config.param.data.dataLoader.validation.valueRangeType)
+
+                    hr_images = utils.denorm(HRImages.cpu().view(HRImages.size(0), 1 if Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.validation.datasetComponent[0]]['colorMode'] =='grayscale' else 3, HRImages.size(2), HRImages.size(3)), Config.param.data.dataLoader.validation.valueRangeType)
 
 
                     for ii, si in enumerate(SRImagesList):
@@ -521,18 +471,13 @@ else :
 
                     SRImages = torch.cat(SRImagesList, 3)
 
-                    sr_images = utils.denorm(SRImages.cpu().view(SRImages.size(0), 1 if p.colorMode=='grayscale' else 3, SRImages.size(2), SRImages.size(3))) 
+                    sr_images = utils.denorm(SRImages.cpu().view(SRImages.size(0), 1 if Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.validation.datasetComponent[0]]['colorMode'] =='grayscale' else 3, SRImages.size(2), SRImages.size(3)), Config.param.data.dataLoader.validation.valueRangeType) 
                 
-                    if p.sameOutputSize == False:
-                        cated_images = torch.cat((nn.functional.interpolate(lr_images.data, size=(HRImages.size(2),HRImages.size(3) * copyCoff), mode='bicubic'),
-                                            sr_images.data,
-                                            hr_images.data
-                                            ),3)    
-                    else:
-                        cated_images = torch.cat(( lr_images.data,
-                                            sr_images.data,
-                                            hr_images.data
-                                            ),3)
+
+                    cated_images = torch.cat((F.interpolate(lr_images.data, size=(HRImages.size(2),HRImages.size(3) * copyCoff), mode='bicubic'),
+                                        sr_images.data,
+                                        hr_images.data
+                                        ),3)    
 
 
                     if args.nosave :        
@@ -553,25 +498,20 @@ else :
             oldb = b
             b = time.perf_counter()      
             PSNR /= len(validDataLoader)
+            #PSNR_A /= len(validDataLoader)
+            #PSNR_B /= len(validDataLoader)
+            #PSNR_Hard /= len(validDataLoader)
 
             if PSNR > bestPSNR:
                 bestPSNR = PSNR
 
             print('Test : [%d/%d] PSNR: %.2f dB / BEST: %.2f dB                        '
-                    % (epoch, p.MaxEpoch, PSNR, bestPSNR))
+                    % (epoch, Config.param.train.step.maxEpoch, PSNR, bestPSNR))
 
 
             # Save loss log
             utils.logValues(writer, ['test_loss', Avgloss[0].item()], epoch)
             utils.logValues(writer, ['test_PSNR', PSNR], epoch)
-            if (p.testDataset == 'Vid4'):
-                utils.logValues(w4b, ['test_PSNR', 23.78], epoch)
-                utils.logValues(w4EDVR, ['test_PSNR', 27.35], epoch)
-            elif (p.testDataset == 'Set5'):
-                utils.logValues(w2, ['test_PSNR', 33.59], epoch)
-                utils.logValues(w3, ['test_PSNR', 30.42], epoch)
-                utils.logValues(w4, ['test_PSNR', 28.47], epoch)
-                utils.logValues(w8, ['test_PSNR', 24.57], epoch)
 
         for scheduler in modelList.getSchedulers():
             scheduler.step()

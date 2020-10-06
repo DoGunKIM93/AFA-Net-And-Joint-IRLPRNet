@@ -1,7 +1,7 @@
 '''
 edit.py
 '''
-editversion = "1.12.200706"
+editversion = "1.15.200825"
 
 
 #FROM Python LIBRARY
@@ -10,6 +10,7 @@ import math
 import numpy as np
 import psutil
 import random
+from collections import OrderedDict
 
 #FROM PyTorch
 import torch
@@ -31,17 +32,25 @@ from pytorch_msssim import MS_SSIM
 #from this project
 import backbone.vision as vision
 import model
-import param as p
 import backbone.utils as utils
 import backbone.structure as structure
+import backbone.module as module
 from backbone.utils import loadModels, saveModels, backproagateAndWeightUpdate        
+from backbone.config import Config
+from backbone.SPSR import networks
+from backbone.SPSR import architecture as arch
+from backbone.SPSR.loss import GANLoss, GradientPenaltyLoss
 
+
+#from backbone.PULSE.stylegan import G_synthesis,G_mapping
+#from backbone.PULSE.SphericalOptimizer import SphericalOptimizer
+#from backbone.PULSE.loss import LossBuilder
 
 
 ################ V E R S I O N ################
 # VERSION
-version = '30-EndtoEntDeepBlending'
-subversion = '2-shiftmoduletrainassssment'
+version = '39-ESPCN-General'
+subversion = '1-test'
 ###############################################
 
 
@@ -63,253 +72,420 @@ class ModelList(structure.ModelListBase):
         # train() 및 valid() 에서 사용 방법
         # modelList.(모델 인스턴스 이름)_optimizer
         ##############################################################
+        
+        # Super Resolution Models
+        # SISR
+        #  1. ESPCN
+        
+        self.ESPCN = model.ESPCN(4)
+        #self.ESPCN_pretrained = "ESPCN-General.pth"   # FaceModel: "ESPCN-Face.pth"
+        self.ESPCN_optimizer = torch.optim.Adam(self.ESPCN.parameters(), lr=0.0001)
+        
+        # Param
+        # valueRangeType = '-1~1'
+        # NGF = 32
+        # NDF = 32
+        
 
+        #  2. EDVR(S)
+        
+        
+        #self.EDVR = model.EDVR(nf=128, nframes=1, groups=1, front_RBs=5, back_RBs=40)
+        #self.EDVR_pretrained = "EDVR-General.pth"  # FaceModel: "EDVR-Face.pth"
+        
+        #self.EDVR_optimizer = torch.optim.Adam(self.EDVR.parameters(), lr=0.0002)
+        # Param
+        # valueRangeType = '0~1'
+        # NGF = 64
+        # NDF = 64
+        
 
         
-        #(모델 인스턴스 이름)        
-        self.Entire = model.ESPCN()
-        self.Entire_pretrained = "ESPCN_general.pth"
+        #  3. SPSR
+        '''
+        self.netG = networks.define_G()
+        self.netG_pretrained = "SPSR-netG-Face.pth"#"SPSR-RRDB_PSNR_x4.pth"   # FaceModel: "netG-Face.pth"
+        self.netG_optimizer = torch.optim.Adam(self.netG.parameters(), lr=0.0001, weight_decay=0, betas=(0.9, 0.999))
+        self.netG_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.netG_optimizer, [5000,100000,200000,300000], 0.5)
 
-        self.Face = model.ESPCN()
-        self.Face_pretrained = "ESPCN_face.pth"
+        self.netD = networks.define_D(64)
+        self.netD_pretrained = "SPSR-netD-Face.pth"   # FaceModel: "netD-Face.pth"
+        self.netD_optimizer = torch.optim.Adam(self.netD.parameters(), lr=0.0001, weight_decay=0, betas=(0.9, 0.999))
+        self.netD_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.netD_optimizer, [5000,100000,200000,300000], 0.5)
 
-        #self.Face = model.EDVR(nf=128, nframes=1, groups=1, front_RBs=5, back_RBs=40)
-        #self.Face_pretrained = "EDVR_Face.pth"
+        self.netDgrad = networks.define_D_grad(64)
+        self.netDgrad_pretrained = "SPSR-netDgrad-Face.pth"   # FaceModel: "netDgrad-Face.pth"
+        self.netDgrad_optimizer = torch.optim.Adam(self.netD.parameters(), lr=0.0001, weight_decay=0, betas=(0.9, 0.999))
+        self.netDgrad_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.netDgrad_optimizer, [5000,100000,200000,300000], 0.5)
 
-        #Learning Rate 스케쥴러 (없어도 됨)
-        #self.NET_scheduler = torch.optim.lr_scheduler.OneCycleLR(self.NET_optimizer, 0.0003, total_steps=200)
-        #self.NET_scheduler = utils.NotOneCycleLR(self.NET_optimizer, p.learningRate, total_steps=p.schedulerPeriod)
-        #self.NET_scheduler = torch.optim.lr_scheduler.CyclicLR(self.NET_optimizer, 0, 0.0003, step_size_up=50, step_size_down=150, cycle_momentum=False)
-        #self.NET_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.NET_optimizer, 200)
+        self.VGG_FE = arch.VGGFeatureExtractor(feature_layer=34, use_bn=False, use_input_norm=True)
+        #self.VGG_FE_pretrained = "vgg19-pytorch.pth"
+        self.netF = networks.define_F(self.VGG_FE)
 
-        #self.Ensemble = model.WENDY(CW=64, Blocks=10, Attention=False)
-        #self.Ensemble_optimizer = torch.optim.Adam(self.Ensemble.parameters(), lr=p.learningRate)
+        self.Get_gradient = model.Get_gradient()
+        self.Get_gradient_nopadding = model.Get_gradient_nopadding()
+        '''
 
-        #self.E_FE = model.EfficientNet('b0', num_classes=1, mode='feature_extractor')
-        #self.E_FE_optimizer = torch.optim.Adam(self.E_FE.parameters(), lr=p.learningRate)
-        #self.E_FE_pretrained = 'efficientnet_b0_ns.pth'
+        
 
-        #self.E_FE = model.SunnySideUp()
-        #self.E_FE_optimizer = torch.optim.Adam(self.E_FE.parameters(), lr=p.learningRate)
+        # MISR
+        #  1. VESPCN
+        # self.NET = model.VESPCN(4, Config.param.data.dataLoader.train.sequenceLength)
+        # self.NET_optimizer = torch.optim.Adam(self.NET.parameters(), lr=0.0001)
 
-        #self.E_Deco = model.ISAF(featureExtractor = self.E_FE)
-        #self.E_Deco_optimizer = torch.optim.Adam(self.E_Deco.parameters(), lr=p.learningRate * 3)
+        
+        #4. Blending
+         
+        '''
+        self.SR = model.ESPCN(4)
+        self.SR_pretrained = "ESPCN-General.pth"   # FaceModel: "ESPCN-Face.pth"
+        #self.ESPCN_optimizer = torch.optim.Adam(self.ESPCN.parameters(), lr=0.0003)
 
-        #self.Perceptual = model.EfficientNet('b0', mode='feature_extractor')
-        #self.Perceptual_pretrained = 'efficientnet_b0_ns.pth'
+        self.SR_FACE = model.ESPCN(4)
+        self.SR_FACE_pretrained = "ESPCN-Face.pth"   # FaceModel: "ESPCN-Face.pth"
 
-        #self.Disc = model.EfficientNet('b0', num_classes=1)
-        #self.Disc_pretrained = 'efficientnet_b0_ns.pth'
-        #self.Disc_optimizer = torch.optim.Adam(self.Disc.parameters(), lr=p.learningRate)
+        self.BLENDER_FE = model.EfficientNet('b0', num_classes=1, mode='feature_extractor')
+        self.BLENDER_FE_optimizer = torch.optim.Adam(self.BLENDER_FE.parameters(), lr=0.0001)
+        self.BLENDER_FE_pretrained = 'efficientnet_b0_ns.pth'
 
-        self.initApexAMP()
+        self.BLENDER_DECO = model.DeNIQuA(featureExtractor = self.BLENDER_FE, inFeature=2)
+        self.BLENDER_DECO_optimizer = torch.optim.Adam(self.BLENDER_DECO.parameters(), lr=0.0003)
+        '''
+
+
+
+        self.initApexAMP() #TODO: migration to Pytorch Native AMP
         self.initDataparallel()
 
 
 def trainStep(epoch, modelList, LRImages, HRImages):
+    batch = LRImages.size(0)
 
-
-
-    # loss
+    # 1. ESPCN
+    
     mse_criterion = nn.MSELoss()
-    cpl_criterion = utils.CharbonnierLoss(eps=1e-3)
-    bce_criterion = nn.BCELoss()
-    ssim_criterion = MS_SSIM(data_range=1, size_average=True, channel=3, nonnegative_ssim=False)
- 
-    # model
-    #modelList.Entire.eval()
-    #modelList.Face.eval()
-    modelList.E_FE.train()
-    #modelList.E_Deco.train()
-    #modelList.Disc.train()
+    modelList.ESPCN.train()
+    SRImages = modelList.ESPCN(LRImages)
+    loss = mse_criterion(SRImages, HRImages)  
+    backproagateAndWeightUpdate(modelList, loss, modelNames = "ESPCN")
+    lossList = [loss]
+    SRImagesList = [SRImages]
 
-
-    # batch size
-    batchSize = LRImages.size(0)
-
-    ####################################################### Preproc. #######################################################
-    # SR Processing
-
-    with torch.no_grad():
-        #SRImages_Entire = modelList.Entire(LRImages)
-        #SRImages_Face   = modelList.Face(LRImages)
-        pass
-
+    # 2. EDVR(S)
     '''
-    gsklst = []
-    for bb in range(batchSize):
-        gsklst.append(vision.GaussianSpray(LRImages.size(2), LRImages.size(3), 3, 10).repeat(1,3,1,1))
-    gaussianSprayKernel = torch.cat(gsklst, 0)
-
-    bImage1 = LRImages * gaussianSprayKernel + HRImages * (1 - gaussianSprayKernel)
-    bImage2 = HRImages * gaussianSprayKernel + LRImages * (1 - gaussianSprayKernel)
-
-    if random.randint(0,1) == 1:
-        t = bImage1 
-        bImage1 = bImage2
-        bImage2 = t
+    cpl_criterion = module.CharbonnierLoss(eps=1e-3)
+    modelList.EDVR.train()
+    SRImages = modelList.EDVR(LRImages)
+    loss = cpl_criterion(SRImages, HRImages)  
+    backproagateAndWeightUpdate(modelList, loss, modelNames = "EDVR")
     '''
 
+    # 3. SPSR
     '''
-    ####################################################### Train Disc. ####################################################
+    l_d_total_grad = 0
+    l_g_total = 0
 
-    with torch.no_grad():
-        SRImages_Ensembled = modelList.E_Deco(SRImages_Entire, SRImages_Face)
+    pixel_criterion = "l1"
+    pixel_weight = 2e-2
+    feature_criterion = "l1"
+    feature_weight = 1
+    gan_type = "vanilla"
+    gan_weight = 5e-3
+    gradient_pixel_weight = 1e-2
+    gradient_gan_weight = 5e-3
+    pixel_branch_criterion = "l1"
+    pixel_branch_weight = 5e-1
+    Branch_pretrain = 1
+    Branch_init_iters = 5000
 
-    for xx in range(1):
-        #lrAdversarialScore = modelList.Disc(F.interpolate(LRImages, scale_factor=p.scaleFactor, mode='bicubic'))
-        srAdversarialScore = modelList.Disc(SRImages_Ensembled)
-        hrAdversarialScore = modelList.Disc(HRImages)
-        #lrAdversarialLoss = bce_criterion(lrAdversarialScore, torch.zeros_like(lrAdversarialScore))
-        srAdversarialLoss = bce_criterion(srAdversarialScore, torch.zeros_like(srAdversarialScore))
-        hrAdversarialLoss = bce_criterion(hrAdversarialScore, torch.ones_like(hrAdversarialScore))
-        loss_disc = srAdversarialLoss + hrAdversarialLoss
-        backproagateAndWeightUpdate(modelList, loss_disc, modelNames = "Disc")
+    weight_decay_G = 0
+    weight_decay_G_grad = 0
+    weight_decay_D = 0
 
-    ####################################################### Ensemble. #######################################################
-    '''
+    D_update_ratio = 1
+    D_init_iters = 0
+    Branch_pretrain = 0
+    Branch_init_iters = 1
+
+    beta1_G = 0.9
+    beta1_G_grad = 0.9
+    beta1_D = 0.9
+
+    # train
+    modelList.netG.train()
+    modelList.netD.train()
+    modelList.netDgrad.train()
+    
+    # G pixel loss
+    if pixel_weight > 0:
+        l_pix_type = pixel_criterion
+        if l_pix_type == 'l1':
+            cri_pix = nn.L1Loss()
+        elif l_pix_type == 'l2':
+            cri_pix = nn.MSELoss()
+        else:
+            raise NotImplementedError('Loss type [{:s}] not recognized.'.format(l_pix_type))
+        l_pix_w = pixel_weight
+    else:
+        cri_pix = None
+
+    # G feature loss
+    if feature_weight > 0:
+        l_fea_type = feature_criterion
+        if l_fea_type == 'l1':
+            cri_fea = nn.L1Loss()
+        elif l_fea_type == 'l2':
+            cri_fea = nn.MSELoss()
+        else:
+            raise NotImplementedError('Loss type [{:s}] not recognized.'.format(l_fea_type))
+        l_fea_w = feature_weight
+    else:
+        cri_fea = None
+
+    # GD gan loss
+    cri_gan = GANLoss(gan_type, 1.0, 0.0)
+    l_gan_w = gan_weight
+
+    # gradient_pixel_loss
+    if gradient_pixel_weight > 0:
+        cri_pix_grad = nn.MSELoss()
+        l_pix_grad_w = gradient_pixel_weight
+    else:
+        cri_pix_grad = None
+
+    # gradient_gan_loss
+    if gradient_gan_weight > 0:
+        cri_grad_gan = GANLoss(gan_type, 1.0, 0.0)
+        l_gan_grad_w = gradient_gan_weight
+    else:
+        cri_grad_gan = None
+
+    # G_grad pixel loss
+    if pixel_branch_weight > 0:
+        l_pix_type = pixel_branch_criterion
+        if l_pix_type == 'l1':
+            cri_pix_branch = nn.L1Loss()
+        elif l_pix_type == 'l2':
+            cri_pix_branch = nn.MSELoss()
+        else:
+            raise NotImplementedError('Loss type [{:s}] not recognized.'.format(l_pix_type))
+        l_pix_branch_w = pixel_branch_weight
+    else:
+        cri_pix_branch = None
+
+    log_dict = OrderedDict()
+    get_grad = modelList.Get_gradient
+    get_grad_nopadding = modelList.Get_gradient_nopadding
+
+
+    # Optimizing
+    # netG_optimizer
+    modelList.netG_optimizer.zero_grad()
+
+    fake_H_branch, fake_H, grad_LR = modelList.netG(LRImages)
+    
+    fake_H_grad = get_grad(fake_H)
+    var_H_grad = get_grad(HRImages)
+    var_ref_grad = get_grad(HRImages)
+    var_H_grad_nopadding = get_grad_nopadding(HRImages)
+    
+    #print(fake_H.size(), HRImages.size())
+
+    l_g_total = 0
+    if epoch % D_update_ratio == 0 and epoch > D_init_iters:
+        if cri_pix:  # pixel loss
+            l_g_pix = l_pix_w * cri_pix(fake_H, HRImages)
+            l_g_total += l_g_pix
+        if cri_fea:  # feature loss
+            real_fea = modelList.netF(HRImages)
+            fake_fea = modelList.netF(fake_H)
+            l_g_fea = l_fea_w * cri_fea(fake_fea, real_fea)
+            l_g_total += l_g_fea
+        
+        if cri_pix_grad: #gradient pixel loss
+            l_g_pix_grad = l_pix_grad_w * cri_pix_grad(fake_H_grad, var_H_grad)
+            l_g_total += l_g_pix_grad
+
+
+        if cri_pix_branch: #branch pixel loss
+            l_g_pix_grad_branch = l_pix_branch_w * cri_pix_branch(fake_H_branch, var_H_grad_nopadding)
+            l_g_total += l_g_pix_grad_branch
+
+
+        # G gan + cls loss
+        pred_g_fake = modelList.netD(fake_H)
+        pred_d_real = modelList.netD(HRImages).detach()
+        
+        l_g_gan = l_gan_w * (cri_gan(pred_d_real - torch.mean(pred_g_fake), False) +
+                                cri_gan(pred_g_fake - torch.mean(pred_d_real), True)) / 2
+        l_g_total += l_g_gan
+
+        # grad G gan + cls loss
+        pred_g_fake_grad = modelList.netDgrad(fake_H_grad)
+        pred_d_real_grad = modelList.netDgrad(var_ref_grad).detach()
+
+        l_g_gan_grad = l_gan_grad_w * (cri_grad_gan(pred_d_real_grad - torch.mean(pred_g_fake_grad), False) + 
+                                            cri_grad_gan(pred_g_fake_grad - torch.mean(pred_d_real_grad), True)) /2
+        l_g_total += l_g_gan_grad
+
+        l_g_total.backward()
+        modelList.netG_optimizer.step()
+
+
+    # D
+    modelList.netD_optimizer.zero_grad()
+    l_d_total = 0
+
+    pred_d_real = modelList.netD(HRImages)
+    pred_d_fake = modelList.netD(fake_H.detach())  # detach to avoid BP to G
+
+    l_d_real = cri_gan(pred_d_real - torch.mean(pred_d_fake), True)
+    l_d_fake = cri_gan(pred_d_fake - torch.mean(pred_d_real), False)
+
+    l_d_total = (l_d_real + l_d_fake) / 2
+
+    if gan_type == 'wgan-gp':
+        if random_pt.size(0) != batch:
+            random_pt.resize_(batch, 1, 1, 1)
+        random_pt.uniform_()  # Draw random interpolation points
+        interp = random_pt * fake_H.detach() + (1 - random_pt) * HRImages
+        interp.requires_grad = True
+        interp_crit, _ = modelList.netD(interp)
+        l_d_gp = l_gp_w * cri_gp(interp, interp_crit) 
+        l_d_total += l_d_gp
+
+    l_d_total.backward()
+
+    modelList.netD_optimizer.step()
 
     
-    trI = Variable(torch.ones(batchSize,3,256,256), requires_grad=True).cuda()
-    trI[:,:,1,1] = 0.
-
-    gtI = torch.ones(batchSize,3,256,256).cuda()
-    gtI[:,:,2,2] = 0.
-
-    trI = modelList.E_FE(trI)
-
-
-
-    #blendedImages = modelList.E_Deco(bImage1, bImage2)
+    # D_grad
+    pred_d_real_grad = modelList.netDgrad(var_ref_grad)
+    pred_d_fake_grad = modelList.netDgrad(fake_H_grad.detach())  # detach to avoid BP to G
     
+    l_d_real_grad = cri_grad_gan(pred_d_real_grad - torch.mean(pred_d_fake_grad), True)
+    l_d_fake_grad = cri_grad_gan(pred_d_fake_grad - torch.mean(pred_d_real_grad), False)
 
-    #srAdversarialScore = modelList.Disc(SRImages_Ensembled)
+    l_d_total_grad = (l_d_real_grad + l_d_fake_grad) / 2
 
-    #srPerceptureScore = modelList.Perceptual(SRImages_Ensembled)
-    #with torch.no_grad():
-    #    hrPerceptureScore = modelList.Perceptual(HRImages)
+    l_d_total_grad.backward()
 
-    #loss_perceptual = mse_criterion(srPerceptureScore * 100000, hrPerceptureScore * 100000) 
-    loss_pixelwise = mse_criterion(trI, gtI)
-    #loss_adversarial = bce_criterion(srAdversarialScore, torch.ones_like(srAdversarialScore))
+    modelList.netDgrad_optimizer.step()
 
-    #print(loss_disc, loss_perceptual, loss_pixelwise, loss_adversarial)
+    SRImages = fake_H
 
-    loss = loss_pixelwise# + loss_adversarial * 0.002
+    l_g_total = torch.as_tensor(l_g_total)
+    l_d_total = torch.as_tensor(l_d_total)
+    l_d_total_grad = torch.as_tensor(l_d_total_grad)
+
+
+    lossList = [l_g_total, l_d_total, l_d_total_grad]
+    SRImagesList = [SRImages]
+    '''
+
 
 
     # Update All model weights
     # if modelNames = None, this function updates all trainable model.
     # if modelNames is a String, updates one model
     # if modelNames is a List of string, updates those models.
-    #backproagateAndWeightUpdate(modelList, loss, modelNames = "Ensemble")
-    backproagateAndWeightUpdate(modelList, loss, modelNames = ["E_FE"])
+    # backproagateAndWeightUpdate(modelList, loss, modelNames = "Ensemble")
+    # backproagateAndWeightUpdate(modelList, loss, modelNames = "NET")
 
     # return losses
-    lossList = [loss_pixelwise]
-    #lossList = [srAdversarialLoss, hrAdversarialLoss, loss_disc, loss_pixelwise, loss_adversarial, loss]
+    # lossList = [srAdversarialLoss, hrAdversarialLoss, loss_disc, loss_pixelwise, loss_adversarial, loss]
     # return List of Result Images (also you can add some intermediate results).
-    #SRImagesList = [gaussianSprayKernel,bImage1,bImage2,blendedImages] 
-    SRImagesList = [trI,gtI]
-
+    # SRImagesList = [gaussianSprayKernel,bImage1,bImage2,blendedImages]
+    
     
     return lossList, SRImagesList
      
 
 
-    ''' validationStep
-    ############# Inference Example code (with GT)#############
-    # loss
-    mse_criterion = nn.MSELoss()
-    cpl_criterion = utils.CharbonnierLoss(eps=1e-3)
- 
-    # model
-    modelList.Entire.eval()
-
-    ####################################################### Preproc. #######################################################
-    # SR Processing
-    with torch.no_grad():
-        SRImages   = modelList.Entire(LRImages)
-    ####################################################### Ensemble. #######################################################
-    #SRImages_Ensembled = modelList.Ensemble(SRImages_Cat)
-    #loss = mse_criterion(SRImages_Ensembled, HRImages)
-    if SRImages.shape != HRImages.shape:
-        print(f"edit.py :: ERROR : \"SRImages.shape\" : {SRImages.shape} doesn't matach \"HRImages.shape\" : {HRImages.shape}")
-        return
-    else:
-        loss = mse_criterion(SRImages, HRImages)
-        # return List of Result Images (also you can add some intermediate results).
-        #SRImagesList = [SRImages_Entire,SRImages_Face,SRImages_Ensembled] 
-        SRImagesList = [SRImages]
-
-    '''
 def validationStep(epoch, modelList, LRImages, HRImages):
-   ############# Inference Example code (with GT)#############
-    # loss
-    mse_criterion = nn.MSELoss()
-    cpl_criterion = utils.CharbonnierLoss(eps=1e-3)
- 
-    # model
-    modelList.Entire.eval()
+    batchSize = LRImages.size(0)
 
-    ####################################################### Preproc. #######################################################
-    # SR Processing
+    # 1. ESPCN
+    
+    mse_criterion = nn.MSELoss()
+    modelList.ESPCN.eval()
+    SRImages = modelList.ESPCN(LRImages)
+    loss = mse_criterion(SRImages, HRImages)  
+    
+    SRImagesList = [SRImages]
+
+    # 2. EDVR(S)
+    '''
+    cpl_criterion = utils.CharbonnierLoss(eps=1e-3)
+    modelList.EDVR.eval()
+    SRImages = modelList.EDVR(LRImages)
+    loss = cpl_criterion(SRImages, HRImages)
+    '''
+
+    # 3. SPSR
+    '''
+    fake_H_branch = None
+    SRImages = None
+    grad_LR = None
+
+    #gan_type = "vanilla"
+    #cri_gan = GANLoss(gan_type, 1.0, 0.0)
+    bce_criterion = nn.BCEWithLogitsLoss()
+
+    modelList.netG.eval()
     with torch.no_grad():
-        SRImages   = modelList.Entire(LRImages)
-    ####################################################### Ensemble. #######################################################
-    #SRImages_Ensembled = modelList.Ensemble(SRImages_Cat)
-    #loss = mse_criterion(SRImages_Ensembled, HRImages)
-    if SRImages.shape != HRImages.shape:
-        print(f"edit.py :: ERROR : \"SRImages.shape\" : {SRImages.shape} doesn't matach \"HRImages.shape\" : {HRImages.shape}")
-        return
-    else:
-        loss = mse_criterion(SRImages, HRImages)
-        # return List of Result Images (also you can add some intermediate results).
-        #SRImagesList = [SRImages_Entire,SRImages_Face,SRImages_Ensembled] 
-        SRImagesList = [SRImages]
+        fake_H_branch, SRImages, grad_LR = modelList.netG(LRImages)
+    
+    loss = bce_criterion(SRImages, HRImages)
+    loss = torch.as_tensor(loss)
+
+
+    #SEQUENCE_LENGTH = Config.param.data.dataLoader.train.sequenceLength
+    #lossList = [srAdversarialLoss, hrAdversarialLoss, loss_disc, loss_pixelwise, loss_adversarial, loss]
+    # return List of Result Images (also you can add some intermediate results).
+    #SRImagesList = [gaussianSprayKernel,bImage1,bImage2,blendedImages] 
+    '''
+    
+
 
     return loss, SRImagesList
 
-    ''' inferenceStep
-    ############# Inference Example code (without GT)#############
-    # model
-    modelList.Entire.eval()
-    modelList.Face.eval()
-
-    ####################################################### Preproc. #######################################################
-    # SR Processing
-    with torch.no_grad():
-        print("LRImages.shape : ", LRImages.shape)
-        SRImages_Entire = modelList.Entire(LRImages)
-        SRImages_Face = modelList.Face(LRImages)
-        print("SRImages_Entire.shape : ", SRImages_Entire.shape)
-        print("SRImages_Face.shape : ", SRImages_Face.shape)
-    ####################################################### Blending. #######################################################
-    if p.blendingMode != None:
-        destination = SRImages_Entire
-        source = SRImages_Face
-        
-        ## test를 위한 roi (Detection 추가하면 roi 매핑 부분 수정 예정)
-        roi = (1300, 700, 400, 400, 400, 900, 500, 300, 300, 400, 300, 500)
-        blended_img = vision.BlendingMethod(p.blendingMode, source, destination, roi)
-        SRImages_Ensembled = blended_img
-    else:
-        SRImages_Ensembled = SRImages_Entire
-
-    # return List of Result Images (also you can add some intermediate results).
-    SRImagesList = [SRImages_Ensembled] 
-    
-    '''
 def inferenceStep(modelList, LRImages):
     # model
-    modelList.Entire.eval()
-    modelList.Face.eval()
+    # 1. ESPCN
+    # modelList.ESPCN.eval()
+    
+    # 2. EDVR(S)
+    '''
+    modelList.EDVR.eval()
+    SRImages = modelList.EDVR(LRImages)
+    SRImagesList = [SRImages] 
+    '''
 
+    # 3. SPSR
+    
+    #gan_type = "vanilla"
+    #cri_gan = GANLoss(gan_type, 1.0, 0.0)
+    
+    '''
+    modelList.netG.eval()
+    with torch.no_grad():
+        _, SRImages, _ = modelList.netG(LRImages)
+    '''
+    modelList.EDVR.eval()
+    SRImages = modelList.EDVR(LRImages)
+
+
+
+    '''
     ####################################################### Preproc. #######################################################
     # SR Processing
     with torch.no_grad():
-        SRImages_Entire = modelList.Entire(LRImages)
-        SRImages_Face = modelList.Face(LRImages)
+        #SRImages_ESPCN = modelList.ESPCN(LRImages)
+        SRImages_EDVR = modelList.EDVR(LRImages)
+        #fake_H_branch, SRImages_SPSR, grad_LR = modelList.netG(LRImages)
+    modelList.netG.train()
+
     ####################################################### Blending. #######################################################
     if p.blendingMode != None:
         destination = SRImages_Entire
@@ -323,7 +499,9 @@ def inferenceStep(modelList, LRImages):
         SRImages_Ensembled = SRImages_Entire
 
     # return List of Result Images (also you can add some intermediate results).
-    SRImagesList = [SRImages_Ensembled] 
+    '''
+    SRImagesList = [SRImages] 
+    
     
     return SRImagesList
 

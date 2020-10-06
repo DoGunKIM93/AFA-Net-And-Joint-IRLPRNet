@@ -1,0 +1,135 @@
+#DEFINE "FIXED" Dataset Config
+version : 1.05.200806
+
+DIV2K_SR:
+    origin: DIV2K
+    dataType: 
+        LR: Image-Float #  dataName: dataType(InputType)-tensorType(OutputType)  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
+    labelType:
+        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
+    availableMode: 
+        - train
+        - validation #train, validation, test
+    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+        - scaleMethod
+        - scaleFactor
+    preprocessings: # Must be list
+        - Pass()
+        - Pass()
+
+
+DIV2K_SR_V:
+    origin: DIV2K
+    dataType: 
+        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
+    labelType:
+        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
+    availableMode: 
+        - train
+    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+        - class
+    preprocessings: # Must be list
+        - Pass()
+
+
+291_SR:
+    origin: 291
+    dataType: 
+        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
+    labelType:
+        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
+    availableMode: 
+        - train
+        - validation #train, validation, test
+    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+        - class
+    preprocessings: # Must be list
+        - Pass()
+
+
+REDS_SR:
+    origin: REDS
+    dataType: 
+        LR: ImageSequence-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
+    labelType:
+        HR: ImageSequence-Float # (Text/Image/ImageSequence)-(Float/Int)
+    availableMode: 
+        - train
+        - validation #train, validation, test
+        - test
+    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+        - degradationMethod
+        - scaleFactor
+    preprocessings: # Must be list
+        - Pass()
+
+VID4_SR:
+    origin: Vid4
+    dataType: 
+        LR: ImageSequence-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
+    labelType:
+        HR: ImageSequence-Float # (Text/Image/ImageSequence)-(Float/Int)
+    availableMode: 
+        - test
+    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+        - degradationMethod
+        - scaleFactor
+    preprocessings: # Must be list
+        - Pass()
+
+
+FFHQ_FACE_SR:
+    origin: FFHQ/Face
+    dataType: 
+        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
+    labelType:
+        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
+    availableMode:
+        - train
+        - test
+    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+        - class
+    preprocessings: # Must be list
+        - Pass()
+
+
+Set5_SR:
+    origin: benchmark/Set5
+    dataType: 
+        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
+    labelType:
+        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
+    availableMode:
+        - test
+    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+        - scaleMethod
+        - scaleFactor
+    preprocessings: # Must be list
+        - Pass()
+
+Set5_SR_V:
+    origin: benchmark/Set5
+    dataType: 
+        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
+    labelType:
+        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
+    availableMode:
+        - test
+    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+        - class
+    preprocessings: # Must be list
+        - Pass()
+
+Blending_SR:
+    origin: benchmark/Blending
+    dataType: 
+        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
+    labelType:
+        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
+    availableMode:
+        - test
+    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+        - scaleMethod
+        - scaleFactor
+    preprocessings: # Must be list
+        - Pass()

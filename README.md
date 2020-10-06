@@ -1,3 +1,9 @@
+<div align="center"><img src='airlogo.png' width=600></div>
+
+
+
+
+
 # 사용법
 
 1. model.py에 모델을 추가
@@ -36,7 +42,6 @@
 16. mixedPrecision : 믹스드 프리시전 (속도 빨라지고 메모리 덜 먹으나 성능 하락할 수 있음)
 
 # 수정내역
-
 20200707
 
 1. dataset 구조 변화에 따른 데이터로더 수정 (버그 있을 수 있음)

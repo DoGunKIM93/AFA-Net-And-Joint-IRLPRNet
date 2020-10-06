@@ -32,7 +32,7 @@ from torch.nn.modules.utils import _pair
 from torch.utils import model_zoo
 
 #from this project
-import param as p
+from backbone.config import Config
 import backbone.vision as vision
 from backbone.dcn.deform_conv import ModulatedDeformConvPack as DCN
 
