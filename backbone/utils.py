@@ -1,7 +1,7 @@
 '''
 utils.py
 '''
-version = "1.36.201006"
+version = "1.37.201006.2"
 
 
 #From Python
@@ -454,7 +454,7 @@ def initFolderAndFiles(ver, subversion):
     subDirUnderModelList = ['backbone']
     list(os.makedirs(f'./data/{ver}/model/{subversion}/{x}') for x in subDirUnderModelList if not os.path.exists(f'./data/{ver}/model/{subversion}/{x}'))
 
-    list(copyfile(f'./{x}', f'./data/{ver}/model/{subversion}/{x}') for x in os.listdir('.') if x.endswith('.py'))
+    list(copyfile(f'./{x}', f'./data/{ver}/model/{subversion}/{x}') for x in os.listdir('.') if x.endswith('.py') or x.endswith('.yaml'))
     list(copyfile(f'./backbone/{x}', f'./data/{ver}/model/{subversion}/backbone/{x}') for x in os.listdir('./backbone') if x.endswith('.py'))
 
 def initArgParser():
