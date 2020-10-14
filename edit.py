@@ -1,7 +1,7 @@
 '''
 edit.py
 '''
-editversion = "1.15.200825"
+editversion = "1.16.201014"
 
 
 #FROM Python LIBRARY
@@ -24,8 +24,8 @@ from torchvision import transforms
 from torchvision.utils import save_image
 
 
-#from pytorch_msssim (github/jorge_pessoa)
-from pytorch_msssim import MS_SSIM
+#from iqa-pytorch
+from IQA_pytorch import MS_SSIM, SSIM, GMSD, LPIPSvgg, DISTS
 
 
 
@@ -37,8 +37,6 @@ import backbone.structure as structure
 import backbone.module as module
 from backbone.utils import loadModels, saveModels, backproagateAndWeightUpdate        
 from backbone.config import Config
-from backbone.SPSR import networks
-from backbone.SPSR import architecture as arch
 from backbone.SPSR.loss import GANLoss, GradientPenaltyLoss
 
 
@@ -47,10 +45,14 @@ from backbone.SPSR.loss import GANLoss, GradientPenaltyLoss
 #from backbone.PULSE.loss import LossBuilder
 
 
+
 ################ V E R S I O N ################
-# VERSION
-version = '39-ESPCN-General'
-subversion = '1-test'
+# VERSION START (DO NOT EDIT THIS COMMENT, for tools/codeArchiver.py)
+
+version = '40-BlendingWithFeature'
+subversion = '6-distsLoss'
+
+# VERSION END (DO NOT EDIT THIS COMMENT, for tools/codeArchiver.py)
 ###############################################
 
 
@@ -76,11 +78,11 @@ class ModelList(structure.ModelListBase):
         # Super Resolution Models
         # SISR
         #  1. ESPCN
-        
+        '''
         self.ESPCN = model.ESPCN(4)
         #self.ESPCN_pretrained = "ESPCN-General.pth"   # FaceModel: "ESPCN-Face.pth"
-        self.ESPCN_optimizer = torch.optim.Adam(self.ESPCN.parameters(), lr=0.0001)
-        
+        self.ESPCN_optimizer = torch.optim.Adam(self.ESPCN.parameters(), lr=0.0003)
+        '''
         # Param
         # valueRangeType = '-1~1'
         # NGF = 32
@@ -103,54 +105,77 @@ class ModelList(structure.ModelListBase):
         
         #  3. SPSR
         '''
-        self.netG = networks.define_G()
+        self.netG = model.SPSR_Generator(scaleFactor = 4)
         self.netG_pretrained = "SPSR-netG-Face.pth"#"SPSR-RRDB_PSNR_x4.pth"   # FaceModel: "netG-Face.pth"
         self.netG_optimizer = torch.optim.Adam(self.netG.parameters(), lr=0.0001, weight_decay=0, betas=(0.9, 0.999))
         self.netG_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.netG_optimizer, [5000,100000,200000,300000], 0.5)
 
-        self.netD = networks.define_D(64)
+        self.netD = model.SPSR_Discriminator(size = 64)
         self.netD_pretrained = "SPSR-netD-Face.pth"   # FaceModel: "netD-Face.pth"
         self.netD_optimizer = torch.optim.Adam(self.netD.parameters(), lr=0.0001, weight_decay=0, betas=(0.9, 0.999))
         self.netD_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.netD_optimizer, [5000,100000,200000,300000], 0.5)
 
-        self.netDgrad = networks.define_D_grad(64)
+        self.netDgrad = model.SPSR_Discriminator(size = 64)
         self.netDgrad_pretrained = "SPSR-netDgrad-Face.pth"   # FaceModel: "netDgrad-Face.pth"
         self.netDgrad_optimizer = torch.optim.Adam(self.netD.parameters(), lr=0.0001, weight_decay=0, betas=(0.9, 0.999))
         self.netDgrad_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.netDgrad_optimizer, [5000,100000,200000,300000], 0.5)
 
-        self.VGG_FE = arch.VGGFeatureExtractor(feature_layer=34, use_bn=False, use_input_norm=True)
-        #self.VGG_FE_pretrained = "vgg19-pytorch.pth"
-        self.netF = networks.define_F(self.VGG_FE)
+        self.netF = model.SPSR_FeatureExtractor()
 
-        self.Get_gradient = model.Get_gradient()
-        self.Get_gradient_nopadding = model.Get_gradient_nopadding()
+        self.Get_gradient = model.SPSR_Get_gradient()
+        self.Get_gradient_nopadding = model.SPSR_Get_gradient_nopadding()
         '''
 
-        
+        #4. Blending
 
         # MISR
         #  1. VESPCN
         # self.NET = model.VESPCN(4, Config.param.data.dataLoader.train.sequenceLength)
         # self.NET_optimizer = torch.optim.Adam(self.NET.parameters(), lr=0.0001)
 
-        
-        #4. Blending
-         
-        '''
-        self.SR = model.ESPCN(4)
-        self.SR_pretrained = "ESPCN-General.pth"   # FaceModel: "ESPCN-Face.pth"
-        #self.ESPCN_optimizer = torch.optim.Adam(self.ESPCN.parameters(), lr=0.0003)
 
-        self.SR_FACE = model.ESPCN(4)
-        self.SR_FACE_pretrained = "ESPCN-Face.pth"   # FaceModel: "ESPCN-Face.pth"
+
+
+        #self.SR = model.ESPCN(4)
+        #self.SR_pretrained = "ESPCN-General-201007.pth"   # FaceModel: "ESPCN-Face.pth"
+        
+        #self.SR = model.EDVR(nf=128, nframes=1, groups=1, front_RBs=5, back_RBs=40)
+        #self.SR_pretrained = "EDVR_general2.pth"  # FaceModel: "EDVR-Face.pth"
+
+        self.SR = model.SPSR_Generator(scaleFactor = 4)
+        self.SR_pretrained = "SPSR-Robust-netG-General.pth"#"SPSR-baseline-netG.pth" #  # FaceModel: "EDVR-Face.pth"
+
+
+
+
+        #self.SR_FACE = model.ESPCN(4)
+        #self.SR_FACE_pretrained = "ESPCN-Face.pth"   # FaceModel: "ESPCN-Face.pth"
+
+        self.SR_FACE = model.SPSR_Generator(scaleFactor = 4)
+        self.SR_FACE_pretrained = "SPSR-netG-Face.pth" 
+
+
+
+
+        
+
+        self.BLENDER_E_DECO = model.DeNIQuA_Res(featureExtractor = None, CW=64, Blocks=18, inFeature=2, outCW=128, featureCW=128)
+        self.BLENDER_E_DECO_optimizer = torch.optim.Adam(self.BLENDER_E_DECO.parameters(), lr=0.0003)
+
+
+        self.BLENDER_F_DECO = model.DeNIQuA_Res(featureExtractor = None, CW=64, Blocks=18, inFeature=2, outCW=128, featureCW=128)
+        self.BLENDER_F_DECO_optimizer = torch.optim.Adam(self.BLENDER_F_DECO.parameters(), lr=0.0003)
+
+
+
+
 
         self.BLENDER_FE = model.EfficientNet('b0', num_classes=1, mode='feature_extractor')
         self.BLENDER_FE_optimizer = torch.optim.Adam(self.BLENDER_FE.parameters(), lr=0.0001)
         self.BLENDER_FE_pretrained = 'efficientnet_b0_ns.pth'
 
-        self.BLENDER_DECO = model.DeNIQuA(featureExtractor = self.BLENDER_FE, inFeature=2)
+        self.BLENDER_DECO = model.DeNIQuA(featureExtractor = self.BLENDER_FE, CW=32, inFeature=2, outCW=3, featureCW=1280)
         self.BLENDER_DECO_optimizer = torch.optim.Adam(self.BLENDER_DECO.parameters(), lr=0.0003)
-        '''
 
 
 
@@ -162,14 +187,13 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     batch = LRImages.size(0)
 
     # 1. ESPCN
-    
+    '''
     mse_criterion = nn.MSELoss()
     modelList.ESPCN.train()
     SRImages = modelList.ESPCN(LRImages)
     loss = mse_criterion(SRImages, HRImages)  
     backproagateAndWeightUpdate(modelList, loss, modelNames = "ESPCN")
-    lossList = [loss]
-    SRImagesList = [SRImages]
+    '''
 
     # 2. EDVR(S)
     '''
@@ -384,6 +408,81 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     '''
 
 
+    #4. Blending
+    SCALE_FACTOR = 4
+
+    # loss
+    mse_criterion = nn.MSELoss()
+    cpl_criterion = module.CharbonnierLoss(eps=1e-3)
+    bce_criterion = nn.BCELoss()
+    #ssim_criterion = MS_SSIM(data_range=1, size_average=True, channel=3, nonnegative_ssim=False)
+    dists_criterion = DISTS(channels=3).cuda()
+ 
+    # model
+    modelList.SR.eval()
+    modelList.SR_FACE.eval()
+
+    #modelList.BLENDER_FE.train()
+    modelList.BLENDER_E_DECO.train()
+    modelList.BLENDER_F_DECO.train()
+    modelList.BLENDER_DECO.train()
+    modelList.BLENDER_FE.train()
+
+
+    # batch size
+    batchSize = LRImages.size(0)
+
+    ####################################################### Preproc. #######################################################
+    # SR Processing
+
+    with torch.no_grad():
+        feature_Entire = modelList.SR(LRImages, mode='encode')
+        feature_Face =  modelList.SR_FACE(LRImages, mode='encode')
+
+        SRImages_Entire = modelList.SR(feature_Entire, mode='decode')
+        SRImages_Face = modelList.SR_FACE(feature_Face, mode='decode')
+
+
+    IQAMap_E = modelList.BLENDER_E_DECO([feature_Entire, feature_Face])
+    IQAMap_F = modelList.BLENDER_F_DECO([feature_Entire, feature_Face])
+
+        
+    #SPPXL_CNT = int(SRImages_Entire.size(-2) * SRImages_Entire.size(-1) / 256)
+    #print(SPPXL_CNT)
+
+    superPixelMap = None#vision.SLIC(SRImages_Entire, SPPXL_CNT, 10, True)
+
+    blendedFeature_E, _ = vision.E2EBlending(feature_Entire, feature_Face, IQAMap_E, superPixelMap, softMode = True)
+    blendedFeature_F, _ = vision.E2EBlending(feature_Entire, feature_Face, IQAMap_F, superPixelMap, softMode = True)
+
+    SRImages_Blended_Entire = modelList.SR(blendedFeature_E, mode='decode')
+    SRImages_Blended_Face = modelList.SR_FACE(blendedFeature_F, mode='decode')
+
+
+
+    IQAMap = modelList.BLENDER_DECO([SRImages_Blended_Entire, SRImages_Blended_Face])
+    SRImages_Blended_Final, sm = vision.E2EBlending(SRImages_Blended_Entire, SRImages_Blended_Face, IQAMap, superPixelMap, softMode = True)
+
+    #with torch.no_grad():
+    #    blendedHard, smHard = vision.E2EBlending(SRImages_Entire, SRImages_Face, IQAMap, superPixelMap, softMode = False)
+
+
+    lossEntire = dists_criterion(SRImages_Blended_Entire, HRImages)
+    lossFace = dists_criterion(SRImages_Blended_Face, HRImages)
+    lossFinal = dists_criterion(SRImages_Blended_Final, HRImages)
+
+    loss = lossEntire + lossFace + lossFinal
+
+
+
+
+    backproagateAndWeightUpdate(modelList, loss, modelNames = ["BLENDER_E_DECO", "BLENDER_F_DECO", "BLENDER_DECO", "BLENDER_FE"])
+    #backproagateAndWeightUpdate(modelList, lossFace, modelNames = ["BLENDER_F_DECO"])
+
+    # return losses
+    lossList = [lossEntire, lossFace, lossFinal]
+    SRImagesList = [SRImages_Entire, SRImages_Face,
+                SRImages_Blended_Entire, SRImages_Blended_Face, sm, SRImages_Blended_Final]
 
     # Update All model weights
     # if modelNames = None, this function updates all trainable model.
@@ -406,13 +505,12 @@ def validationStep(epoch, modelList, LRImages, HRImages):
     batchSize = LRImages.size(0)
 
     # 1. ESPCN
-    
+    '''
     mse_criterion = nn.MSELoss()
     modelList.ESPCN.eval()
     SRImages = modelList.ESPCN(LRImages)
     loss = mse_criterion(SRImages, HRImages)  
-    
-    SRImagesList = [SRImages]
+    '''
 
     # 2. EDVR(S)
     '''
@@ -448,6 +546,77 @@ def validationStep(epoch, modelList, LRImages, HRImages):
     
 
 
+    #4. Blending
+
+    SCALE_FACTOR = 4
+
+    # loss
+    mse_criterion = nn.MSELoss()
+    cpl_criterion = module.CharbonnierLoss(eps=1e-3)
+    bce_criterion = nn.BCELoss()
+    #ssim_criterion = MS_SSIM(data_range=1, size_average=True, channel=3, nonnegative_ssim=False)
+ 
+    # model
+    modelList.SR.eval()
+    modelList.SR_FACE.eval()
+
+    #modelList.BLENDER_FE.eval()
+    modelList.BLENDER_E_DECO.eval()
+    modelList.BLENDER_F_DECO.eval()
+    modelList.BLENDER_DECO.eval()
+    modelList.BLENDER_FE.eval()
+
+
+    # batch size
+    batchSize = LRImages.size(0)
+    
+
+
+    ####################################################### Preproc. #######################################################
+    # SR Processing
+    
+
+    
+
+    
+
+    
+
+    with torch.no_grad():
+        feature_Entire = modelList.SR(LRImages, 'encode')
+        feature_Face = modelList.SR_FACE(LRImages, 'encode')
+
+        SRImages_Entire = modelList.SR(feature_Entire, 'decode')
+        SRImages_Face = modelList.SR_FACE(feature_Face, 'decode')
+        bigLR = F.interpolate(LRImages, scale_factor=SCALE_FACTOR, mode='bicubic')
+
+        IQAMap_E = modelList.BLENDER_E_DECO([feature_Entire, feature_Face])
+        IQAMap_F = modelList.BLENDER_F_DECO([feature_Entire, feature_Face])
+        
+        #SPPXL_CNT = SRImages_Entire.size(-2) * SRImages_Entire.size(-1) / 2000
+        superPixelMap = None#vision.SLIC(SRImages_Entire, SPPXL_CNT, 10, True)
+
+        blendedFeature_E, _ = vision.E2EBlending(feature_Entire, feature_Face, IQAMap_E, superPixelMap, softMode = True)
+        blendedFeature_F, _ = vision.E2EBlending(feature_Entire, feature_Face, IQAMap_F, superPixelMap, softMode = True)
+
+        SRImages_Blended_Entire = modelList.SR(blendedFeature_E, 'decode')
+        SRImages_Blended_Face = modelList.SR_FACE(blendedFeature_F, 'decode')
+
+        IQAMap = modelList.BLENDER_DECO([SRImages_Blended_Entire, SRImages_Blended_Face])
+        SRImages_Blended_Final, sm = vision.E2EBlending(SRImages_Blended_Entire, SRImages_Blended_Face, IQAMap, superPixelMap, softMode = True)
+
+    lossEntire = mse_criterion(SRImages_Blended_Entire, HRImages)
+    lossFace = mse_criterion(SRImages_Blended_Face, HRImages)
+    lossFinal = mse_criterion(SRImages_Blended_Final, HRImages)
+
+
+    loss = lossEntire + lossFace + lossFinal
+
+
+    SRImagesList = [SRImages_Entire, SRImages_Face,
+                    SRImages_Blended_Entire, SRImages_Blended_Face, sm, SRImages_Blended_Final]
+
+    
     return loss, SRImagesList
 
 def inferenceStep(modelList, LRImages):
@@ -494,7 +663,7 @@ def inferenceStep(modelList, LRImages):
         # test를 위한 roi (Detection 추가하면 roi 매핑 부분 수정 예정)
         roi = (1300, 700, 400, 400, 400, 900, 500, 300, 300, 400, 300, 500)
         blended_img = vision.BlendingMethod(p.blendingMode, source, destination, roi)
-        SRImages_Ensembled = blended_img
+        SRImages_Ensembled = blended_imgzxcjh
     else:
         SRImages_Ensembled = SRImages_Entire
 

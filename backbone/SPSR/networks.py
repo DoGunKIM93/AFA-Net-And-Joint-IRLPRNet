@@ -5,7 +5,6 @@ import torch.nn as nn
 from torch.nn import init
 
 import backbone.SPSR.architecture as arch
-from backbone.config import Config
 
 logger = logging.getLogger('base')
 ####################

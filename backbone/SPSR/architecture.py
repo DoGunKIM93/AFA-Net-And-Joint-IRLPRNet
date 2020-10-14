@@ -128,8 +128,98 @@ class SPSRNet(nn.Module):
         self.f_HR_conv0 = B.conv_block(nf, nf, kernel_size=3, norm_type=None, act_type=act_type)
         self.f_HR_conv1 = B.conv_block(nf, out_nc, kernel_size=3, norm_type=None, act_type=None)
         
+    
+    def _encode(self, x):
 
-    def forward(self, x):    
+        x_grad = self.get_g_nopadding(x)
+        x = self.model[0](x)  
+
+        x, block_list = self.model[1](x)
+
+        x_ori = x
+        for i in range(5):
+            x = block_list[i](x)
+        x_fea1 = x 
+
+        for i in range(5):
+            x = block_list[i+5](x)
+        x_fea2 = x
+
+        for i in range(5):
+            x = block_list[i+10](x)
+        x_fea3 = x
+        
+        for i in range(5):
+            x = block_list[i+15](x)
+        x_fea4 = x
+        
+        x = block_list[20:](x)
+        #short cut
+        x = x_ori+x
+        #x = self.model[2:](x)
+        #x = self.HR_conv1_new(x)
+
+        x_b_fea = self.b_fea_conv(x_grad)
+        x_cat_1 = torch.cat([x_b_fea, x_fea1], dim=1)
+        
+        x_cat_1 = self.b_block_1(x_cat_1)
+        x_cat_1 = self.b_concat_1(x_cat_1)
+
+        x_cat_2 = torch.cat([x_cat_1, x_fea2], dim=1)
+        
+        x_cat_2 = self.b_block_2(x_cat_2)
+        x_cat_2 = self.b_concat_2(x_cat_2)
+
+        x_cat_3 = torch.cat([x_cat_2, x_fea3], dim=1)
+        
+        x_cat_3 = self.b_block_3(x_cat_3)
+        x_cat_3 = self.b_concat_3(x_cat_3)
+
+        x_cat_4 = torch.cat([x_cat_3, x_fea4], dim=1)
+        
+        x_cat_4 = self.b_block_4(x_cat_4)
+        x_cat_4 = self.b_concat_4(x_cat_4)
+
+        x_cat_4 = self.b_LR_conv(x_cat_4)
+
+        #short cut
+        x_cat_4 = x_cat_4+x_b_fea
+        #x_branch = self.b_module(x_cat_4)
+
+        #x_out_branch = self.conv_w(x_branch)
+        ########
+        #x_branch_d = x_branch
+        #x_f_cat = torch.cat([x_branch_d, x], dim=1)
+
+        out_fea = torch.cat([x_cat_4, x], dim=1) # [B, nf*2, lr_H, lr_W]
+
+        return out_fea
+
+
+    def _decode(self, x):
+        
+        x_sr = x[:,x.size(1)//2:,:,:]
+        x_grad = x[:,:x.size(1)//2,:,:]
+        
+
+        x_sr = self.model[2:](x_sr)
+        x_sr = self.HR_conv1_new(x_sr)
+
+
+        x_branch = self.b_module(x_grad)
+        x_branch_d = x_branch
+        x_f_cat = torch.cat([x_branch_d, x_sr], dim=1)
+
+
+        
+        x_f_cat = self.f_block(x_f_cat)
+        x_out = self.f_concat(x_f_cat)
+        x_out = self.f_HR_conv0(x_out)
+        x_out = self.f_HR_conv1(x_out)
+
+        return x_out
+
+    def _forward(self, x):    
 
         x_grad = self.get_g_nopadding(x)
         x = self.model[0](x)  
@@ -198,6 +288,15 @@ class SPSRNet(nn.Module):
         
         #########
         return x_out_branch, x_out, x_grad
+
+    def forward(self, x, mode='forward'):
+        assert mode in ['encode', 'decode', 'forward']
+        if mode is 'encode':
+            return self._encode(x)
+        elif mode is 'decode':
+            return self._decode(x)
+        elif mode is 'forward':
+            return self._forward(x)
 
 
 ####################

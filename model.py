@@ -1,7 +1,7 @@
 '''
 model.py
 '''
-version = '1.42.201006'
+version = '1.50.201012'
 
 
 #from Python
@@ -47,6 +47,8 @@ from backbone.ResNeSt.resnet import ResNet, Bottleneck
     #RetinaFace
 from backbone.RetinaFace.RetinaFace import MobileNetV1, FPN, SSH, ClassHead, BboxHead, LandmarkHead
 from backbone.RetinaFace.RetinaFace_config import cfg_mnet, cfg_re50
+    #SPSR
+import backbone.SPSR.architecture as SPSR_arch
 
 
 
@@ -62,12 +64,43 @@ from backbone.RetinaFace.RetinaFace_config import cfg_mnet, cfg_re50
 
 
 
+class DeNIQuA_Res(nn.Module):
+    def __init__(self, featureExtractor, CW=64, Blocks=9, inFeature=1, outCW=3, featureCW=1280):
+        super(DeNIQuA_Res, self).__init__()
+
+        self.featureExtractor = featureExtractor
+
+        self.CW = CW
+
+        self.inFeature = inFeature
+
+        self.oxo_in = nn.Conv2d( featureCW * inFeature, CW, 1, 1, 0)
+        self.res = basicResBlocks(CW=CW, Blocks=9)
+        self.oxo_out = nn.Conv2d( CW, outCW, 1, 1, 0)
+
+    def forward(self, xList):
+
+        assert self.inFeature == len(xList)
+        
+        if self.featureExtractor is not None:
+            rstList = []
+            for i in range(self.inFeature):
+                rstList.append(self.featureExtractor(xList[i]))
+            x = torch.cat(rstList, 1)
+        else:
+            x = torch.cat(xList, 1)
+
+        x = self.oxo_in(x)
+        x = self.res(x)
+        x = self.oxo_out(x)
+
+        return F.sigmoid(x)
+
+
 
 class DeNIQuA(nn.Module):
-    def __init__(self, featureExtractor, CW=64, inFeature=1, colorMode='color'):
+    def __init__(self, featureExtractor, CW=64, inFeature=1, outCW=3, featureCW=1280):
         super(DeNIQuA, self).__init__()
-
-        inputChannel = 3 if colorMode == 'color' else 1
 
         self.featureExtractor = featureExtractor
 
@@ -76,21 +109,24 @@ class DeNIQuA(nn.Module):
         self.inFeature = inFeature
 
         self.DecoderList = nn.ModuleList([ # 1/32
-            nn.ConvTranspose2d(1280*inFeature,   CW*8, 4, 2, 1), #1/16
+            nn.ConvTranspose2d( featureCW * inFeature,   CW*8, 4, 2, 1), #1/16
             nn.ConvTranspose2d( CW*8,  CW*4, 4, 2, 1), #1/8
             nn.ConvTranspose2d( CW*4,  CW*2, 4, 2, 1), #1/4
             nn.ConvTranspose2d( CW*2 , CW*1, 4, 2, 1), #1/2
-            nn.ConvTranspose2d( CW*1 , inputChannel, 4, 2, 1), #1/1
+            nn.ConvTranspose2d( CW*1 , outCW, 4, 2, 1), #1/1
         ])
 
     def forward(self, xList):
 
         assert self.inFeature == len(xList)
         
-        rstList = []
-        for i in range(self.inFeature):
-            rstList.append(self.featureExtractor(xList[i]))
-        x = torch.cat(rstList, 1)
+        if self.featureExtractor is not None:
+            rstList = []
+            for i in range(self.inFeature):
+                rstList.append(self.featureExtractor(xList[i]))
+            x = torch.cat(rstList, 1)
+        else:
+            x = torch.cat(xList, 1)
 
         for i, decoder in enumerate(self.DecoderList):
             x = decoder(x)
@@ -456,7 +492,7 @@ class ReconstructionBlock(nn.Module):
         return x
 
 class basicResBlocks(nn.Module):
-    def __init__(self, CW, Blocks, kernelSize=3, dim=2):
+    def __init__(self, CW, Blocks, kernelSize=3, dim=2, lastAct=True):
         super(basicResBlocks, self).__init__()
 
         assert dim in [2,3]
@@ -471,6 +507,7 @@ class basicResBlocks(nn.Module):
                 self.Convs.append(nn.Conv3d(CW, CW, kernelSize, 1, 1))
                 self.IN = nn.InstanceNorm3d(CW)
         self.act = nn.LeakyReLU(0.2)
+        self.lastAct = lastAct
 
     def forward(self, x):
 
@@ -479,7 +516,8 @@ class basicResBlocks(nn.Module):
             x = self.Convs[i](x)
             x = self.IN(x)
             x = x + res
-            x = self.act(x)
+            if i + 1 != self.Blocks or self.lastAct is True:
+                x = self.act(x)
 
         return x
 
@@ -651,301 +689,9 @@ def ResNeSt(tp, **kwargs):
 
 
 
-class EfficientNet(nn.Module):
-    """ (Generic) EfficientNet
-    A flexible and performant PyTorch implementation of efficient network architectures, including:
-      * EfficientNet B0-B8, L2
-      * EfficientNet-EdgeTPU
-      * EfficientNet-CondConv
-      * MixNet S, M, L, XL
-      * MnasNet A1, B1, and small
-      * FBNet C
-      * Single-Path NAS Pixel1
-    """ 
-
-    def __init__(self, name, num_classes=1000, num_features=1280, in_chans=3, stem_size=32,
-                 channel_multiplier=1.0, channel_divisor=8, channel_min=None,
-                 output_stride=32, pad_type='', fix_stem=False, act_layer=nn.ReLU, drop_rate=0., drop_path_rate=0.,
-                 se_kwargs=None, norm_layer=nn.BatchNorm2d, norm_kwargs=None, global_pool='avg', mode='classifier'):
-                 #mode : 'classifier' || 'feature_extractor' || 'perceptual'
-        super(EfficientNet, self).__init__()
-
-
-        assert name in ['b0','b1','b2','b3','b4','b5','b6','b7','b8','l2']
-        assert mode in ['classifier' , 'feature_extractor' , 'perceptual']
-
-        arch_def = [
-        ['ds_r1_k3_s1_e1_c16_se0.25'],
-        ['ir_r2_k3_s2_e6_c24_se0.25'],
-        ['ir_r2_k5_s2_e6_c40_se0.25'],
-        ['ir_r3_k3_s2_e6_c80_se0.25'],
-        ['ir_r3_k5_s1_e6_c112_se0.25'],
-        ['ir_r4_k5_s2_e6_c192_se0.25'],
-        ['ir_r1_k3_s1_e6_c320_se0.25'],
-        ]
-
-
-        if name == 'b0':
-            channel_multiplier = 1.0
-            depth_multiplier = 1.0
-            input_res = 224
-            drop_rate = 0.2
-        if name == 'b1':
-            channel_multiplier = 1.0
-            depth_multiplier = 1.1
-            input_res = 240
-            drop_rate = 0.2
-        if name == 'b2':
-            channel_multiplier = 1.1
-            depth_multiplier = 1.2
-            input_res = 260
-            drop_rate = 0.3
-        if name == 'b3':
-            channel_multiplier = 1.2
-            depth_multiplier = 1.4
-            input_res = 300
-            drop_rate = 0.3
-        if name == 'b4':
-            channel_multiplier = 1.4
-            depth_multiplier = 1.8
-            input_res = 380
-            drop_rate = 0.4
-        if name == 'b5':
-            channel_multiplier = 1.6
-            depth_multiplier = 2.2
-            input_res = 456
-            drop_rate = 0.4
-        if name == 'b6':
-            channel_multiplier = 1.8
-            depth_multiplier = 2.6
-            input_res = 528
-            drop_rate = 0.5
-        if name == 'b7':
-            channel_multiplier = 2.0
-            depth_multiplier = 3.1
-            input_res = 600
-            drop_rate = 0.5
-        if name == 'b8':
-            channel_multiplier = 2.2
-            depth_multiplier = 3.6
-            input_res = 672
-            drop_rate = 0.5
-        if name == 'l2':
-            channel_multiplier = 4.3
-            depth_multiplier = 5.3
-            input_res = 800
-            drop_rate = 0.5
-
-        self.input_res = input_res
-        block_args = EFF_decode_arch_def(arch_def, depth_multiplier)
-
-        norm_kwargs = norm_kwargs or {}
-
-        self.num_classes = num_classes
-        self.num_features = num_features
-        self.drop_rate = drop_rate
-        self._in_chs = in_chans
 
 
 
-        self.mode = mode
-
-        # Stem
-        if not fix_stem:
-            stem_size = EFF_round_channels(stem_size, channel_multiplier, channel_divisor, channel_min)
-        self.conv_stem = EFF_create_conv2d(self._in_chs, stem_size, 3, stride=2, padding=pad_type)
-        self.bn1 = norm_layer(stem_size, **norm_kwargs)
-        self.act1 = act_layer(inplace=True)
-        self._in_chs = stem_size
-
-        # Middle stages (IR/ER/DS Blocks)
-        builder = EfficientNetBuilder(
-            channel_multiplier, channel_divisor, channel_min, output_stride, pad_type, act_layer, se_kwargs,
-            norm_layer, norm_kwargs, drop_path_rate, verbose=False)
-        self.blocks = nn.Sequential(*builder(self._in_chs, block_args))
-        self.feature_info = builder.features
-        self._in_chs = builder.in_chs
-
-        # Head + Pooling
-        self.conv_head = EFF_create_conv2d(self._in_chs, self.num_features, 1, padding=pad_type)
-        self.bn2 = norm_layer(self.num_features, **norm_kwargs)
-        self.act2 = act_layer(inplace=True)
-        self.global_pool = SelectAdaptivePool2d(pool_type=global_pool)
-
-        # Classifier
-        self.classifier = nn.Linear(self.num_features * self.global_pool.feat_mult(), self.num_classes)
-
-        efficientnet_init_weights(self)
-    
-        
-
-    def as_sequential(self):
-        layers = [self.conv_stem, self.bn1, self.act1]
-        layers.extend(self.blocks)
-        layers.extend([self.conv_head, self.bn2, self.act2, self.global_pool])
-        layers.extend([nn.Flatten(), nn.Dropout(self.drop_rate), self.classifier])
-        return nn.Sequential(*layers)
-
-    def get_classifier(self):
-        return self.classifier
-
-    def reset_classifier(self, num_classes, global_pool='avg'):
-        self.num_classes = num_classes
-        self.global_pool = SelectAdaptivePool2d(pool_type=global_pool)
-        self.classifier = nn.Linear(
-            self.num_features * self.global_pool.feat_mult(), num_classes) if num_classes else None
-
-    def forward_features(self, x):
-        x = self.conv_stem(x)
-        x = self.bn1(x)
-        x = self.act1(x)
-
-        if self.mode == 'classifier' or self.mode == 'feature_extractor':
-            x = self.blocks(x)
-            x = self.conv_head(x)
-            x = self.bn2(x)
-            x = self.act2(x)
-            return x
-        elif self.mode == 'perceptual':
-            rstList = []
-            for blkmdl in self.blocks:
-                x = blkmdl(x)
-                rstList.append(x.mean().unsqueeze(0))
-            return torch.sum(torch.cat(rstList, 0))
-
-
-    def forward(self, x):
-
-        if self.mode in ['classifier']:
-            assert x.size(2) == self.input_res
-            assert x.size(3) == self.input_res
-
-        x = self.forward_features(x)
-
-        if self.mode == 'classifier':
-            x = self.global_pool(x)
-            x = x.flatten(1)
-            if self.drop_rate > 0.:
-                x = F.dropout(x, p=self.drop_rate, training=self.training)
-            return F.sigmoid(self.classifier(x))
-
-        elif self.mode == 'perceptual' or self.mode == 'feature_extractor':
-            return x
-
-
-
-
-
-class EDVR(nn.Module):
-    def __init__(self, nf=64, nframes=7, groups=8, front_RBs=5, back_RBs=10, center=None,
-                 predeblur=False, HR_in=False, w_TSA=True):
-        super(EDVR, self).__init__()
-        self.nf = nf
-        self.center = nframes // 2 if center is None else center
-        self.is_predeblur = True if predeblur else False
-        self.HR_in = True if HR_in else False
-        self.w_TSA = w_TSA
-        self.nframes = nframes
-        ResidualBlock_noBN_f = functools.partial(EDVR_ResidualBlock_noBN, nf=nf)
-
-        #### extract features (for each frame)
-        if self.is_predeblur:
-            self.pre_deblur = EDVR_Predeblur_ResNet_Pyramid(nf=nf, HR_in=self.HR_in)
-            self.conv_1x1 = nn.Conv2d(nf, nf, 1, 1, bias=True)
-        else:
-            if self.HR_in:
-                self.conv_first_1 = nn.Conv2d(3, nf, 3, 1, 1, bias=True)
-                self.conv_first_2 = nn.Conv2d(nf, nf, 3, 2, 1, bias=True)
-                self.conv_first_3 = nn.Conv2d(nf, nf, 3, 2, 1, bias=True)
-            else:
-                self.conv_first = nn.Conv2d(3, nf, 3, 1, 1, bias=True)
-        self.feature_extraction = EDVR_make_layer(ResidualBlock_noBN_f, front_RBs)
-        self.fea_L2_conv1 = nn.Conv2d(nf, nf, 3, 2, 1, bias=True)
-        self.fea_L2_conv2 = nn.Conv2d(nf, nf, 3, 1, 1, bias=True)
-        self.fea_L3_conv1 = nn.Conv2d(nf, nf, 3, 2, 1, bias=True)
-        self.fea_L3_conv2 = nn.Conv2d(nf, nf, 3, 1, 1, bias=True)
-
-        self.pcd_align = EDVR_PCD_Align(nf=nf, groups=groups)
-        if self.w_TSA:
-            self.tsa_fusion = EDVR_TSA_Fusion(nf=nf, nframes=nframes, center=self.center)
-        else:
-            self.tsa_fusion = nn.Conv2d(nframes * nf, nf, 1, 1, bias=True)
-
-        #### reconstruction
-        self.recon_trunk = EDVR_make_layer(ResidualBlock_noBN_f, back_RBs)
-        #### upsampling
-        self.upconv1 = nn.Conv2d(nf, nf * 4, 3, 1, 1, bias=True)
-        self.upconv2 = nn.Conv2d(nf, 64 * 4, 3, 1, 1, bias=True)
-        self.pixel_shuffle = nn.PixelShuffle(2)
-        self.HRconv = nn.Conv2d(64, 64, 3, 1, 1, bias=True)
-        self.conv_last = nn.Conv2d(64, 3, 3, 1, 1, bias=True)
-
-        #### activation function
-        self.lrelu = nn.LeakyReLU(negative_slope=0.1, inplace=True)
-
-    def forward(self, x):
-        if len(x.size()) == 4:
-            x = x.unsqueeze(1).repeat(1,self.nframes,1,1,1)
-        B, N, C, H, W = x.size()  # N video frames
-        x_center = x[:, self.center, :, :, :].contiguous()
-
-        #### extract LR features
-        # L1
-        if self.is_predeblur:
-            L1_fea = self.pre_deblur(x.view(-1, C, H, W))
-            L1_fea = self.conv_1x1(L1_fea)
-            if self.HR_in:
-                H, W = H // 4, W // 4
-        else:
-            if self.HR_in:
-                L1_fea = self.lrelu(self.conv_first_1(x.view(-1, C, H, W)))
-                L1_fea = self.lrelu(self.conv_first_2(L1_fea))
-                L1_fea = self.lrelu(self.conv_first_3(L1_fea))
-                H, W = H // 4, W // 4
-            else:
-                L1_fea = self.lrelu(self.conv_first(x.view(-1, C, H, W)))
-        L1_fea = self.feature_extraction(L1_fea)
-        # L2
-        L2_fea = self.lrelu(self.fea_L2_conv1(L1_fea))
-        L2_fea = self.lrelu(self.fea_L2_conv2(L2_fea))
-        # L3
-        L3_fea = self.lrelu(self.fea_L3_conv1(L2_fea))
-        L3_fea = self.lrelu(self.fea_L3_conv2(L3_fea))
-
-        L1_fea = L1_fea.view(B, N, -1, H, W)
-        L2_fea = L2_fea.view(B, N, -1, H // 2, W // 2)
-        L3_fea = L3_fea.view(B, N, -1, H // 4, W // 4)
-
-        #### pcd align
-        # ref feature list
-        ref_fea_l = [
-            L1_fea[:, self.center, :, :, :].clone(), L2_fea[:, self.center, :, :, :].clone(),
-            L3_fea[:, self.center, :, :, :].clone()
-        ]
-        aligned_fea = []
-        for i in range(N):
-            nbr_fea_l = [
-                L1_fea[:, i, :, :, :].clone(), L2_fea[:, i, :, :, :].clone(),
-                L3_fea[:, i, :, :, :].clone()
-            ]
-            aligned_fea.append(self.pcd_align(nbr_fea_l, ref_fea_l))
-        aligned_fea = torch.stack(aligned_fea, dim=1)  # [B, N, C, H, W]
-
-        if not self.w_TSA:
-            aligned_fea = aligned_fea.view(B, -1, H, W)
-        fea = self.tsa_fusion(aligned_fea)
-
-        out = self.recon_trunk(fea)
-        out = self.lrelu(self.pixel_shuffle(self.upconv1(out)))
-        out = self.lrelu(self.pixel_shuffle(self.upconv2(out)))
-        out = self.lrelu(self.HRconv(out))
-        out = self.conv_last(out)
-        if self.HR_in:
-            base = x_center
-        else:
-            base = F.interpolate(x_center, scale_factor=4, mode='bilinear', align_corners=False)
-        out += base
-        return out
 
 
  
@@ -974,114 +720,6 @@ class resBlock(nn.Module):
         return x
     
 
-class VESPCN(nn.Module):
-    def __init__(self, upscale_factor, sequenceLength, colorMode = 'color'):
-        super(VESPCN, self).__init__()
-        
-        self.upscale_factor = upscale_factor
-        self.sequenceLength = sequenceLength
-
-        inputCh = (1 if colorMode =='grayscale' else 3) * sequenceLength
-
-        self.conv1 = nn.Conv2d(inputCh, 256, (9, 9), (1, 1), (4, 4))
-
-        self.res1 = resBlock(256, windowSize=3)
-        self.res2 = resBlock(256, windowSize=3)
-
-        self.conv2 = nn.Conv2d(256, 128, (5, 5), (1, 1), (2, 2))
-
-        self.res3 = resBlock(128, windowSize=3)
-        self.res4 = resBlock(128, windowSize=3)
-        self.res5 = resBlock(128, windowSize=3)
-        self.res6 = resBlock(128, windowSize=3)
-
-        self.res7 = resBlock(128, windowSize=3)
-        self.res8 = resBlock(128, windowSize=3)
-        self.res9 = resBlock(128, windowSize=3)
-        self.res10 = resBlock(128, windowSize=3)
-
-        self.conv3 = nn.Conv2d(128, (1 if colorMode =='grayscale' else 3) * (upscale_factor ** 2), (3, 3), (1, 1), (1, 1))
-        self.pixel_shuffle = nn.PixelShuffle(upscale_factor)
-
-    def forward(self, x):
-        sc = x[:,self.sequenceLength//2,:,:,:]
-        x = torch.cat(x.split(1, dim=1),2).squeeze(1)
-
-        x = F.leaky_relu(self.conv1(x), 0.2)
-
-        res = x
-        x = F.leaky_relu(self.res1(x), 0.2)
-        x = F.leaky_relu(self.res2(x) + res, 0.2)
-
-        x = F.leaky_relu(self.conv2(x), 0.2)
-        
-        res = x
-        x = F.leaky_relu(self.res3(x), 0.2)
-        x = F.leaky_relu(self.res4(x), 0.2)
-        x = F.leaky_relu(self.res5(x), 0.2)
-        x = F.leaky_relu(self.res6(x) + res, 0.2)
-
-        res = x
-        x = F.leaky_relu(self.res7(x), 0.2)
-        x = F.leaky_relu(self.res8(x), 0.2)
-        x = F.leaky_relu(self.res9(x), 0.2)
-        x = F.leaky_relu(self.res10(x) + res, 0.2)
-        
-        x = F.tanh(self.pixel_shuffle(self.conv3(x))) + F.interpolate(sc, scale_factor=self.upscale_factor, mode='bicubic')
-        return x
-
-
-class ESPCN(nn.Module):
-    def __init__(self, upscale_factor, colorMode='color'):
-        super(ESPCN, self).__init__()
-
-        inputChannel = 3 if colorMode == 'color' else 1
-        self.upscale_factor = upscale_factor
-
-        self.conv1 = nn.Conv2d(inputChannel, 256, (9, 9), (1, 1), (4, 4))
-
-        self.res1 = resBlock(256, windowSize=3)
-        self.res2 = resBlock(256, windowSize=3)
-
-        self.conv2 = nn.Conv2d(256, 128, (5, 5), (1, 1), (2, 2))
-
-        self.res3 = resBlock(128, windowSize=3)
-        self.res4 = resBlock(128, windowSize=3)
-        self.res5 = resBlock(128, windowSize=3)
-        self.res6 = resBlock(128, windowSize=3)
-
-        self.res7 = resBlock(128, windowSize=3)
-        self.res8 = resBlock(128, windowSize=3)
-        self.res9 = resBlock(128, windowSize=3)
-        self.res10 = resBlock(128, windowSize=3)
-
-        self.conv3 = nn.Conv2d(128, inputChannel * (upscale_factor ** 2), (3, 3), (1, 1), (1, 1))
-        self.pixel_shuffle = nn.PixelShuffle(upscale_factor)
-
-    def forward(self, x):
-        sc = x
-        x = F.leaky_relu(self.conv1(x), 0.2)
-
-        res = x
-        x = F.leaky_relu(self.res1(x), 0.2)
-        x = F.leaky_relu(self.res2(x) + res, 0.2)
-
-        x = F.leaky_relu(self.conv2(x), 0.2)
-        
-        res = x
-        x = F.leaky_relu(self.res3(x), 0.2)
-        x = F.leaky_relu(self.res4(x), 0.2)
-        x = F.leaky_relu(self.res5(x), 0.2)
-        x = F.leaky_relu(self.res6(x) + res, 0.2)
-
-        res = x
-        x = F.leaky_relu(self.res7(x), 0.2)
-        x = F.leaky_relu(self.res8(x), 0.2)
-        x = F.leaky_relu(self.res9(x), 0.2)
-        x = F.leaky_relu(self.res10(x) + res, 0.2)
-        
-        x = F.tanh(self.pixel_shuffle(self.conv3(x))) + F.interpolate(sc, scale_factor=self.upscale_factor, mode='bicubic')
-        return x
 
 
 class Conv_ReLU_Block(nn.Module):
@@ -1093,32 +731,7 @@ class Conv_ReLU_Block(nn.Module):
     def forward(self, x):
         return self.relu(self.conv(x))
         
-class VDSR(nn.Module):
-    def __init__(self):
-        super(VDSR, self).__init__()
-        self.residual_layer = self.VDSR_make_layer(Conv_ReLU_Block, 18)
-        self.input = nn.Conv2d(in_channels=3, out_channels=64, kernel_size=3, stride=1, padding=1, bias=False)
-        self.output = nn.Conv2d(in_channels=64, out_channels=1, kernel_size=3, stride=1, padding=1, bias=False)
-        self.relu = nn.ReLU(inplace=True)
-    
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                m.weight.data.normal_(0, math.sqrt(2. / n))
-                
-    def VDSR_make_layer(self, block, num_of_layer):
-        layers = []
-        for _ in range(num_of_layer):
-            layers.append(block())
-        return nn.Sequential(*layers)
 
-    def forward(self, x):
-        residual = x
-        out = self.relu(self.input(x))
-        out = self.residual_layer(out)
-        out = self.output(out)
-        out = torch.add(out,residual)
-        return out + residual
 
 
 
@@ -1414,12 +1027,519 @@ class TiedGAN(nn.Module):
 
 
 
+############################################################################################################################################
+#                                                             Basic SR Models
+############################################################################################################################################
 
 
-################################# 
-##########    SPSR    ###########
-################################# 
-class Get_gradient(nn.Module):
+class ESPCN(nn.Module):
+    def __init__(self, upscale_factor, colorMode='color'):
+        super(ESPCN, self).__init__()
+
+        inputChannel = 3 if colorMode == 'color' else 1
+        self.upscale_factor = upscale_factor
+
+        self.conv1 = nn.Conv2d(inputChannel, 256, (9, 9), (1, 1), (4, 4))
+
+        self.res1 = resBlock(256, windowSize=3)
+        self.res2 = resBlock(256, windowSize=3)
+
+        self.conv2 = nn.Conv2d(256, 128, (5, 5), (1, 1), (2, 2))
+
+        self.res3 = resBlock(128, windowSize=3)
+        self.res4 = resBlock(128, windowSize=3)
+        self.res5 = resBlock(128, windowSize=3)
+        self.res6 = resBlock(128, windowSize=3)
+
+        self.res7 = resBlock(128, windowSize=3)
+        self.res8 = resBlock(128, windowSize=3)
+        self.res9 = resBlock(128, windowSize=3)
+        self.res10 = resBlock(128, windowSize=3)
+
+        self.conv3 = nn.Conv2d(128, inputChannel * (upscale_factor ** 2), (3, 3), (1, 1), (1, 1))
+        self.pixel_shuffle = nn.PixelShuffle(upscale_factor)
+
+    def forward(self, x):
+        sc = x
+        x = F.leaky_relu(self.conv1(x), 0.2)
+
+        res = x
+        x = F.leaky_relu(self.res1(x), 0.2)
+        x = F.leaky_relu(self.res2(x) + res, 0.2)
+
+        x = F.leaky_relu(self.conv2(x), 0.2)
+        
+        res = x
+        x = F.leaky_relu(self.res3(x), 0.2)
+        x = F.leaky_relu(self.res4(x), 0.2)
+        x = F.leaky_relu(self.res5(x), 0.2)
+        x = F.leaky_relu(self.res6(x) + res, 0.2)
+
+        res = x
+        x = F.leaky_relu(self.res7(x), 0.2)
+        x = F.leaky_relu(self.res8(x), 0.2)
+        x = F.leaky_relu(self.res9(x), 0.2)
+        x = F.leaky_relu(self.res10(x) + res, 0.2)
+        
+        x = F.tanh(self.pixel_shuffle(self.conv3(x))) + F.interpolate(sc, scale_factor=self.upscale_factor, mode='bicubic')
+        return x
+
+
+class VDSR(nn.Module):
+    def __init__(self):
+        super(VDSR, self).__init__()
+        self.residual_layer = self.VDSR_make_layer(Conv_ReLU_Block, 18)
+        self.input = nn.Conv2d(in_channels=3, out_channels=64, kernel_size=3, stride=1, padding=1, bias=False)
+        self.output = nn.Conv2d(in_channels=64, out_channels=1, kernel_size=3, stride=1, padding=1, bias=False)
+        self.relu = nn.ReLU(inplace=True)
+    
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+                
+    def VDSR_make_layer(self, block, num_of_layer):
+        layers = []
+        for _ in range(num_of_layer):
+            layers.append(block())
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        residual = x
+        out = self.relu(self.input(x))
+        out = self.residual_layer(out)
+        out = self.output(out)
+        out = torch.add(out,residual)
+        return out + residual
+
+
+class EDVR(nn.Module):
+    def __init__(self, nf=64, nframes=7, groups=8, front_RBs=5, back_RBs=10, center=None,
+                 predeblur=False, HR_in=False, w_TSA=True):
+        super(EDVR, self).__init__()
+        self.nf = nf
+        self.center = nframes // 2 if center is None else center
+        self.is_predeblur = True if predeblur else False
+        self.HR_in = True if HR_in else False
+        self.w_TSA = w_TSA
+        self.nframes = nframes
+        ResidualBlock_noBN_f = functools.partial(EDVR_ResidualBlock_noBN, nf=nf)
+
+        #### extract features (for each frame)
+        if self.is_predeblur:
+            self.pre_deblur = EDVR_Predeblur_ResNet_Pyramid(nf=nf, HR_in=self.HR_in)
+            self.conv_1x1 = nn.Conv2d(nf, nf, 1, 1, bias=True)
+        else:
+            if self.HR_in:
+                self.conv_first_1 = nn.Conv2d(3, nf, 3, 1, 1, bias=True)
+                self.conv_first_2 = nn.Conv2d(nf, nf, 3, 2, 1, bias=True)
+                self.conv_first_3 = nn.Conv2d(nf, nf, 3, 2, 1, bias=True)
+            else:
+                self.conv_first = nn.Conv2d(3, nf, 3, 1, 1, bias=True)
+        self.feature_extraction = EDVR_make_layer(ResidualBlock_noBN_f, front_RBs)
+        self.fea_L2_conv1 = nn.Conv2d(nf, nf, 3, 2, 1, bias=True)
+        self.fea_L2_conv2 = nn.Conv2d(nf, nf, 3, 1, 1, bias=True)
+        self.fea_L3_conv1 = nn.Conv2d(nf, nf, 3, 2, 1, bias=True)
+        self.fea_L3_conv2 = nn.Conv2d(nf, nf, 3, 1, 1, bias=True)
+
+        self.pcd_align = EDVR_PCD_Align(nf=nf, groups=groups)
+        if self.w_TSA:
+            self.tsa_fusion = EDVR_TSA_Fusion(nf=nf, nframes=nframes, center=self.center)
+        else:
+            self.tsa_fusion = nn.Conv2d(nframes * nf, nf, 1, 1, bias=True)
+
+        #### reconstruction
+        self.recon_trunk = EDVR_make_layer(ResidualBlock_noBN_f, back_RBs)
+        #### upsampling
+        self.upconv1 = nn.Conv2d(nf, nf * 4, 3, 1, 1, bias=True)
+        self.upconv2 = nn.Conv2d(nf, 64 * 4, 3, 1, 1, bias=True)
+        self.pixel_shuffle = nn.PixelShuffle(2)
+        self.HRconv = nn.Conv2d(64, 64, 3, 1, 1, bias=True)
+        self.conv_last = nn.Conv2d(64, 3, 3, 1, 1, bias=True)
+
+        #### activation function
+        self.lrelu = nn.LeakyReLU(negative_slope=0.1, inplace=True)
+
+    def forward(self, x):
+        if len(x.size()) == 4:
+            x = x.unsqueeze(1).repeat(1,self.nframes,1,1,1)
+        B, N, C, H, W = x.size()  # N video frames
+        x_center = x[:, self.center, :, :, :].contiguous()
+
+        #### extract LR features
+        # L1
+        if self.is_predeblur:
+            L1_fea = self.pre_deblur(x.view(-1, C, H, W))
+            L1_fea = self.conv_1x1(L1_fea)
+            if self.HR_in:
+                H, W = H // 4, W // 4
+        else:
+            if self.HR_in:
+                L1_fea = self.lrelu(self.conv_first_1(x.view(-1, C, H, W)))
+                L1_fea = self.lrelu(self.conv_first_2(L1_fea))
+                L1_fea = self.lrelu(self.conv_first_3(L1_fea))
+                H, W = H // 4, W // 4
+            else:
+                L1_fea = self.lrelu(self.conv_first(x.view(-1, C, H, W)))
+        L1_fea = self.feature_extraction(L1_fea)
+        # L2
+        L2_fea = self.lrelu(self.fea_L2_conv1(L1_fea))
+        L2_fea = self.lrelu(self.fea_L2_conv2(L2_fea))
+        # L3
+        L3_fea = self.lrelu(self.fea_L3_conv1(L2_fea))
+        L3_fea = self.lrelu(self.fea_L3_conv2(L3_fea))
+
+        L1_fea = L1_fea.view(B, N, -1, H, W)
+        L2_fea = L2_fea.view(B, N, -1, H // 2, W // 2)
+        L3_fea = L3_fea.view(B, N, -1, H // 4, W // 4)
+
+        #### pcd align
+        # ref feature list
+        ref_fea_l = [
+            L1_fea[:, self.center, :, :, :].clone(), L2_fea[:, self.center, :, :, :].clone(),
+            L3_fea[:, self.center, :, :, :].clone()
+        ]
+        aligned_fea = []
+        for i in range(N):
+            nbr_fea_l = [
+                L1_fea[:, i, :, :, :].clone(), L2_fea[:, i, :, :, :].clone(),
+                L3_fea[:, i, :, :, :].clone()
+            ]
+            aligned_fea.append(self.pcd_align(nbr_fea_l, ref_fea_l))
+        aligned_fea = torch.stack(aligned_fea, dim=1)  # [B, N, C, H, W]
+
+        if not self.w_TSA:
+            aligned_fea = aligned_fea.view(B, -1, H, W)
+        fea = self.tsa_fusion(aligned_fea)
+
+        out = self.recon_trunk(fea)
+        out = self.lrelu(self.pixel_shuffle(self.upconv1(out)))
+        out = self.lrelu(self.pixel_shuffle(self.upconv2(out)))
+        out = self.lrelu(self.HRconv(out))
+        out = self.conv_last(out)
+        if self.HR_in:
+            base = x_center
+        else:
+            base = F.interpolate(x_center, scale_factor=4, mode='bilinear', align_corners=False)
+        out += base
+        return out
+
+
+
+class VESPCN(nn.Module):
+    def __init__(self, upscale_factor, sequenceLength, colorMode = 'color'):
+        super(VESPCN, self).__init__()
+        
+        self.upscale_factor = upscale_factor
+        self.sequenceLength = sequenceLength
+
+        inputCh = (1 if colorMode =='grayscale' else 3) * sequenceLength
+
+        self.conv1 = nn.Conv2d(inputCh, 256, (9, 9), (1, 1), (4, 4))
+
+        self.res1 = resBlock(256, windowSize=3)
+        self.res2 = resBlock(256, windowSize=3)
+
+        self.conv2 = nn.Conv2d(256, 128, (5, 5), (1, 1), (2, 2))
+
+        self.res3 = resBlock(128, windowSize=3)
+        self.res4 = resBlock(128, windowSize=3)
+        self.res5 = resBlock(128, windowSize=3)
+        self.res6 = resBlock(128, windowSize=3)
+
+        self.res7 = resBlock(128, windowSize=3)
+        self.res8 = resBlock(128, windowSize=3)
+        self.res9 = resBlock(128, windowSize=3)
+        self.res10 = resBlock(128, windowSize=3)
+
+        self.conv3 = nn.Conv2d(128, (1 if colorMode =='grayscale' else 3) * (upscale_factor ** 2), (3, 3), (1, 1), (1, 1))
+        self.pixel_shuffle = nn.PixelShuffle(upscale_factor)
+
+    def forward(self, x):
+        sc = x[:,self.sequenceLength//2,:,:,:]
+        x = torch.cat(x.split(1, dim=1),2).squeeze(1)
+
+        x = F.leaky_relu(self.conv1(x), 0.2)
+
+        res = x
+        x = F.leaky_relu(self.res1(x), 0.2)
+        x = F.leaky_relu(self.res2(x) + res, 0.2)
+
+        x = F.leaky_relu(self.conv2(x), 0.2)
+        
+        res = x
+        x = F.leaky_relu(self.res3(x), 0.2)
+        x = F.leaky_relu(self.res4(x), 0.2)
+        x = F.leaky_relu(self.res5(x), 0.2)
+        x = F.leaky_relu(self.res6(x) + res, 0.2)
+
+        res = x
+        x = F.leaky_relu(self.res7(x), 0.2)
+        x = F.leaky_relu(self.res8(x), 0.2)
+        x = F.leaky_relu(self.res9(x), 0.2)
+        x = F.leaky_relu(self.res10(x) + res, 0.2)
+        
+        x = F.tanh(self.pixel_shuffle(self.conv3(x))) + F.interpolate(sc, scale_factor=self.upscale_factor, mode='bicubic')
+        return x
+
+
+
+
+
+############################################################################################################################################
+#                                                                EfficientNet
+############################################################################################################################################
+
+
+
+class EfficientNet(nn.Module):
+    """ (Generic) EfficientNet
+    A flexible and performant PyTorch implementation of efficient network architectures, including:
+      * EfficientNet B0-B8, L2
+      * EfficientNet-EdgeTPU
+      * EfficientNet-CondConv
+      * MixNet S, M, L, XL
+      * MnasNet A1, B1, and small
+      * FBNet C
+      * Single-Path NAS Pixel1
+    """ 
+
+    def __init__(self, name, num_classes=1000, num_features=1280, in_chans=3, stem_size=32,
+                 channel_multiplier=1.0, channel_divisor=8, channel_min=None,
+                 output_stride=32, pad_type='', fix_stem=False, act_layer=nn.ReLU, drop_rate=0., drop_path_rate=0.,
+                 se_kwargs=None, norm_layer=nn.BatchNorm2d, norm_kwargs=None, global_pool='avg', mode='classifier'):
+                 #mode : 'classifier' || 'feature_extractor' || 'perceptual'
+        super(EfficientNet, self).__init__()
+
+
+        assert name in ['b0','b1','b2','b3','b4','b5','b6','b7','b8','l2']
+        assert mode in ['classifier' , 'feature_extractor' , 'perceptual']
+
+        arch_def = [
+        ['ds_r1_k3_s1_e1_c16_se0.25'],
+        ['ir_r2_k3_s2_e6_c24_se0.25'],
+        ['ir_r2_k5_s2_e6_c40_se0.25'],
+        ['ir_r3_k3_s2_e6_c80_se0.25'],
+        ['ir_r3_k5_s1_e6_c112_se0.25'],
+        ['ir_r4_k5_s2_e6_c192_se0.25'],
+        ['ir_r1_k3_s1_e6_c320_se0.25'],
+        ]
+
+
+        if name == 'b0':
+            channel_multiplier = 1.0
+            depth_multiplier = 1.0
+            input_res = 224
+            drop_rate = 0.2
+        if name == 'b1':
+            channel_multiplier = 1.0
+            depth_multiplier = 1.1
+            input_res = 240
+            drop_rate = 0.2
+        if name == 'b2':
+            channel_multiplier = 1.1
+            depth_multiplier = 1.2
+            input_res = 260
+            drop_rate = 0.3
+        if name == 'b3':
+            channel_multiplier = 1.2
+            depth_multiplier = 1.4
+            input_res = 300
+            drop_rate = 0.3
+        if name == 'b4':
+            channel_multiplier = 1.4
+            depth_multiplier = 1.8
+            input_res = 380
+            drop_rate = 0.4
+        if name == 'b5':
+            channel_multiplier = 1.6
+            depth_multiplier = 2.2
+            input_res = 456
+            drop_rate = 0.4
+        if name == 'b6':
+            channel_multiplier = 1.8
+            depth_multiplier = 2.6
+            input_res = 528
+            drop_rate = 0.5
+        if name == 'b7':
+            channel_multiplier = 2.0
+            depth_multiplier = 3.1
+            input_res = 600
+            drop_rate = 0.5
+        if name == 'b8':
+            channel_multiplier = 2.2
+            depth_multiplier = 3.6
+            input_res = 672
+            drop_rate = 0.5
+        if name == 'l2':
+            channel_multiplier = 4.3
+            depth_multiplier = 5.3
+            input_res = 800
+            drop_rate = 0.5
+
+        self.input_res = input_res
+        block_args = EFF_decode_arch_def(arch_def, depth_multiplier)
+
+        norm_kwargs = norm_kwargs or {}
+
+        self.num_classes = num_classes
+        self.num_features = num_features
+        self.drop_rate = drop_rate
+        self._in_chs = in_chans
+
+
+
+        self.mode = mode
+
+        # Stem
+        if not fix_stem:
+            stem_size = EFF_round_channels(stem_size, channel_multiplier, channel_divisor, channel_min)
+        self.conv_stem = EFF_create_conv2d(self._in_chs, stem_size, 3, stride=2, padding=pad_type)
+        self.bn1 = norm_layer(stem_size, **norm_kwargs)
+        self.act1 = act_layer(inplace=True)
+        self._in_chs = stem_size
+
+        # Middle stages (IR/ER/DS Blocks)
+        builder = EfficientNetBuilder(
+            channel_multiplier, channel_divisor, channel_min, output_stride, pad_type, act_layer, se_kwargs,
+            norm_layer, norm_kwargs, drop_path_rate, verbose=False)
+        self.blocks = nn.Sequential(*builder(self._in_chs, block_args))
+        self.feature_info = builder.features
+        self._in_chs = builder.in_chs
+
+        # Head + Pooling
+        self.conv_head = EFF_create_conv2d(self._in_chs, self.num_features, 1, padding=pad_type)
+        self.bn2 = norm_layer(self.num_features, **norm_kwargs)
+        self.act2 = act_layer(inplace=True)
+        self.global_pool = SelectAdaptivePool2d(pool_type=global_pool)
+
+        # Classifier
+        self.classifier = nn.Linear(self.num_features * self.global_pool.feat_mult(), self.num_classes)
+
+        efficientnet_init_weights(self)
+    
+        
+
+    def as_sequential(self):
+        layers = [self.conv_stem, self.bn1, self.act1]
+        layers.extend(self.blocks)
+        layers.extend([self.conv_head, self.bn2, self.act2, self.global_pool])
+        layers.extend([nn.Flatten(), nn.Dropout(self.drop_rate), self.classifier])
+        return nn.Sequential(*layers)
+
+    def get_classifier(self):
+        return self.classifier
+
+    def reset_classifier(self, num_classes, global_pool='avg'):
+        self.num_classes = num_classes
+        self.global_pool = SelectAdaptivePool2d(pool_type=global_pool)
+        self.classifier = nn.Linear(
+            self.num_features * self.global_pool.feat_mult(), num_classes) if num_classes else None
+
+    def forward_features(self, x):
+        x = self.conv_stem(x)
+        x = self.bn1(x)
+        x = self.act1(x)
+
+        if self.mode == 'classifier' or self.mode == 'feature_extractor':
+            x = self.blocks(x)
+            x = self.conv_head(x)
+            x = self.bn2(x)
+            x = self.act2(x)
+            return x
+        elif self.mode == 'perceptual':
+            rstList = []
+            for blkmdl in self.blocks:
+                x = blkmdl(x)
+                rstList.append(x.mean().unsqueeze(0))
+            return torch.sum(torch.cat(rstList, 0))
+
+
+    def forward(self, x):
+
+        if self.mode in ['classifier']:
+            assert x.size(2) == self.input_res
+            assert x.size(3) == self.input_res
+
+        x = self.forward_features(x)
+
+        if self.mode == 'classifier':
+            x = self.global_pool(x)
+            x = x.flatten(1)
+            if self.drop_rate > 0.:
+                x = F.dropout(x, p=self.drop_rate, training=self.training)
+            return F.sigmoid(self.classifier(x))
+
+        elif self.mode == 'perceptual' or self.mode == 'feature_extractor':
+            return x
+
+
+
+
+
+
+
+############################################################################################################################################
+#                                                                    SPSR
+############################################################################################################################################
+
+# Generator
+def SPSR_Generator(scaleFactor, inputChannel=3, outputChannel=3, nf=64, nb=23, gc=32):
+
+    netG = SPSR_arch.SPSRNet(in_nc=inputChannel, out_nc=outputChannel, nf=nf,
+        nb=nb, gc=gc, upscale=scaleFactor, norm_type=None,
+        act_type='leakyrelu', mode="CNA", upsample_mode='upconv')
+
+    return netG
+
+
+# Discriminator
+def SPSR_Discriminator(size):
+    
+        
+    which_model = 'discriminator_vgg_' + str(size)
+
+    if which_model == 'discriminator_vgg_128':
+        netD = SPSR_arch.Discriminator_VGG_128(in_nc=3, base_nf=64, \
+            norm_type="batch", mode="CNA", act_type="leakyrelu")
+    elif which_model == 'discriminator_vgg_96':
+        netD = SPSR_arch.Discriminator_VGG_96(in_nc=3, base_nf=64, \
+            norm_type="batch", mode="CNA", act_type="leakyrelu")
+    elif which_model == 'discriminator_vgg_64':
+        netD = SPSR_arch.Discriminator_VGG_64(in_nc=3, base_nf=64, \
+            norm_type="batch", mode="CNA", act_type="leakyrelu")
+    elif which_model == 'discriminator_vgg_32':
+        netD = SPSR_arch.Discriminator_VGG_32(in_nc=3, base_nf=64, \
+            norm_type="batch", mode="CNA", act_type="leakyrelu")
+    elif which_model == 'discriminator_vgg_16':
+        netD = SPSR_arch.Discriminator_VGG_16(in_nc=3, base_nf=64, \
+            norm_type="batch", mode="CNA", act_type="leakyrelu")
+    elif which_model == 'discriminator_vgg_192':
+        netD = SPSR_arch.Discriminator_VGG_192(in_nc=3, base_nf=64, \
+            norm_type="batch", mode="CNA", act_type="leakyrelu")
+    elif which_model == 'discriminator_vgg_128_SN':
+        netD = SPSR_arch.Discriminator_VGG_128_SN()
+    else:
+        raise NotImplementedError('Discriminator model [{:s}] not recognized'.format(which_model))
+    return netD
+
+
+def SPSR_FeatureExtractor(nf=34, use_bn=False, use_input_norm=True):
+    # pytorch pretrained VGG19-54, before ReLU.
+    #if use_bn:
+    #    feature_layer = 49
+    #else:
+    #    feature_layer = 34
+    #print("netF start")
+    #netF = arch.VGGFeatureExtractor(feature_layer=feature_layer, use_bn=use_bn, use_input_norm=True)
+
+    VGG = SPSR_arch.VGGFeatureExtractor(feature_layer=nf, use_bn=False, use_input_norm=True)
+
+    return VGG
+
+
+
+class SPSR_Get_gradient(nn.Module):
     def __init__(self):
         super(Get_gradient, self).__init__()
         kernel_v = [[0, -1, 0], 
@@ -1453,7 +1573,7 @@ class Get_gradient(nn.Module):
         x = torch.cat([x0, x1, x2], dim=1)
         return x
 
-class Get_gradient_nopadding(nn.Module):
+class SPSR_Get_gradient_nopadding(nn.Module):
     def __init__(self):
         super(Get_gradient_nopadding, self).__init__()
         kernel_v = [[0, -1, 0], 
@@ -1486,6 +1606,15 @@ class Get_gradient_nopadding(nn.Module):
 
         x = torch.cat([x0, x1, x2], dim=1)
         return x
+
+
+
+
+
+############################################################################################################################################
+#                                                                    Face Recog
+############################################################################################################################################
+
 
 
 class RetinaFace(nn.Module):

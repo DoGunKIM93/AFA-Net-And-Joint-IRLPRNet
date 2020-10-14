@@ -1,7 +1,7 @@
 '''
 main.py
 '''
-mainversion = "2.06.201006"
+mainversion = "2.07.201014"
 
 
 
@@ -29,7 +29,6 @@ import backbone.module as module
 import backbone.structure as structure
 
 from edit import editversion, version, subversion, trainStep, validationStep, ModelList, inferenceStep
-
 
 
 
@@ -235,7 +234,7 @@ else :
         
         for i, Imagepairs in enumerate(trainDataLoader):
 
-            #if i == 100: break
+            if i == Config.param.train.step.earlyStopStep : break
 
             LRImages = Imagepairs['LR']
             HRImages = Imagepairs['HR']
@@ -384,10 +383,10 @@ else :
             b = time.perf_counter()
 
             finali = 0
-            PSNR = 0
-            #PSNR_Hard = 0
-            #PSNR_A = 0
-            #PSNR_B = 0
+
+            PSNR = [0]*256
+            t_PSNR = [0]*256
+
             GlobalPSNRCount = 0
 
             Avgloss = [torch.zeros(1)]*256
@@ -442,23 +441,26 @@ else :
                     copyCoff = 1
 
                     ###################################
-                    SRImages = SRImagesList[-1]
+                    SRImages = SRImagesList[2]
                     if len(LRImages.size()) == 5:
                         t_PSNR = utils.calculateImagePSNR(SRImages,HRImages[:,Config.param.data.dataLoader.validation.sequenceLength//2,:,:,:], Config.param.data.dataLoader.validation.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.validation.datasetComponent[0]]['colorMode'])
                     else:
-                        t_PSNR = utils.calculateImagePSNR(SRImages,HRImages, Config.param.data.dataLoader.validation.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.validation.datasetComponent[0]]['colorMode'])
-                        #t_PSNR_Hard = utils.calculateImagePSNR(SRImagesList[3], HRImages, Config.param.data.dataLoader.validation.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.validation.datasetComponent[0]]['colorMode'])
+                        COLORMODE = Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.validation.datasetComponent[0]]['colorMode']
+                        VALUERANGETYPE = Config.param.data.dataLoader.validation.valueRangeType
+                        for si, SRImages in enumerate(SRImagesList):
+                            t_PSNR[si] = utils.calculateImagePSNR(SRImages, HRImages, VALUERANGETYPE, COLORMODE)
+                        
 
-                        #t_PSNR_A = utils.calculateImagePSNR(SRImagesList[0], HRImages, Config.param.data.dataLoader.validation.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.validation.datasetComponent[0]]['colorMode'])
-                        #t_PSNR_B = utils.calculateImagePSNR(SRImagesList[1], HRImages, Config.param.data.dataLoader.validation.valueRangeType, Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.validation.datasetComponent[0]]['colorMode'])
+                    for pi in range(len(SRImagesList)):
+                        PSNR[pi] += t_PSNR[pi]
 
-                    PSNR += t_PSNR
-                    #PSNR_Hard += t_PSNR_Hard
-                    #PSNR_A += t_PSNR_A
-                    #PSNR_B += t_PSNR_B
                     GlobalPSNRCount += 1
 
-                    print(f"PSNR: {GlobalPSNRCount-1} ({SRImages.size(2)}x{SRImages.size(3)}) : {t_PSNR:.3f} dB")
+                    print(f"PSNR: {GlobalPSNRCount-1} ({SRImages.size(2)}x{SRImages.size(3)}) : ", end="")
+                    for pi in range(len(SRImagesList)):
+                        print(f"{t_PSNR[pi]:.2f}dB ", end="")
+                    print("")
+
 
                     lr_images = utils.denorm(LRImages.cpu().view(LRImages.size(0), 1 if Config.paramDict['data']['datasetComponent'][Config.param.data.dataLoader.validation.datasetComponent[0]]['colorMode'] =='grayscale' else 3, LRImages.size(2), LRImages.size(3)), Config.param.data.dataLoader.validation.valueRangeType)
 
@@ -497,21 +499,21 @@ else :
 
             oldb = b
             b = time.perf_counter()      
-            PSNR /= len(validDataLoader)
-            #PSNR_A /= len(validDataLoader)
-            #PSNR_B /= len(validDataLoader)
-            #PSNR_Hard /= len(validDataLoader)
 
-            if PSNR > bestPSNR:
-                bestPSNR = PSNR
+            for pi in range(len(SRImagesList)):
+                PSNR[pi] /= len(validDataLoader)
+            if PSNR[len(SRImagesList)-1] > bestPSNR:
+                bestPSNR = PSNR[len(SRImagesList)-1]
 
-            print('Test : [%d/%d] PSNR: %.2f dB / BEST: %.2f dB                        '
-                    % (epoch, Config.param.train.step.maxEpoch, PSNR, bestPSNR))
+            print(f'Test : [{epoch}/{Config.param.train.step.maxEpoch}] PSNR: ', end="")
+            for pi in range(len(SRImagesList)):
+                print(f'{PSNR[pi]:.2f} dB ', end="")
+            print(f'/ Best : {bestPSNR:.2f} dB')
 
 
             # Save loss log
             utils.logValues(writer, ['test_loss', Avgloss[0].item()], epoch)
-            utils.logValues(writer, ['test_PSNR', PSNR], epoch)
+            utils.logValues(writer, ['test_PSNR', PSNR[len(SRImagesList)-1]], epoch)
 
         for scheduler in modelList.getSchedulers():
             scheduler.step()

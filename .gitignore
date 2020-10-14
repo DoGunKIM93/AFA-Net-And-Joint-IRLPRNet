@@ -1,6 +1,7 @@
 .DS_Store*
 data
 runs
+backup
 __pycache__
 .empty
 .vscode
@@ -10,4 +11,5 @@ old code
 README.md
 test.py
 test.ipynb
-* .pyx
+*.pyx
+*.py.backup

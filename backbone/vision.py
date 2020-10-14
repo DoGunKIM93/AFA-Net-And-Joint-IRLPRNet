@@ -1,7 +1,7 @@
 '''
 vision.py
 '''
-version = '1.90.201006'
+version = '1.91.201008'
 
 #from Python
 import time
@@ -56,10 +56,14 @@ def E2EBlending(input1, input2, IQAMap, superPixelMap, softMode = False):
 
     assert input1.dim() == 4 and input2.dim() == 4, f'vision.py :: tensor dim must be 4 (current: {input1.dim()}, {input2.dim()})'
     
-    scoreMap = torch.zeros_like(IQAMap)
-    for i in range(torch.max(superPixelMap)):
-        meanScoreInGivenArea = torch.sum(IQAMap * (superPixelMap == i), dim=(1,2,3), keepdim=True) / (torch.sum(superPixelMap == i, dim=(1,2,3), keepdim=True) + eps)
-        scoreMap += meanScoreInGivenArea * (superPixelMap == i)
+    if superPixelMap is not None:
+        scoreMap = torch.zeros_like(IQAMap)
+        for i in range(torch.max(superPixelMap)):
+            meanScoreInGivenArea = torch.sum(IQAMap * (superPixelMap == i), dim=(1,2,3), keepdim=True) / (torch.sum(superPixelMap == i, dim=(1,2,3), keepdim=True) + eps)
+            scoreMap += meanScoreInGivenArea * (superPixelMap == i)
+    else:
+        scoreMap = IQAMap
+
 
     scoreMap = scoreMap if softMode is True else torch.round(scoreMap)
     rst = input1 * scoreMap + input2 * (1 - scoreMap)
