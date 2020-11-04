@@ -62,6 +62,175 @@ import backbone.SPSR.architecture as SPSR_arch
 
 
 
+class MirageFast(nn.Module):
+    
+    def __init__(self, CW, scaleFactor):#, group=64):
+        super(MirageFast, self).__init__()        
+        
+        self.conv1 = nn.Conv2d(3, CW, 4, 2, 1) # 17 -> 8
+
+        self.res = basicResBlocks(CW=CW, Blocks=3)
+
+        self.conv2 = nn.Conv2d(CW, 3, 4, 2, 1) # 8 -> 4
+        self.act = nn.ReLU()
+
+        #self.group = group
+        self.scaleFactor =scaleFactor
+
+
+        #self.weight1 = nn.Parameter(torch.randn(CW*group, 3, 4, 4)) #OC IC Kernel Kernel
+        #self.weight2 = nn.Parameter(torch.randn(3*group, CW, 4, 4)) 
+
+    def forward(self, x):
+
+        '''
+        S = 4
+        r = []
+        for c in range(x.size(1)):
+            a = torch.ones(1, 1, S, S).cuda() * x[0, c, x.size(2)//2, x.size(3)//2]
+            r.append(a)
+
+        r = torch.cat(r, 1)
+        '''
+
+        x = self.act(self.conv1(x))
+        x = self.res(x)
+        x = F.tanh(self.conv2(x))
+
+        return x
+        
+        #return torch.cat(r,1) + x
+        '''
+        N, C, H, W = x.size()
+        x = x.view(1, N*C, H, W)
+        
+        x = F.conv2d(x, self.weight1, stride=1, padding=2, groups=self.group)
+        x = F.relu(x)
+        x = F.conv2d(x, self.weight2, stride=1, padding=2, groups=self.group)
+        x = F.tanh(x)
+        x = x.view(N, C, scaleFactor, scaleFactor)
+
+        return x
+        '''
+
+
+
+class Mirage(nn.Module):
+
+    def __init__(self, CW, scaleFactor):#, group=64):
+        super(Mirage, self).__init__()        
+        
+        self.conv1 = nn.Conv2d(3, CW, 4, 2, 1) # 17 -> 8
+
+        self.res = basicResBlocks(CW=CW, Blocks=3)
+
+        self.conv2 = nn.Conv2d(CW, 3, 4, 2, 1) # 8 -> 4
+        self.act = nn.ReLU()
+
+        #self.group = group
+        self.scaleFactor =scaleFactor
+
+
+        #self.weight1 = nn.Parameter(torch.randn(CW*group, 3, 4, 4)) #OC IC Kernel Kernel
+        #self.weight2 = nn.Parameter(torch.randn(3*group, CW, 4, 4)) 
+
+    def forward(self, x):
+
+        
+        S = 4
+        r = []
+        for c in range(x.size(1)):
+            a = torch.ones(1, 1, S, S).cuda() * x[0, c, x.size(2)//2, x.size(3)//2]
+            r.append(a)
+
+        r = torch.cat(r, 1)
+
+        x = self.act(self.conv1(x))
+        x = self.res(x)
+        x = r + F.tanh(self.conv2(x))
+
+        return x
+        
+        #return torch.cat(r,1) + x
+        '''
+        N, C, H, W = x.size()
+        x = x.view(1, N*C, H, W)
+        
+        x = F.conv2d(x, self.weight1, stride=1, padding=2, groups=self.group)
+        x = F.relu(x)
+        x = F.conv2d(x, self.weight2, stride=1, padding=2, groups=self.group)
+        x = F.tanh(x)
+        x = x.view(N, C, scaleFactor, scaleFactor)
+
+        return x
+        '''
+
+
+
+
+
+class OASIS(nn.Module):
+
+    def __init__(self, featureExtractor, Upscaler, UpscalerArgs, patchSize=17, scaleFactor=4, modelNum=256):
+        super(OASIS, self).__init__()        
+
+        self.modelNum = modelNum
+        self.patchSize = patchSize
+        self.scaleFactor = scaleFactor
+
+        self.FE = featureExtractor 
+        for param in self.FE.parameters():
+            param.requires_grad = False
+        self.UP = nn.ModuleList([Upscaler(*UpscalerArgs) for x in range(self.modelNum)])
+        self.PAD = nn.ReflectionPad2d(self.patchSize//2)
+
+        self.UNFOLD = nn.Unfold(self.patchSize)
+
+    def forward(self, x, isTrain = False):
+
+        N, C, H, W = x.size()
+        P = self.patchSize
+        S = self.scaleFactor
+
+
+        if isTrain is False:
+            xori = x
+            x = self.PAD(x) # N C H+patchSize-1 W+patchSize-1
+
+            windows = self.UNFOLD(x) # N C*17*17 17*17
+            windows = torch.cat(windows.split(P*P, dim=1), 2).view(N*P*P,C*P*P,1,1)
+            windows = torch.cat(windows.split(P*P, dim=1), 3).view(N*P*P,P,P,C).permute(0,3,1,2)
+
+            feature_windows = self.FE(windows)
+
+            rst = []
+            dF = 512 // self.modelNum
+            for i in range(windows.size(0)):
+                idx = torch.argmax(feature_windows[i])
+                #ßprint(idx)
+                rst.append(self.UP[idx//dF](windows[i:i+1,:,:,:]))
+                
+
+            x = torch.cat(rst, 3).split(S, dim=3)
+            x = torch.cat(x, 1).split(C, dim=1)
+            x = torch.cat(x, 0).view(N,P*P,C,S,S).split(P, dim=1)#.permute(0,3,2,1)#.split(10, dim=2)
+            x = torch.cat(x, 3).split(1, dim=1)#.split(#.view(2,3,10,10).transpose(2,3)
+            x = torch.cat(x, 4).squeeze(2).squeeze(1)
+
+            x = x + F.interpolate(xori, size=x.size()[-2:], mode='bicubic')
+
+        else:
+            feature_x = self.FE(x)
+            dF = 512 // self.modelNum
+            rst = []
+            for i in range(x.size(0)):
+                idx = torch.argmax(feature_x[i])
+                rst.append(self.UP[idx//dF](x[i:i+1,:,:,:]))
+            x = torch.cat(rst, 0)
+
+        return x
+
+
 
 
 class DeNIQuA_Res(nn.Module):
@@ -1541,7 +1710,7 @@ def SPSR_FeatureExtractor(nf=34, use_bn=False, use_input_norm=True):
 
 class SPSR_Get_gradient(nn.Module):
     def __init__(self):
-        super(Get_gradient, self).__init__()
+        super(SPSR_Get_gradient, self).__init__()
         kernel_v = [[0, -1, 0], 
                     [0, 0, 0], 
                     [0, 1, 0]]
@@ -1575,7 +1744,7 @@ class SPSR_Get_gradient(nn.Module):
 
 class SPSR_Get_gradient_nopadding(nn.Module):
     def __init__(self):
-        super(Get_gradient_nopadding, self).__init__()
+        super(SPSR_Get_gradient_nopadding, self).__init__()
         kernel_v = [[0, -1, 0], 
                     [0, 0, 0], 
                     [0, 1, 0]]

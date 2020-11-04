@@ -1,7 +1,7 @@
 '''
 structure.py
 '''
-version = "1.03.201006"
+version = "1.10.201015"
 
 import torch.nn as nn
 import torch
@@ -31,9 +31,11 @@ class Epoch():
                  researchSubVersion,
                  writer,
 
-                 scoreMetricDict = {}, # { (scoreName) -> STRING : { function:(func) -> FUNCTION , argDataNames:  ['LR','HR', ...] -> list of STRING, additionalArgs:[...]  } }
+                 scoreMetricDict = {}, # { (scoreName) -> STRING : { function:(func) -> FUNCTION , argDataNames:  ['LR','HR', ...] -> list of STRING, additionalArgs:[...], bestScore:(Score)->number } }
                  
-                 isNoResultSave = False,
+                 resultSaveData = None,
+                 resultSaveFileName = '',
+                 isNoResultArchiving = False,
                  earlyStopIteration = -1):
 
         self.dataLoader = dataLoader
@@ -46,12 +48,38 @@ class Epoch():
 
         self.writer = writer
 
+
         self.scoreMetricDict = scoreMetricDict
 
-        self.isNoResultSave = isNoResultSave
+        self.resultSaveData = resultSaveData
+        self.resultSaveFileName = resultSaveFileName
+        self.isNoResultArchiving = isNoResultArchiving
         self.earlyStopIteration = earlyStopIteration
 
-    def runEpoch(self, currentEpoch):
+    def run(self, currentEpoch, metaData = None,
+            do_resultSave = True, 
+            do_modelSave = True,
+            do_calculateScore = True):
+
+
+        assert do_resultSave in [True, False]
+        assert do_modelSave in [True, False]
+        assert do_calculateScore in [True, 'DETAIL', False]
+
+
+
+        ####################################
+        #            Init MetaData           
+        ####################################
+        if metaData is None : 
+            metaData = {}
+        if 'lastLoss' not in metaData.keys() : 
+            metaData.update({'lastLoss': {}})
+        if 'bestScore' not in metaData.keys() : 
+            metaData.update({'bestScore': {}})
+
+
+
 
 
         finali = 0
@@ -78,8 +106,9 @@ class Epoch():
         ####################################
         #            Rst. Vars           
         ####################################
+
         AvgScoreDict = {}
-        bestScoreDict = {}
+        bestScoreDict = metaData['bestScore']
         AvgLossDict = {}
         timePerBatch = time.perf_counter() # 1배치당 시간
         timePerEpoch = time.perf_counter() # 1에폭당 시간
@@ -102,30 +131,50 @@ class Epoch():
             ####################################
             #         Instruction Step             
             ####################################
-            lossDict, resultDict = self.step(currentEpoch, modelList, dataDict)
+            lossDict, resultDict = self.step(currentEpoch, self.modelList, dataDict)
 
-            for key in resultDict:
-                assert key not in dataDict.keys(), f"Some keys are duplicated in input data and result data of Step... : {key}"
-                dataDict[key] = resultDict[key]
+            for key in dataDict:
+                assert key not in resultDict.keys(), f"Some keys are duplicated in input data and result data of Step... : {key}"
+                resultDict.update({key:dataDict[key]})
 
 
 
             ####################################
             #             SCORE CALC             
             ####################################
-            for scoreMetricName in self.scoreMetricDict:
-                scoreFunc = self.scoreMetricDict[scoreMetricName]['function']
-                scoreFuncArgs = list( dataDict[name] for name in self.scoreMetricDict[scoreMetricName]['argDataNames'] )
-                scoreFuncAdditionalArgs = self.scoreMetricDict[scoreMetricName]['additionalArgs']
+            if do_calculateScore is not False:
 
-                score = scoreFunc(*scoreFuncArgs, *scoreFuncAdditionalArgs)
+                if do_calculateScore is 'DETAIL':
+                    print(f'CASE {i} :: ', end='')
 
-                if scoreMetricName in AvgScoreDict:
-                    AvgScoreDict[scoreMetricName] = AvgScoreDict[scoreMetricName] + score
-                else:
-                    AvgScoreDict[scoreMetricName] = score
+                for scoreMetricName in self.scoreMetricDict:
 
-            globalScoreCount += 1
+                    scoreFunc = self.scoreMetricDict[scoreMetricName]['function']
+                    scoreFuncArgs = list( resultDict[name] for name in self.scoreMetricDict[scoreMetricName]['argDataNames'] )
+                    scoreFuncAdditionalArgs = self.scoreMetricDict[scoreMetricName]['additionalArgs']
+
+                    for ss, sfaarg in enumerate(scoreFuncAdditionalArgs):
+                        if sfaarg == '$VALUE_RANGE_TYPE':
+                            scoreFuncAdditionalArgs[ss] = VALUE_RANGE_TYPE
+                        elif sfaarg == '$COLOR_MODE':
+                            scoreFuncAdditionalArgs[ss] = COLOR_MODE
+                        elif sfaarg == '$SEQUENCE_LENGTH':
+                            scoreFuncAdditionalArgs[ss] = SEQUENCE_LENGTH
+
+                    score = scoreFunc(*scoreFuncArgs, *scoreFuncAdditionalArgs)
+
+                    if do_calculateScore is 'DETAIL':
+                        print(f"{scoreMetricName}: {score} ", end='')
+
+                    if scoreMetricName in AvgScoreDict:
+                        AvgScoreDict[scoreMetricName] = AvgScoreDict[scoreMetricName] + score
+                    else:
+                        AvgScoreDict.update({scoreMetricName: score})
+                
+                if do_calculateScore is 'DETAIL':
+                    print('')
+
+                globalScoreCount += 1
  
 
             '''
@@ -147,7 +196,7 @@ class Epoch():
                 if key in AvgLossDict:
                     AvgLossDict[key] = AvgLossDict[key] + torch.Tensor.item(lossDict[key].data)
                 else:
-                    AvgLossDict[key] = torch.Tensor.item(lossDict[key].data)
+                    AvgLossDict.update({key: torch.Tensor.item(lossDict[key].data)})
                 
             finali = i + 1
 
@@ -164,13 +213,13 @@ class Epoch():
                 timePerBatch = time.perf_counter()
 
                 #print Current status
-                print('                      E[%d/%d][%.2f%%] NET:'
+                print('E[%d/%d][%.2f%%] NET:'
                         % (currentEpoch, MAX_EPOCH, (i + 1) / (DATASET_LENGTH / PARAM_BATCH_SIZE / 100)),  end=" ")
 
                 #print Loss
                 print('loss: [', end="")
-                for key in enumerate(lossDict):
-                    print(f'{torch.Tensor.item(AvgLossDict[key].data)/finali:.5f}, ', end="")
+                for key in lossDict.keys():
+                    print(f'{key}: {AvgLossDict[key]/finali:.5f}, ', end="")
                 print('] ', end="")
 
 
@@ -199,9 +248,15 @@ class Epoch():
         for key in AvgLossDict:
             AvgLossDict[key] = AvgLossDict[key] / finali 
         for key in AvgScoreDict:
-            AvgScoreDict[key] = AvgScoreDict[key] / finali 
-            bestScoreDict[key] = bestScoreDict[key] if abs(bestScoreDict[key]) >= abs(AvgScoreDict[key]) else AvgScoreDict[key]
-        
+            AvgScoreDict[key] = AvgScoreDict[key] / finali
+            if key in bestScoreDict.keys():
+                bestScoreDict[key] = bestScoreDict[key] if abs(bestScoreDict[key]) >= abs(AvgScoreDict[key]) else AvgScoreDict[key]
+            else:
+                bestScoreDict.update({key: AvgScoreDict[key]})
+        #Update MetaData
+        metaData['lastLoss'].update(AvgLossDict)
+        metaData['bestScore'].update(bestScoreDict)
+
         #Calc Time per Epoch
         oldTimePerEpoch = timePerEpoch
         timePerEpoch = time.perf_counter()      
@@ -220,7 +275,7 @@ class Epoch():
         if len(AvgLossDict.keys()) > 0:
             print('loss: [', end="")
             for key in AvgLossDict:
-                print(f'{torch.Tensor.item(AvgLossDict[key].data):.5f}, ', end="")
+                print(f'{key}: {AvgLossDict[key]:.5f}, ', end="")
             print(']', end=" ")
 
         if len(AvgScoreDict.keys()) > 0:
@@ -232,12 +287,12 @@ class Epoch():
         #print LR
         print('lr: [ ',  end="")
 
-        for mdlStr in modelList.getList():
-            if len([attr for attr in vars(modelList) if attr == (mdlStr+"_scheduler")]) > 0:
-                schd = getattr(modelList, mdlStr+"_scheduler")
+        for mdlStr in self.modelList.getList():
+            if len([attr for attr in vars(self.modelList) if attr == (mdlStr+"_scheduler")]) > 0:
+                schd = getattr(self.modelList, mdlStr+"_scheduler")
                 print(f"{mdlStr}: {schd.get_lr()[0]:.6f} ",  end="")
-            elif len([attr for attr in vars(modelList) if attr == (mdlStr+"_optimizer")]) > 0:
-                optimizer = getattr(modelList, mdlStr+"_optimizer")
+            elif len([attr for attr in vars(self.modelList) if attr == (mdlStr+"_optimizer")]) > 0:
+                optimizer = getattr(self.modelList, mdlStr+"_optimizer")
                 lrList = [param_group['lr'] for param_group in optimizer.param_groups]
                 assert [lrList[0]] * len(lrList) == lrList, 'main.py :: Error, optimizer has different values of learning rates. Tell me... I\'ll fix it.'
                 lr = lrList[0]
@@ -249,11 +304,14 @@ class Epoch():
 
 
 
+        print('saving ', end="")
+
         ####################################    
         #          Model Saving              
         ####################################
-        print('saving model, ', end="")
-        utils.saveModels(modelList, self.researchVersion, self.researchSubVersion, currentEpoch, AvgLossDict, bestScoreDict)
+        if do_modelSave is True:
+            print('models, ', end="")
+            utils.saveModels(self.modelList, self.researchVersion, self.researchSubVersion, currentEpoch, metaData)
 
 
 
@@ -265,35 +323,53 @@ class Epoch():
         
         # Save loss log
         for key in AvgLossDict:
-            utils.logValues(self.writer, [f'{key}', AvgLossDict[key].item()], currentEpoch)
+            utils.logValues(self.writer, [f'{key}', AvgLossDict[key]], currentEpoch)
 
         # Save score log
         for key in AvgScoreDict:
             utils.logValues(self.writer, [f'{key}', AvgScoreDict[key]], currentEpoch)
 
 
-
+        
         
         ####################################        
         #            save Rst.            
         ####################################W
-        print('output images.')
-        # Save sampled images
-        if self.isNoResultSave :        
-            savePath = './data/'+self.researchVersion+'/result/'+self.researchSubVersion+'/SRed_train_images.png'
-        else :
-            savePath = './data/'+self.researchVersion+'/result/'+self.researchSubVersion+'/SRed_train_images-' + str(currentEpoch + 1) + '.png'
-            
-        utils.saveImageTensorToFile(dataDict, savePath, COLOR_MODE, VALUE_RANGE_TYPE)
+        if do_resultSave is True:
 
-        #Image Logging is not Supported now
-        #utils.logImages(self.writer, ['train_images', cated_images], currentEpoch)
+            '''
+            for key in resultDict:
+                assert key not in dataDict.keys(), f"Some keys are duplicated in input data and result data of Step... : {key}"
+                dataDict.update({key:resultDict[key]})
+            '''
+                
+            print('output images, ', end="")
+            # Save sampled images
+            if self.isNoResultArchiving :        
+                savePath = './data/' + self.researchVersion + '/result/' + self.researchSubVersion + '/' + self.resultSaveFileName + '.png'
+            else :
+                savePath = './data/' + self.researchVersion + '/result/' + self.researchSubVersion + '/' + self.resultSaveFileName + '-' + str(currentEpoch + 1) + '.png'
+                
+            utils.saveImageTensorToFile(resultDict, savePath, saveDataDictKeys=self.resultSaveData, colorMode=COLOR_MODE, valueRangeType=VALUE_RANGE_TYPE, interpolation='nearest')
+
+            #Image Logging is not Supported now
+            #utils.logImages(self.writer, ['train_images', cated_images], currentEpoch)
+        
+
+        print('Finished.')
+
+
 
         ####################################        
         #         Step LR Scheduler            
         ####################################W
-        for scheduler in modelList.getSchedulers():
+        for scheduler in self.modelList.getSchedulers():
             scheduler.step()
+    
+
+
+
+        return metaData
 
 
 

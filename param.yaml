@@ -13,7 +13,7 @@ version : 2.07.201014
 general:
     #maxMemoryCachingSizeGB: 64
     #maxVRAMCachingSizeGB: 8 # will be devide by # of GPU
-    GPUNum: 0,3 # comma-separated
+    GPUNum: 0 # comma-separated
 
 
 
@@ -186,16 +186,16 @@ data:
         
         train:
             datasetComponent: # Must be list
-                - FFHQ_Face_SR_virtual_train
+            #    - FFHQ_Face_SR_virtual_train
                 - DIV2K_SR_train_virtual
-            batchSize: 12
+            batchSize: 64
             valueRangeType : 0~1
             isEval: False
             makePreprocessedFile: True
             augmentation: # Must be list of dict   /   toTensor() Must be here
                 #- randomCropWithRandomSize(256, 256, 512, 512, 4)
                 #- shrinkWithRandomMethod(256, 256)
-                - randomCrop(256,256)
+                - randomCrop(68,68)
                 - virtualScaling(4)
                 #- randomFlip()
                 - toTensor()
@@ -400,7 +400,7 @@ train:
         maxEpoch: 180000
         validationStep: 1
         archiveStep: 12
-        earlyStopStep: 400
+        earlyStopStep: -1
 
     method:
         mixedPrecision: False 

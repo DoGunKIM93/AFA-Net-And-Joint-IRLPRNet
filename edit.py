@@ -49,8 +49,8 @@ from backbone.SPSR.loss import GANLoss, GradientPenaltyLoss
 ################ V E R S I O N ################
 # VERSION START (DO NOT EDIT THIS COMMENT, for tools/codeArchiver.py)
 
-version = '40-BlendingWithFeature'
-subversion = '6-distsLoss'
+version = '42-OASIS'
+subversion = '4-test'
 
 # VERSION END (DO NOT EDIT THIS COMMENT, for tools/codeArchiver.py)
 ###############################################
@@ -74,108 +74,50 @@ class ModelList(structure.ModelListBase):
         # train() 및 valid() 에서 사용 방법
         # modelList.(모델 인스턴스 이름)_optimizer
         ##############################################################
+    
+
+        self.FE = model.SPSR_FeatureExtractor()
         
-        # Super Resolution Models
-        # SISR
-        #  1. ESPCN
+        self.OASIS = model.OASIS(featureExtractor = self.FE, Upscaler = model.Mirage, UpscalerArgs = [128, 4], patchSize = 17, scaleFactor = 4, modelNum = 64)
+        self.OASIS_optimizer = torch.optim.Adam(self.OASIS.parameters(), lr=0.0003, weight_decay=0, betas=(0.9, 0.999))
+
+
         '''
-        self.ESPCN = model.ESPCN(4)
-        #self.ESPCN_pretrained = "ESPCN-General.pth"   # FaceModel: "ESPCN-Face.pth"
-        self.ESPCN_optimizer = torch.optim.Adam(self.ESPCN.parameters(), lr=0.0003)
+        self.SR_A = model.SPSR_Generator(scaleFactor = 4)
+        self.SR_A_pretrained = "SPSR-Robust-netG-General.pth"#"SPSR-baseline-netG.pth" #  # FaceModel: "EDVR-Face.pth"
+
+        self.SR_B = model.SPSR_Generator(scaleFactor = 4)
+        self.SR_B_pretrained = "SPSR-netG-Face.pth" 
+
+
+
+        self.GRAND = model.SPSR_Generator(scaleFactor = 4)
+        self.GRAND_optimizer = torch.optim.Adam(self.GRAND.parameters(), lr=0.0001, weight_decay=0, betas=(0.9, 0.999))
+
+        self.GRAND_Disc = model.SPSR_Discriminator(size = 128)
+        self.GRAND_Disc_optimizer = torch.optim.Adam(self.GRAND_Disc.parameters(), lr=0.0001, weight_decay=0, betas=(0.9, 0.999))
+
+        self.GRAND_Grad_Disc = model.SPSR_Discriminator(size = 128)
+        self.GRAND_Grad_Disc_optimizer = torch.optim.Adam(self.GRAND_Grad_Disc.parameters(), lr=0.0001, weight_decay=0, betas=(0.9, 0.999))
+
+        self.GRAND_Feature = model.SPSR_FeatureExtractor()
+        self.GRAND_Get_gradient = model.SPSR_Get_gradient()
+        self.GRAND_Get_gradient_nopadding = model.SPSR_Get_gradient_nopadding()
+
+
+
+
+        self.FEATUREMAPPER_A = model.DeNIQuA_Res(featureExtractor = None, CW=64, Blocks=9, inFeature=1, outCW=128, featureCW=128)
+        self.FEATUREMAPPER_A_optimizer = torch.optim.Adam(self.FEATUREMAPPER_A.parameters(), lr=0.0003)
+
+        self.FEATUREMAPPER_B = model.DeNIQuA_Res(featureExtractor = None, CW=64, Blocks=9, inFeature=1, outCW=128, featureCW=128)
+        self.FEATUREMAPPER_B_optimizer = torch.optim.Adam(self.FEATUREMAPPER_B.parameters(), lr=0.0003)
+
+
+
+        self.BLENDER = model.DeNIQuA_Res(featureExtractor = None, CW=64, Blocks=18, inFeature=2, outCW=128, featureCW=128)
+        self.BLENDER_optimizer = torch.optim.Adam(self.BLENDER.parameters(), lr=0.0003)
         '''
-        # Param
-        # valueRangeType = '-1~1'
-        # NGF = 32
-        # NDF = 32
-        
-
-        #  2. EDVR(S)
-        
-        
-        #self.EDVR = model.EDVR(nf=128, nframes=1, groups=1, front_RBs=5, back_RBs=40)
-        #self.EDVR_pretrained = "EDVR-General.pth"  # FaceModel: "EDVR-Face.pth"
-        
-        #self.EDVR_optimizer = torch.optim.Adam(self.EDVR.parameters(), lr=0.0002)
-        # Param
-        # valueRangeType = '0~1'
-        # NGF = 64
-        # NDF = 64
-        
-
-        
-        #  3. SPSR
-        '''
-        self.netG = model.SPSR_Generator(scaleFactor = 4)
-        self.netG_pretrained = "SPSR-netG-Face.pth"#"SPSR-RRDB_PSNR_x4.pth"   # FaceModel: "netG-Face.pth"
-        self.netG_optimizer = torch.optim.Adam(self.netG.parameters(), lr=0.0001, weight_decay=0, betas=(0.9, 0.999))
-        self.netG_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.netG_optimizer, [5000,100000,200000,300000], 0.5)
-
-        self.netD = model.SPSR_Discriminator(size = 64)
-        self.netD_pretrained = "SPSR-netD-Face.pth"   # FaceModel: "netD-Face.pth"
-        self.netD_optimizer = torch.optim.Adam(self.netD.parameters(), lr=0.0001, weight_decay=0, betas=(0.9, 0.999))
-        self.netD_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.netD_optimizer, [5000,100000,200000,300000], 0.5)
-
-        self.netDgrad = model.SPSR_Discriminator(size = 64)
-        self.netDgrad_pretrained = "SPSR-netDgrad-Face.pth"   # FaceModel: "netDgrad-Face.pth"
-        self.netDgrad_optimizer = torch.optim.Adam(self.netD.parameters(), lr=0.0001, weight_decay=0, betas=(0.9, 0.999))
-        self.netDgrad_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.netDgrad_optimizer, [5000,100000,200000,300000], 0.5)
-
-        self.netF = model.SPSR_FeatureExtractor()
-
-        self.Get_gradient = model.SPSR_Get_gradient()
-        self.Get_gradient_nopadding = model.SPSR_Get_gradient_nopadding()
-        '''
-
-        #4. Blending
-
-        # MISR
-        #  1. VESPCN
-        # self.NET = model.VESPCN(4, Config.param.data.dataLoader.train.sequenceLength)
-        # self.NET_optimizer = torch.optim.Adam(self.NET.parameters(), lr=0.0001)
-
-
-
-
-        #self.SR = model.ESPCN(4)
-        #self.SR_pretrained = "ESPCN-General-201007.pth"   # FaceModel: "ESPCN-Face.pth"
-        
-        #self.SR = model.EDVR(nf=128, nframes=1, groups=1, front_RBs=5, back_RBs=40)
-        #self.SR_pretrained = "EDVR_general2.pth"  # FaceModel: "EDVR-Face.pth"
-
-        self.SR = model.SPSR_Generator(scaleFactor = 4)
-        self.SR_pretrained = "SPSR-Robust-netG-General.pth"#"SPSR-baseline-netG.pth" #  # FaceModel: "EDVR-Face.pth"
-
-
-
-
-        #self.SR_FACE = model.ESPCN(4)
-        #self.SR_FACE_pretrained = "ESPCN-Face.pth"   # FaceModel: "ESPCN-Face.pth"
-
-        self.SR_FACE = model.SPSR_Generator(scaleFactor = 4)
-        self.SR_FACE_pretrained = "SPSR-netG-Face.pth" 
-
-
-
-
-        
-
-        self.BLENDER_E_DECO = model.DeNIQuA_Res(featureExtractor = None, CW=64, Blocks=18, inFeature=2, outCW=128, featureCW=128)
-        self.BLENDER_E_DECO_optimizer = torch.optim.Adam(self.BLENDER_E_DECO.parameters(), lr=0.0003)
-
-
-        self.BLENDER_F_DECO = model.DeNIQuA_Res(featureExtractor = None, CW=64, Blocks=18, inFeature=2, outCW=128, featureCW=128)
-        self.BLENDER_F_DECO_optimizer = torch.optim.Adam(self.BLENDER_F_DECO.parameters(), lr=0.0003)
-
-
-
-
-
-        self.BLENDER_FE = model.EfficientNet('b0', num_classes=1, mode='feature_extractor')
-        self.BLENDER_FE_optimizer = torch.optim.Adam(self.BLENDER_FE.parameters(), lr=0.0001)
-        self.BLENDER_FE_pretrained = 'efficientnet_b0_ns.pth'
-
-        self.BLENDER_DECO = model.DeNIQuA(featureExtractor = self.BLENDER_FE, CW=32, inFeature=2, outCW=3, featureCW=1280)
-        self.BLENDER_DECO_optimizer = torch.optim.Adam(self.BLENDER_DECO.parameters(), lr=0.0003)
 
 
 
@@ -183,29 +125,65 @@ class ModelList(structure.ModelListBase):
         self.initDataparallel()
 
 
-def trainStep(epoch, modelList, LRImages, HRImages):
-    batch = LRImages.size(0)
+def trainStep(epoch, modelList, dataDict):
 
-    # 1. ESPCN
-    '''
+    LRImages = dataDict['LR']
+    HRImages = dataDict['HR']
+
+    #4. Blending
+    SCALE_FACTOR = 4
+
+    # loss
     mse_criterion = nn.MSELoss()
-    modelList.ESPCN.train()
-    SRImages = modelList.ESPCN(LRImages)
-    loss = mse_criterion(SRImages, HRImages)  
-    backproagateAndWeightUpdate(modelList, loss, modelNames = "ESPCN")
-    '''
-
-    # 2. EDVR(S)
-    '''
     cpl_criterion = module.CharbonnierLoss(eps=1e-3)
-    modelList.EDVR.train()
-    SRImages = modelList.EDVR(LRImages)
-    loss = cpl_criterion(SRImages, HRImages)  
-    backproagateAndWeightUpdate(modelList, loss, modelNames = "EDVR")
-    '''
+    bce_criterion = nn.BCELoss()
+    #ssim_criterion = MS_SSIM(data_range=1, size_average=True, channel=3, nonnegative_ssim=False)
+    #dists_criterion = DISTS(channels=3).cuda()
+ 
+    # model
+    #odelList.SR_A.eval()
+    #odelList.SR_B.eval()
 
-    # 3. SPSR
+    #odelList.GRAND.train()
+    #odelList.GRAND_Disc.train()
+    #odelList.GRAND_Grad_Disc.train()
+
+    #odelList.FEATUREMAPPER_A.train()
+    #odelList.FEATUREMAPPER_B.train()
+
+    #odelList.BLENDER.train()
+
+
+    # batch size
+    batchSize = LRImages.size(0)
+
+    SRImages = modelList.OASIS(LRImages, isTrain = False)
+    #HRTrunc = HRImages[:,:,8*4:9*4,8*4:9*4]
+
+    loss = mse_criterion(SRImages, HRImages)
+
+    backproagateAndWeightUpdate(modelList, loss, "OASIS")
+
+    lossDict = {'mse':loss}
+    SRImagesDict = {'SR':SRImages}#, 'HRT':HRTrunc}
     '''
+    ####################################################### Make Domain SR Features & Images #######################################################
+    with torch.no_grad():
+        feature_A = modelList.SR_A(LRImages, mode='encode')
+        feature_B = modelList.SR_B(LRImages, mode='encode')
+        fc = modelList.GRAND(HRImages, mode='encode')
+        print(feature_A.size(), fc.size())
+
+        SRImages_A = modelList.SR_A(feature_A, mode='decode')
+        SRImages_B = modelList.SR_B(feature_B, mode='decode')
+
+
+
+
+
+
+    ####################################################### Train to Construct GRAND LATENT SPACE #######################################################
+
     l_d_total_grad = 0
     l_g_total = 0
 
@@ -235,11 +213,6 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     beta1_G_grad = 0.9
     beta1_D = 0.9
 
-    # train
-    modelList.netG.train()
-    modelList.netD.train()
-    modelList.netDgrad.train()
-    
     # G pixel loss
     if pixel_weight > 0:
         l_pix_type = pixel_criterion
@@ -298,15 +271,12 @@ def trainStep(epoch, modelList, LRImages, HRImages):
         cri_pix_branch = None
 
     log_dict = OrderedDict()
-    get_grad = modelList.Get_gradient
-    get_grad_nopadding = modelList.Get_gradient_nopadding
+    get_grad = modelList.GRAND_Get_gradient
+    get_grad_nopadding = modelList.GRAND_Get_gradient_nopadding
 
 
     # Optimizing
-    # netG_optimizer
-    modelList.netG_optimizer.zero_grad()
-
-    fake_H_branch, fake_H, grad_LR = modelList.netG(LRImages)
+    fake_H_branch, fake_H, grad_LR = modelList.GRAND(HRImages)
     
     fake_H_grad = get_grad(fake_H)
     var_H_grad = get_grad(HRImages)
@@ -321,8 +291,8 @@ def trainStep(epoch, modelList, LRImages, HRImages):
             l_g_pix = l_pix_w * cri_pix(fake_H, HRImages)
             l_g_total += l_g_pix
         if cri_fea:  # feature loss
-            real_fea = modelList.netF(HRImages)
-            fake_fea = modelList.netF(fake_H)
+            real_fea = modelList.GRAND_Feature(HRImages)
+            fake_fea = modelList.GRAND_Feature(fake_H)
             l_g_fea = l_fea_w * cri_fea(fake_fea, real_fea)
             l_g_total += l_g_fea
         
@@ -337,31 +307,29 @@ def trainStep(epoch, modelList, LRImages, HRImages):
 
 
         # G gan + cls loss
-        pred_g_fake = modelList.netD(fake_H)
-        pred_d_real = modelList.netD(HRImages).detach()
+        pred_g_fake = modelList.GRAND_Disc(fake_H)
+        pred_d_real = modelList.GRAND_Disc(HRImages).detach()
         
         l_g_gan = l_gan_w * (cri_gan(pred_d_real - torch.mean(pred_g_fake), False) +
                                 cri_gan(pred_g_fake - torch.mean(pred_d_real), True)) / 2
         l_g_total += l_g_gan
 
         # grad G gan + cls loss
-        pred_g_fake_grad = modelList.netDgrad(fake_H_grad)
-        pred_d_real_grad = modelList.netDgrad(var_ref_grad).detach()
+        pred_g_fake_grad = modelList.GRAND_Grad_Disc(fake_H_grad)
+        pred_d_real_grad = modelList.GRAND_Grad_Disc(var_ref_grad).detach()
 
         l_g_gan_grad = l_gan_grad_w * (cri_grad_gan(pred_d_real_grad - torch.mean(pred_g_fake_grad), False) + 
                                             cri_grad_gan(pred_g_fake_grad - torch.mean(pred_d_real_grad), True)) /2
         l_g_total += l_g_gan_grad
 
-        l_g_total.backward()
-        modelList.netG_optimizer.step()
+        backproagateAndWeightUpdate(modelList, l_g_total, "GRAND")
 
 
     # D
-    modelList.netD_optimizer.zero_grad()
     l_d_total = 0
 
-    pred_d_real = modelList.netD(HRImages)
-    pred_d_fake = modelList.netD(fake_H.detach())  # detach to avoid BP to G
+    pred_d_real = modelList.GRAND_Disc(HRImages)
+    pred_d_fake = modelList.GRAND_Disc(fake_H.detach())  # detach to avoid BP to G
 
     l_d_real = cri_gan(pred_d_real - torch.mean(pred_d_fake), True)
     l_d_fake = cri_gan(pred_d_fake - torch.mean(pred_d_real), False)
@@ -374,74 +342,62 @@ def trainStep(epoch, modelList, LRImages, HRImages):
         random_pt.uniform_()  # Draw random interpolation points
         interp = random_pt * fake_H.detach() + (1 - random_pt) * HRImages
         interp.requires_grad = True
-        interp_crit, _ = modelList.netD(interp)
+        interp_crit, _ = modelList.GRAND_Disc(interp)
         l_d_gp = l_gp_w * cri_gp(interp, interp_crit) 
         l_d_total += l_d_gp
 
-    l_d_total.backward()
-
-    modelList.netD_optimizer.step()
+    backproagateAndWeightUpdate(modelList, l_d_total, "GRAND_Disc")
 
     
+
     # D_grad
-    pred_d_real_grad = modelList.netDgrad(var_ref_grad)
-    pred_d_fake_grad = modelList.netDgrad(fake_H_grad.detach())  # detach to avoid BP to G
+    pred_d_real_grad = modelList.GRAND_Grad_Disc(var_ref_grad)
+    pred_d_fake_grad = modelList.GRAND_Grad_Disc(fake_H_grad.detach())  # detach to avoid BP to G
     
     l_d_real_grad = cri_grad_gan(pred_d_real_grad - torch.mean(pred_d_fake_grad), True)
     l_d_fake_grad = cri_grad_gan(pred_d_fake_grad - torch.mean(pred_d_real_grad), False)
 
     l_d_total_grad = (l_d_real_grad + l_d_fake_grad) / 2
 
-    l_d_total_grad.backward()
+    backproagateAndWeightUpdate(modelList, l_d_total_grad, "GRAND_Grad_Disc")
 
-    modelList.netDgrad_optimizer.step()
+
+
 
     SRImages = fake_H
 
-    l_g_total = torch.as_tensor(l_g_total)
-    l_d_total = torch.as_tensor(l_d_total)
-    l_d_total_grad = torch.as_tensor(l_d_total_grad)
+    loss_GRAND = torch.as_tensor(l_g_total)
+    loss_GRAND_Disc = torch.as_tensor(l_d_total)
+    loss_GRAND_Grad_Disc = torch.as_tensor(l_d_total_grad)
 
 
-    lossList = [l_g_total, l_d_total, l_d_total_grad]
-    SRImagesList = [SRImages]
+    lossDict = {'G':loss_GRAND, 'D':loss_GRAND_Disc, 'D_grad':loss_GRAND_Grad_Disc}
+
+    SRImagesDict = {'AutoEncoded' : SRImages}
     '''
 
 
-    #4. Blending
-    SCALE_FACTOR = 4
-
-    # loss
-    mse_criterion = nn.MSELoss()
-    cpl_criterion = module.CharbonnierLoss(eps=1e-3)
-    bce_criterion = nn.BCELoss()
-    #ssim_criterion = MS_SSIM(data_range=1, size_average=True, channel=3, nonnegative_ssim=False)
-    dists_criterion = DISTS(channels=3).cuda()
- 
-    # model
-    modelList.SR.eval()
-    modelList.SR_FACE.eval()
-
-    #modelList.BLENDER_FE.train()
-    modelList.BLENDER_E_DECO.train()
-    modelList.BLENDER_F_DECO.train()
-    modelList.BLENDER_DECO.train()
-    modelList.BLENDER_FE.train()
 
 
-    # batch size
-    batchSize = LRImages.size(0)
 
-    ####################################################### Preproc. #######################################################
-    # SR Processing
 
-    with torch.no_grad():
-        feature_Entire = modelList.SR(LRImages, mode='encode')
-        feature_Face =  modelList.SR_FACE(LRImages, mode='encode')
 
-        SRImages_Entire = modelList.SR(feature_Entire, mode='decode')
-        SRImages_Face = modelList.SR_FACE(feature_Face, mode='decode')
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    '''
 
     IQAMap_E = modelList.BLENDER_E_DECO([feature_Entire, feature_Face])
     IQAMap_F = modelList.BLENDER_F_DECO([feature_Entire, feature_Face])
@@ -496,12 +452,16 @@ def trainStep(epoch, modelList, LRImages, HRImages):
     # return List of Result Images (also you can add some intermediate results).
     # SRImagesList = [gaussianSprayKernel,bImage1,bImage2,blendedImages]
     
-    
-    return lossList, SRImagesList
+    '''
+    return lossDict, SRImagesDict
      
 
 
-def validationStep(epoch, modelList, LRImages, HRImages):
+def validationStep(epoch, modelList, dataDict):
+
+    LRImages = dataDict['LR']
+    HRImages = dataDict['HR']
+    
     batchSize = LRImages.size(0)
 
     # 1. ESPCN
@@ -619,7 +579,10 @@ def validationStep(epoch, modelList, LRImages, HRImages):
     
     return loss, SRImagesList
 
-def inferenceStep(modelList, LRImages):
+def inferenceStep(epoch, modelList, dataDict):
+
+    LRImages = dataDict['LR']
+
     # model
     # 1. ESPCN
     # modelList.ESPCN.eval()

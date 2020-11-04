@@ -20,6 +20,7 @@ from PIL import Image, ImageOps, ImageDraw, ImageFont
 #From Pytorch
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from torch.utils.tensorboard import SummaryWriter
 from torchvision.transforms import ToPILImage
@@ -30,7 +31,6 @@ from torch.autograd import Variable
 #From This Project
 from backbone.config import Config
 from backbone.torchvision_injected import functional as vF
-
 
 
 
@@ -76,7 +76,7 @@ def logImages(writer, imageTuple, iter):
 ######################################################################################################################################################################## 
 
 
-def addCaptionToImageTensor(imageTensor, caption, DEFAULT_TEXT_SIZE = 24):
+def addCaptionToImageTensor(imageTensor, caption, valueRangeType='-1~1', DEFAULT_TEXT_SIZE = 24):
 
     assert imageTensor.dim() == 4
 
@@ -84,14 +84,19 @@ def addCaptionToImageTensor(imageTensor, caption, DEFAULT_TEXT_SIZE = 24):
 
     #DEFAULT_TEXT_SIZE = 24
     TEXT_SIZE = max(12, int(DEFAULT_TEXT_SIZE * (IMAGE_WIDTH / 256)))
-    PAD_LEFT = int(DEFAULT_TEXT_SIZE * 0.75)
+    PAD_LEFT = int(DEFAULT_TEXT_SIZE * 0.5)
     PAD_TOP = int(DEFAULT_TEXT_SIZE * 0.25)
-    PAD_BOTTOM = int(DEFAULT_TEXT_SIZE * 0.75)
+    PAD_BOTTOM = int(DEFAULT_TEXT_SIZE * 0.5)
 
-    
+
+    if valueRangeType == '-1~1':
+        imageTensor = imageTensor.clamp(-1,1)
+    elif valueRangeType == '0~1':
+        imageTensor = imageTensor.clamp(0,1)    
+
 
     ToPILImageFunc = ToPILImage()
-    pilImageList = list( [ToPILImageFunc(x) for x in imageTensor] )
+    pilImageList = list( [ToPILImageFunc(x) for x in (imageTensor)] )
 
     tmpPilImageList = []
     for pilImage in pilImageList:
@@ -104,7 +109,7 @@ def addCaptionToImageTensor(imageTensor, caption, DEFAULT_TEXT_SIZE = 24):
 
         tmpPilImageList.append(pilImage)
 
-    return torch.stack( list( vF.to_tensor(x) for x in tmpPilImageList )  )
+    return torch.stack( list( vF.to_tensor(x).clamp(0, 1) for x in tmpPilImageList )  )
 
 def addFrameCaptionToImageSequenceTensor(imageSequenceTensor):
     '''
@@ -117,7 +122,7 @@ def addFrameCaptionToImageSequenceTensor(imageSequenceTensor):
     return torch.cat( list( addCaptionToImageTensor(x, f"Frame {i}") for i, x in enumerate(imageSequenceTensor.split(1, dim=1).squeeze(1)) ) , 3)
 
 
-def saveImageTensorToFile(dataDict, fileName, colorMode='color', valueRangeType='-1~1'):
+def saveImageTensorToFile(dataDict, fileName, saveDataDictKeys = None, colorMode='color', valueRangeType='-1~1', interpolation='bicubic'):
 
     rst = []
 
@@ -125,36 +130,47 @@ def saveImageTensorToFile(dataDict, fileName, colorMode='color', valueRangeType=
     MAX_WIDTH = max( list( x.size(-1) for x in dataDict.values() ) )
         
 
-    for name in dataDict:
+    if saveDataDictKeys is None or saveDataDictKeys == []:
+        saveDataDictKeys = dataDict.keys()
+
+    for k in saveDataDictKeys:
+        assert k in dataDict.keys(), f"utils.py :: No key '{k}' in dataDict."
+    
+
+
+    for name in saveDataDictKeys:
         dim = dataDict[name].dim()
         
         rstElem = dataDict[name]
 
         #denorm & pp for save
-        rstElem = utils.denorm(rstElem.cpu().view(rstElem.size(0), 1 if colorMode =='grayscale' else 3, rstElem.size(2), rstElem.size(3)), valueRangeType)
+        rstElem = denorm(rstElem.cpu().view(rstElem.size(0), 1 if colorMode =='grayscale' else 3, rstElem.size(2), rstElem.size(3)), valueRangeType)
         if dim == 4:
             if rstElem.size(-2) != MAX_HEIGHT or rstElem.size(-1) != MAX_WIDTH:
-                F.interpolate(rstElem, size=(MAX_HEIGHT, MAX_WIDTH), mode='bicubic')
+                rstElem = F.interpolate(rstElem, size=(MAX_HEIGHT, MAX_WIDTH), mode=interpolation)
         elif dim == 5:
-            rstElem = torch.cat( list( F.interpolate(x, size=(MAX_HEIGHT, MAX_WIDTH), mode='bicubic') for x in rstElem.split(1, dim=1).squeeze(1) if (x.size(-2) != MAX_HEIGHT or x.size(-1) != MAX_WIDTH)  ) , 3)
+            rstElem = torch.cat( list( F.interpolate(x, size=(MAX_HEIGHT, MAX_WIDTH), mode=interpolation) for x in rstElem.split(1, dim=1).squeeze(1) if (x.size(-2) != MAX_HEIGHT or x.size(-1) != MAX_WIDTH)  ) , 3)
 
         #ADD Frame Caption to ImageSequence
         if dim == 5:
             rstElem = addFrameCaptionToImageSequenceTensor(rstElem)
 
-        rstElem = addCaptionToImageTensor(rstElem, caption = name)
+        rstElem = addCaptionToImageTensor(rstElem, caption = name, valueRangeType=valueRangeType)
 
         rst.append(rstElem)
     
-    rst = torch.cat(rst, 3)
-    save_image(rst, fileName)
+    assert len(rst) != 0, 'utils.py :: There is no save data...Make sure saveDataDictKeys in dataDict.keys()'
+
+    rst = torch.cat(rst, 3) 
+    save_image(rst, fileName, normalize=True)
 
 
 
-def loadModels(modelList, version, subversion, loadModelNum, isTest):
+def loadModels(modelList, version, subversion, loadModelNum):
     startEpoch = 0
     lastLoss = torch.ones(1)*100
     bestPSNR = 0
+    metaData = None
     for mdlStr in modelList.getList():
         modelObj = getattr(modelList, mdlStr)
         optimizer = getattr(modelList, mdlStr + "_optimizer") if len([attr for attr in vars(modelList) if attr == (mdlStr+"_optimizer")]) > 0 else None
@@ -252,21 +268,13 @@ def loadModels(modelList, version, subversion, loadModelNum, isTest):
 
                 #if len([attr for attr in vars(modelList) if attr == (mdlStr+"_pretrained")]) == 0:
                 # LOAD VARs..
+                
                 if isPretrainedLoad is False:
                     try:
-                        startEpoch = checkpoint['epoch']
+                        metaData = checkpoint['metaData']
                     except:
-                        pass#startEpoch = 0
-
-                    try:
-                        lastLoss = checkpoint['lastLoss']
-                    except:
-                        pass#lastLoss = torch.ones(1)*100
-                    
-                    try:
-                        bestPSNR = checkpoint['bestPSNR']
-                    except:
-                        pass#bestPSNR = 0
+                        print('utils.py :: Failed to load meta data. It may caused by loading old models. (before main.py version 3.00) ')
+                        
                 
                 
 
@@ -275,23 +283,17 @@ def loadModels(modelList, version, subversion, loadModelNum, isTest):
                     if Config.param.train.method.mixedPrecision is True:
                         amp.load_state_dict(checkpoint['amp'])
                 except:
-                    pass
+                    print('utils.py :: WARNING : Failed to load APEX AMP checkpoint data. It may cause unexpected training behaviour.')
 
-        #modelObj = nn.DataParallel(modelObj)  
         
         paramSize = 0
         for parameter in modelObj.parameters():
             paramSize = paramSize + np.prod(np.array(parameter.size()))
         print(mdlStr + ' : ' + str(paramSize))    
 
-        if (isTest == True):
-            modelObj.eval()
-        else:
-            modelObj.train()
-
-    return startEpoch, lastLoss, bestPSNR
+    return startEpoch, metaData
             
-def saveModels(modelList, version, subversion, epoch, lastLoss, bestPSNR):
+def saveModels(modelList, version, subversion, epoch, metaData):
 
     for mdlStr in modelList.getList():
         modelObj = getattr(modelList, mdlStr)
@@ -304,9 +306,7 @@ def saveModels(modelList, version, subversion, epoch, lastLoss, bestPSNR):
             saveData.update({'optim': optimizer.state_dict()})
             if scheduler is not None:
                 saveData.update({'scheduler': scheduler.state_dict()})
-            saveData.update({'epoch': epoch + 1})
-            saveData.update({'lastLoss': lastLoss})
-            saveData.update({'bestPSNR': bestPSNR})
+            saveData.update({'metaData': metaData})
             if Config.param.train.method.mixedPrecision is True:
                 saveData.update({'amp': amp.state_dict()})
             saveData.update({'epoch': epoch + 1})
@@ -404,7 +404,7 @@ def backproagateAndWeightUpdate(modelList, loss, modelNames = None):
 
 ######################################################################################################################################################################## 
 
-
+#TODO: BATCH
 def calculateImagePSNR(a, b, valueRangeType, colorMode):
 
     pred = a.cpu().data[0].numpy().astype(np.float32)
