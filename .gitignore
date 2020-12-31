@@ -8,7 +8,6 @@ __pycache__
 final
 old code
 * bu.py
-README.md
 *.pyx
 *.py.backup
 .ipynb*

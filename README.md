@@ -4,96 +4,122 @@
 
 
 
-# 사용법
+Index
+=====
 
-1. model.py에 모델을 추가
-2. edit.py에서 ModelList class 내에 model.py에서 만든 모델을 추가
-3. edit.py에 Optimizer 및 LR Scheduler(필수 아님) 추가
-4. param.py에서 하이퍼패러미터 수정
+ [Getting Started](/confluence/display/AILAB/1.+Getting+Started)
+----------------------------------------------------------------
+
+*   [PREREQUISITES](https://rnd.hsnc.co.kr/confluence/display/AILAB/1.+Getting+Started#id-1.GettingStarted-PREREQUISITES)
+    *   [OS](https://rnd.hsnc.co.kr/confluence/display/AILAB/1.+Getting+Started#id-1.GettingStarted-OS)
+    *   [Python](https://rnd.hsnc.co.kr/confluence/display/AILAB/1.+Getting+Started#id-1.GettingStarted-Python)
+    *   [Pytorch](https://rnd.hsnc.co.kr/confluence/display/AILAB/1.+Getting+Started#id-1.GettingStarted-Pytorch)
+    *   [Recommended Method](https://rnd.hsnc.co.kr/confluence/display/AILAB/1.+Getting+Started#id-1.GettingStarted-RecommendedMethod)
+*   [START WITH DOCKER CONTAINER LOCALLY](https://rnd.hsnc.co.kr/confluence/display/AILAB/1.+Getting+Started#id-1.GettingStarted-STARTWITHDOCKERCONTAINERLOCALLY)
+    *   [Pull container image](https://rnd.hsnc.co.kr/confluence/display/AILAB/1.+Getting+Started#id-1.GettingStarted-Pullcontainerimage)
+    *   [Run Docker Container](https://rnd.hsnc.co.kr/confluence/display/AILAB/1.+Getting+Started#id-1.GettingStarted-RunDockerContainer)
+    *   [Install AIR Research Framework](https://rnd.hsnc.co.kr/confluence/display/AILAB/1.+Getting+Started#id-1.GettingStarted-InstallAIRResearchFramework)
+*   [START WITH HAIQV](https://rnd.hsnc.co.kr/confluence/display/AILAB/1.+Getting+Started#id-1.GettingStarted-STARTWITHHAIQV)
+    *   [Make new Notebook server](https://rnd.hsnc.co.kr/confluence/display/AILAB/1.+Getting+Started#id-1.GettingStarted-MakenewNotebookserver)
+*   [RUN YOUR FIRST MODEL](https://rnd.hsnc.co.kr/confluence/display/AILAB/1.+Getting+Started#id-1.GettingStarted-RUNYOURFIRSTMODEL)
+
+ [Develop Your First Model](/confluence/display/AILAB/2.+Develop+Your+First+Model)
+----------------------------------------------------------------------------------
+
+*   [OPTIONAL: DEVELOP WITH VS CODE](https://rnd.hsnc.co.kr/confluence/display/AILAB/2.+Develop+Your+First+Model#id-2.DevelopYourFirstModel-OPTIONAL:DEVELOPWITHVSCODE)
+    *   [Use VS Code with native Docker container environment](https://rnd.hsnc.co.kr/confluence/display/AILAB/2.+Develop+Your+First+Model#id-2.DevelopYourFirstModel-UseVSCodewithnativeDockercontainerenvironment)
+    *   [Use VS Code with HAIQV Platform](https://rnd.hsnc.co.kr/confluence/display/AILAB/2.+Develop+Your+First+Model#id-2.DevelopYourFirstModel-UseVSCodewithHAIQVPlatform)
+*   [SRCNN: THE FIRST CNN-BASED SUPER RESOLUTION MODEL](https://rnd.hsnc.co.kr/confluence/display/AILAB/2.+Develop+Your+First+Model#id-2.DevelopYourFirstModel-SRCNN:THEFIRSTCNN-BASEDSUPERRESOLUTIONMODEL)
+    *   [Define networks](https://rnd.hsnc.co.kr/confluence/display/AILAB/2.+Develop+Your+First+Model#id-2.DevelopYourFirstModel-Definenetworks)
+    *   [Define Data](https://rnd.hsnc.co.kr/confluence/display/AILAB/2.+Develop+Your+First+Model#id-2.DevelopYourFirstModel-DefineData)
+    *   [Training code](https://rnd.hsnc.co.kr/confluence/display/AILAB/2.+Develop+Your+First+Model#id-2.DevelopYourFirstModel-Trainingcode)
+    *   [Start training](https://rnd.hsnc.co.kr/confluence/display/AILAB/2.+Develop+Your+First+Model#id-2.DevelopYourFirstModel-Starttraining)
+
+ [Data Loader](/confluence/display/AILAB/Data+Loader)
+-----------------------------------------------------
+
+*   [DATASET CONFIG](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Loader#DataLoader-DATASETCONFIG)
+*   [DATASET COMPONENT](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Loader#DataLoader-DATASETCOMPONENT)
+*   [DATA LOADER](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Loader#DataLoader-DATALOADER)
+    *    [Multiple datasets](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Loader#DataLoader-Multipledatasets)
+    *    [Fast loading with preprocessed cache](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Loader#DataLoader-Fastloadingwithpreprocessedcache)
+    *    [Hight speed data augmentation with CUDA](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Loader#DataLoader-HightspeeddataaugmentationwithCUDA)
+*   [EXAMPLES](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Loader#DataLoader-EXAMPLES)
+    *    [DIV2K Dataset](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Loader#DataLoader-DIV2KDataset)
+        *    [datasetConfig](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Loader#DataLoader-datasetConfig)
+        *    [datasetComponent](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Loader#DataLoader-datasetComponent)
+        *    [dataLoader](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Loader#DataLoader-dataLoader)
+*   [ARCHITECTURE](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Loader#DataLoader-ARCHITECTURE)
+
+ [Data Augmentation](/confluence/display/AILAB/Data+Augmentation)
+-----------------------------------------------------------------
+
+*   [DATA AUGMENTATION FUNTIONS IN DATALOADER](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Augmentation#DataAugmentation-DATAAUGMENTATIONFUNTIONSINDATALOADER)
+*   [DATATYPE TRANSFORM](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Augmentation#DataAugmentation-DATATYPETRANSFORM)
+    *    [toTensor](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Augmentation#DataAugmentation-toTensor)
+*   [RESIZE](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Augmentation#DataAugmentation-RESIZE)
+    *    [sizeMatch](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Augmentation#DataAugmentation-sizeMatch)
+    *    [resize](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Augmentation#DataAugmentation-resize)
+    *    [resizeToMultipleOf](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Augmentation#DataAugmentation-resizeToMultipleOf)
+    *    [shrink](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Augmentation#DataAugmentation-shrink)
+    *    [shrinkWithRandomMethod](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Augmentation#DataAugmentation-shrinkWithRandomMethod)
+    *    [resizeWithTextLabel](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Augmentation#DataAugmentation-resizeWithTextLabel)
+    *    [virtualScaling](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Augmentation#DataAugmentation-virtualScaling)
+*   [CROP](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Augmentation#DataAugmentation-CROP)
+    *    [centerCrop](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Augmentation#DataAugmentation-centerCrop)
+    *    [centerCropToMultipleOf](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Augmentation#DataAugmentation-centerCropToMultipleOf)
+    *    [randomCrop](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Augmentation#DataAugmentation-randomCrop)
+    *    [randomCropWithRandomSize](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Augmentation#DataAugmentation-randomCropWithRandomSize)
+*   [FLIP & ROTATE](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Augmentation#DataAugmentation-FLIP&ROTATE)
+    *    [randomFlip](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Augmentation#DataAugmentation-randomFlip)
+    *    [randomRotate](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Augmentation#DataAugmentation-randomRotate)
+*   [FILTER](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Augmentation#DataAugmentation-FILTER)
+    *    [randomGaussianBlur](https://rnd.hsnc.co.kr/confluence/display/AILAB/Data+Augmentation#DataAugmentation-randomGaussianBlur)
+
+ [Models: _**model.py**_](/confluence/display/AILAB/Models%3A+model.py)
+-----------------------------------------------------------------------
+
+*   [DEFINE MODEL](https://rnd.hsnc.co.kr/confluence/display/AILAB/Models%3A+model.py#Models:model.py-DEFINEMODEL)
+*   [BACKBONE.MODULE.MODULE](https://rnd.hsnc.co.kr/confluence/display/AILAB/Models%3A+model.py#Models:model.py-BACKBONE.MODULE.MODULE)
+*   [PRE-DEFINED MODELS](https://rnd.hsnc.co.kr/confluence/display/AILAB/Models%3A+model.py#Models:model.py-PRE-DEFINEDMODELS)
+    *    [backbone.predefined.ESPCN](https://rnd.hsnc.co.kr/confluence/display/AILAB/Models%3A+model.py#Models:model.py-backbone.predefined.ESPCN)
+    *    [backbone.predefined.VDSR](https://rnd.hsnc.co.kr/confluence/display/AILAB/Models%3A+model.py#Models:model.py-backbone.predefined.VDSR)
+    *    [backbone.predefined.SPSR](https://rnd.hsnc.co.kr/confluence/display/AILAB/Models%3A+model.py#Models:model.py-backbone.predefined.SPSR)
+    *    [backbone.predefined.EDVR](https://rnd.hsnc.co.kr/confluence/display/AILAB/Models%3A+model.py#Models:model.py-backbone.predefined.EDVR)
+    *    [backbone.predefined.VESPCN](https://rnd.hsnc.co.kr/confluence/display/AILAB/Models%3A+model.py#Models:model.py-backbone.predefined.VESPCN)
+    *    [backbone.predefined.EfficientNet](https://rnd.hsnc.co.kr/confluence/display/AILAB/Models%3A+model.py#Models:model.py-backbone.predefined.EfficientNet)
+    *    [backbone.predefined.RetinaFace](https://rnd.hsnc.co.kr/confluence/display/AILAB/Models%3A+model.py#Models:model.py-backbone.predefined.RetinaFace)
+    *    [backbone.predefined.ResNeSt](https://rnd.hsnc.co.kr/confluence/display/AILAB/Models%3A+model.py#Models:model.py-backbone.predefined.ResNeSt)
+
+ [Parameters & Settings: _**param.py**_](/confluence/display/AILAB/Parameters%3A+param.yaml)
+--------------------------------------------------------------------------------------------
+
+*   [SETTING PARAMETERS WITH param.yaml](https://rnd.hsnc.co.kr/confluence/display/AILAB/Parameters%3A+param.yaml#Parameters:param.yaml-SETTINGPARAMETERSWITHparam.yaml)
+*   [general](https://rnd.hsnc.co.kr/confluence/display/AILAB/Parameters%3A+param.yaml#Parameters:param.yaml-general)
+    *    [general.GPUNum](https://rnd.hsnc.co.kr/confluence/display/AILAB/Parameters%3A+param.yaml#Parameters:param.yaml-general.GPUNum)
+*   [data](https://rnd.hsnc.co.kr/confluence/display/AILAB/Parameters%3A+param.yaml#Parameters:param.yaml-data)
+    *    [data.path](https://rnd.hsnc.co.kr/confluence/display/AILAB/Parameters%3A+param.yaml#Parameters:param.yaml-data.path)
+    *    [data.path.datasetPath](https://rnd.hsnc.co.kr/confluence/display/AILAB/Parameters%3A+param.yaml#Parameters:param.yaml-data.path.datasetPath)
+    *    [data.path.pretrainedPath](https://rnd.hsnc.co.kr/confluence/display/AILAB/Parameters%3A+param.yaml#Parameters:param.yaml-data.path.pretrainedPath)
+    *    [data.datasetComponent](https://rnd.hsnc.co.kr/confluence/display/AILAB/Parameters%3A+param.yaml#Parameters:param.yaml-data.datasetComponent)
+    *    [data.dataLoader](https://rnd.hsnc.co.kr/confluence/display/AILAB/Parameters%3A+param.yaml#Parameters:param.yaml-data.dataLoader)
+*   [train](https://rnd.hsnc.co.kr/confluence/display/AILAB/Parameters%3A+param.yaml#Parameters:param.yaml-train)
+    *    [train.step](https://rnd.hsnc.co.kr/confluence/display/AILAB/Parameters%3A+param.yaml#Parameters:param.yaml-train.step)
+    *    [train.step.maxEpoch](https://rnd.hsnc.co.kr/confluence/display/AILAB/Parameters%3A+param.yaml#Parameters:param.yaml-train.step.maxEpoch)
+    *    [train.step.validationStep](https://rnd.hsnc.co.kr/confluence/display/AILAB/Parameters%3A+param.yaml#Parameters:param.yaml-train.step.validationStep)
+    *    [train.step.archiveStep](https://rnd.hsnc.co.kr/confluence/display/AILAB/Parameters%3A+param.yaml#Parameters:param.yaml-train.step.archiveStep)
+    *    [train.step.earlyStopStep](https://rnd.hsnc.co.kr/confluence/display/AILAB/Parameters%3A+param.yaml#Parameters:param.yaml-train.step.earlyStopStep)
+    *    [train.method](https://rnd.hsnc.co.kr/confluence/display/AILAB/Parameters%3A+param.yaml#Parameters:param.yaml-train.method)
+    *    [train.method.mixedPrecision](https://rnd.hsnc.co.kr/confluence/display/AILAB/Parameters%3A+param.yaml#Parameters:param.yaml-train.method.mixedPrecision)
+    *    [train.dataLoaderNumWorkers](https://rnd.hsnc.co.kr/confluence/display/AILAB/Parameters%3A+param.yaml#Parameters:param.yaml-train.dataLoaderNumWorkers)
+*   [save](https://rnd.hsnc.co.kr/confluence/display/AILAB/Parameters%3A+param.yaml#Parameters:param.yaml-save)
+    *    [save.font](https://rnd.hsnc.co.kr/confluence/display/AILAB/Parameters%3A+param.yaml#Parameters:param.yaml-save.font)
+    *    [save.font.path](https://rnd.hsnc.co.kr/confluence/display/AILAB/Parameters%3A+param.yaml#Parameters:param.yaml-save.font.path)
+    *    [save.maxSaveImageNumberTrain](https://rnd.hsnc.co.kr/confluence/display/AILAB/Parameters%3A+param.yaml#Parameters:param.yaml-save.maxSaveImageNumberTrain)
+
+ [Training: edit.py](/confluence/display/AILAB/Training+and+Inferencing%3A+edit.py)
+-----------------------------------------------------------------------------------
 
 
-# 실행시 주의사항 및 옵션 설명
 
-1. --load, -l           : save된 checkpoint 로드 (인자 없을 시 최신 모델 로드, -l 51 -> 51번째 모델 로드)
-2. --inferenceTest, -it : inference 모드 (benchmark(with GT)->downscaling 후 upscaling 시 사이즈 달라지는 Dataset은 아직 적용 X , custom 지원(without GT))
-3. --nosave, -n         : epoch마다 validation 과정에 생기는 이미지를 가장 최근 이미지만 저장
-
-
-# 하이퍼패러미터 설명
-
-1. dataPath : 사용할 데이터셋 경로
-1. trainDataset : 트레인에 사용할 데이터 셋
-2. testDataset : 테스트에 사용할 데이터 셋
-3. test/trainDatasetType : 데이터셋의 타입 (트레인/밸리드/테스트)
-3. test/trainScaleMethod : 학습 데이터셋의 리사이징 방법 (virtual의 경우 software적으로 bicubic interpolation 수행)
-4. batchSize : 배치 사이즈 (실제 배치사이즈 = batchSize * samplingCount)
-5. samplingCount : 한 이미지에서 몇 장 랜덤크롭 할 것인가
-6. cropSize : 학습시 사용할 이미지의 크롭 사이즈 (H, W)
-7. scaleFactor : 몇 배 Super Resolution 할 것인가
-8. colorMode : 흑백 및 컬러
-9. sequenceLength : 비디오 데이터 셋에서 인풋으로 한번에 들어갈 프레임 갯수
-9. NGF 및 NDF : 모델 channel width에 사용
-10. MaxEpoch : 최대 에폭 횟수
-11. learningRate : Optimizer Learning Rate에 사용
-12. sameOutputSize : 데이터로더가 아웃풋과 동일한 사이즈의 인풋을 반환 하는지 (ex) scaleFactor 4에서 1/4크기의 이미지를 반환하는지, 1/1 크기의 이미지를 반환하는지)
-13. archiveStep : 모델을 따로 저장하는 스텝 수
-14. valueRangeType : 데이터로더에서 뱉는 이미지의 텐서 범위 ('0~1', '-1~1')
-15. pretrainedPath : 프리트레인 모델 기본 경로
-16. mixedPrecision : 믹스드 프리시전 (속도 빨라지고 메모리 덜 먹으나 성능 하락할 수 있음)
-
-# 수정내역
-20200707
-
-1. dataset 구조 변화에 따른 데이터로더 수정 (버그 있을 수 있음)
-
-20200706
-
-1. Inference 기능 추가
-
-20200629
-
-1. 컴퓨터비전 기반의 영상 블렌딩 Function 적용 (Simple, Gaussian, Possion)
-
-20200625
-
-1. 모듈 폴더화
-
-20200602
-
-1. 컬러 모드에서 그레이스케일 이미지가 들어갈 경우 에러 해결 (SET14, etc...)
-
-20200529
-
-1. GAN 관련 업데이트
-2. 여러 개의 loss Function 반환하도록 trainStep 조정
-3. inferenceStep 작동 안함
-
-20200427-1
-
-1. 저장 시 pth 파일로 저장하도록 변경
-
-20200427
-
-1. Pretrained 모델 로드시 버그 수정
-2. 기타 버그 수정
-
-20200423
-
-1. Mixed Precision 지원
-2. Pretrained 모델 및 non trainable 모델 지원
-3. 기타 업데이트
-4. 코드 리팩토링
-
-Regacy
-
-1. subversion 별로 model 저장 ./data/$version/model/$subversion/
-2. validation images 경로 변경 ./data/$version/eval/$subversion/
-
-
-# TODO
-
-1. Test 기능 구현
-
-
-
-# 버그추가 및 기능제보 문의 : New Biz. Ut. 김진
+# 버그추가 및 기능제보 문의 : 솔루션 유닛 김진
