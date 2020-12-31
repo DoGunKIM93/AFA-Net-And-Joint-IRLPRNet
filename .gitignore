@@ -9,8 +9,6 @@ final
 old code
 * bu.py
 README.md
-test.py
-test.ipynb
 *.pyx
 *.py.backup
 .ipynb*
