@@ -1,7 +1,7 @@
 '''
 main.py
 '''
-mainversion = "3.00.201015"
+mainversion = "3.02.201230"
 
 
 
@@ -25,7 +25,7 @@ import model
 import edit
 import backbone.vision as vision
 import backbone.utils as utils
-import backbone.module as module
+import backbone.module.module as module
 import backbone.structure as structure
 
 from edit import editversion, ModelList
@@ -64,7 +64,6 @@ utils.initFolderAndFiles(edit.version, edit.subversion)
 ############################################
 ############################################
 print("")
-if args.irene == True : utils.printirene()
 print("")
 print("         ProjSR")
 print("         Version : " + edit.version)
@@ -75,7 +74,7 @@ print("         -------- FRAMEWORK VERSIONs --------")
 
 
 #print module version
-exList = ['main.py', 'edit.py', 'data_loader_old.py', 'main_old.py', 'test.py']
+exList = ['main.py', 'edit.py', 'data_loader_old.py', 'main_old.py', 'test.py', 'inference.py']
 pyModuleStrList = list(x[:-3] for x in os.listdir('.') if x not in exList and x.endswith('.py')) + list(f'backbone.{x[:-3]}' for x in os.listdir('./backbone') if x.endswith('.py')) 
 pyModuleObjList = list(map(import_module, pyModuleStrList))
 
@@ -104,7 +103,7 @@ print("         ----------- SETTINGs DETAIL ----------")
 if args.inferenceTest == True:
     print(f"load Test Dataset...")
     list(map( lambda k : print(f"    - {k}: {Config.paramDict['data']['dataLoader']['inference'][k]}"), Config.paramDict['data']['dataLoader']['inference']))
-    inferenceDataset = dl.DataLoader('inference')
+    inferenceDataLoader = dl.DataLoader('inference')
     print("")
 
 else:
@@ -138,64 +137,66 @@ print(f"All model loaded. Last Epoch: {startEpoch}")#", Loss: {lastLoss.item():.
 
 
 #Define Epochs
-
-trainEpoch = Epoch(dataLoader = trainDataLoader,
-                    modelList = modelList,
-                         step = edit.trainStep,
-              researchVersion = edit.version,
-           researchSubVersion = edit.subversion,
-                       writer = writer,
-              scoreMetricDict = { 'AE_PSNR': {
-                                           'function' : utils.calculateImagePSNR, 
-                                       'argDataNames' : ['SR', 'HR'], 
-                                     'additionalArgs' : ['$VALUE_RANGE_TYPE', '$COLOR_MODE'],
-                                }}, 
-               resultSaveData = ['LR', 'SR', 'HR'] ,
-           resultSaveFileName = 'train',
-          isNoResultArchiving = args.nosave,
-           earlyStopIteration = Config.param.train.step.earlyStopStep)
-
-validationEpoch = Epoch(dataLoader = validationDataLoader,
-                         modelList = modelList,
-                              step = edit.validationStep,
-                   researchVersion = edit.version,
-                researchSubVersion = edit.subversion,
-                            writer = writer,
-                   scoreMetricDict = { 'PSNR': {
-                                                'function' : utils.calculateImagePSNR, 
-                                            'argDataNames' : ['LR', 'HR'], 
-                                          'additionalArgs' : ['$VALUE_RANGE_TYPE', '$COLOR_MODE'],
-                                     }},
-                    resultSaveData = ['LR', 'AutoEncoded', 'HR'] ,
-                resultSaveFileName = 'valid',)
-
-inferenceEpoch = Epoch(dataLoader = validationDataLoader,
+if args.inferenceTest == False:
+    trainEpoch = Epoch(dataLoader = trainDataLoader,
                         modelList = modelList,
-                             step = edit.inferenceStep,
+                             step = edit.trainStep,
                   researchVersion = edit.version,
                researchSubVersion = edit.subversion,
                            writer = writer,
-                  scoreMetricDict = { 'PSNR': {
-                                               'function' : utils.calculateImagePSNR, 
-                                           'argDataNames' : ['LR', 'HR'], 
-                                         'additionalArgs' : ['$VALUE_RANGE_TYPE', '$COLOR_MODE'],
-                                    }},
-                   resultSaveData = ['LR', 'AutoEncoded', 'HR'] ,
-               resultSaveFileName = 'inference',)
+                  scoreMetricDict = { 'AE_PSNR': {
+                                            'function' : utils.calculateImagePSNR, 
+                                        'argDataNames' : ['SR', 'HR'], 
+                                        'additionalArgs' : ['$VALUE_RANGE_TYPE', '$COLOR_MODE'],
+                                    }}, 
+                resultSaveData = ['LR', 'SR', 'HR'] ,
+            resultSaveFileName = 'train',
+            isNoResultArchiving = args.nosave,
+            earlyStopIteration = Config.param.train.step.earlyStopStep,
+            name = 'TRAIN')
 
+    validationEpoch = Epoch(dataLoader = validationDataLoader,
+                            modelList = modelList,
+                                step = edit.validationStep,
+                    researchVersion = edit.version,
+                    researchSubVersion = edit.subversion,
+                                writer = writer,
+                    scoreMetricDict = { 'PSNR': {
+                                                    'function' : utils.calculateImagePSNR, 
+                                                'argDataNames' : ['SR', 'HR'], 
+                                            'additionalArgs' : ['$VALUE_RANGE_TYPE', '$COLOR_MODE'],
+                                        }},
+                        resultSaveData = ['LR', 'SR', 'HR'] ,
+                    resultSaveFileName = 'valid',
+                    name='VAILD')
+
+else:
+    inferenceEpoch = Epoch(dataLoader = inferenceDataLoader,
+                            modelList = modelList,
+                                step = edit.inferenceStep,
+                    researchVersion = edit.version,
+                researchSubVersion = edit.subversion,
+                            writer = writer,
+                    scoreMetricDict = { 'PSNR': {
+                                                'function' : utils.calculateImagePSNR, 
+                                            'argDataNames' : ['LR', 'HR'], 
+                                            'additionalArgs' : ['$VALUE_RANGE_TYPE', '$COLOR_MODE'],
+                                        }},
+                    resultSaveData = ['LR_center', 'SR'] ,
+                resultSaveFileName = 'inference',)
 
 
 
 
 
 if args.inferenceTest == True :
-    metaData = inferenceEpoch.run(currentEpoch = e, metaData = metaData, do_calculateScore = 'DETAIL', do_modelSave = False)
+    metaData = inferenceEpoch.run(currentEpoch = 0, metaData = metaData, do_calculateScore = False, do_modelSave = False, do_resultSave='EVERY')
 
 else : 
     for e in range(startEpoch, Config.param.train.step.maxEpoch):
         metaData = trainEpoch.run(currentEpoch = e, metaData = metaData)
-        #if (e + 1) % Config.param.train.step.validationStep == 0:
-        #    metaData = validationEpoch.run(currentEpoch = e, metaData = metaData, do_calculateScore = 'DETAIL', do_modelSave = False)
+        if (e + 1) % Config.param.train.step.validationStep == 0:
+            metaData = validationEpoch.run(currentEpoch = e, metaData = metaData, do_calculateScore = 'DETAIL', do_modelSave = False, do_resultSave='EVERY')
 
         
             
