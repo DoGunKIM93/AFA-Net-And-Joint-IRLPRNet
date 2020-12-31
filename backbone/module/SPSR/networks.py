@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch.nn import init
 
-import backbone.SPSR.architecture as arch
+import backbone.module.SPSR.architecture as arch
 
 logger = logging.getLogger('base')
 ####################

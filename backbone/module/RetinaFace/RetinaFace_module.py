@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from backbone.RetinaFace.RetinaFace_utils import match, log_sum_exp
+from backbone.module.RetinaFace.RetinaFace_utils import match, log_sum_exp
 
 class MultiBoxLoss(nn.Module):
     """SSD Weighted Loss Function

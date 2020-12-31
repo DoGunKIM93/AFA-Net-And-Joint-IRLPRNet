@@ -1,7 +1,7 @@
 '''
 module.py
 '''
-version = '1.13.200820'
+version = '1.20.201230'
 
 #from Python
 import time
@@ -30,8 +30,45 @@ import backbone.vision as vision
 
 
 
+######################################################################################################################################################################## 
+
+# Basic Blocks
+
+######################################################################################################################################################################## 
+
+class resBlock(nn.Module):
+    
+    def __init__(self, channelDepth, windowSize=5, inputCD=None):
+        
+        super(resBlock, self).__init__()
+        if inputCD == None:
+            inputCD = channelDepth
+        padding = math.floor(windowSize/2)
+        self.conv1 = nn.Conv2d(inputCD, channelDepth, windowSize, 1, padding)
+        self.conv2 = nn.Conv2d(channelDepth, channelDepth, windowSize, 1, padding)
+        self.conv3 = nn.Conv2d(channelDepth, channelDepth, windowSize, 1, padding)
+
+                      
+    def forward(self, x):
+
+        res = x
+        x = F.leaky_relu(self.conv1(x),0.2)
+        x = F.leaky_relu(self.conv2(x),0.2)
+        x = self.conv3(x + res)
+        
+        return x
+    
 
 
+class Conv_ReLU_Block(nn.Module):
+    def __init__(self):
+        super(Conv_ReLU_Block, self).__init__()
+        self.conv = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1, bias=False)
+        self.relu = nn.ReLU(inplace=True)
+        
+    def forward(self, x):
+        return self.relu(self.conv(x))
+        
 
 
 

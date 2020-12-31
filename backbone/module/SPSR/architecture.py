@@ -4,8 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
 from torchvision.models.vgg import model_urls
-from backbone.SPSR import block as B
-from backbone.SPSR import spectral_norm as SN
+from backbone.module.SPSR import block as B
+from backbone.module.SPSR import spectral_norm as SN
 from backbone.config import Config
 
 from torchvision.utils import save_image

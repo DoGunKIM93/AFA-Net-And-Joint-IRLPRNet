@@ -5,11 +5,11 @@ from math import ceil
 
 '''
 if p.backbone == 'mobileNet':
-    from backbone.RetinaFace.RetinaFace_config import cfg_mnet as config
+    from backbone.module.RetinaFace.RetinaFace_config import cfg_mnet as config
 elif p.backbone == 'resNet':
-    from backbone.RetinaFace.RetinaFace_config import cfg_re50 as config
+    from backbone.module.RetinaFace.RetinaFace_config import cfg_re50 as config
 '''
-from backbone.RetinaFace.RetinaFace_config import cfg_mnet as config
+from backbone.module.RetinaFace.RetinaFace_config import cfg_mnet as config
 
 class PriorBox(object):
     def __init__(self, image_size=None, phase='train'):
