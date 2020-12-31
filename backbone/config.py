@@ -1,7 +1,7 @@
 '''
 param.py
 '''
-version = '1.02.200729'
+version = '1.03.201230'
 
 # Config file parser... hagishilta.. ha;..... mandulgi jonna shilta..
 
@@ -16,6 +16,9 @@ class Config():
     datasetConfig = None
     datasetConfigDict = None
 
+    inference = None
+    inferenceDict = None
+
     @classmethod
     def readParam(cls, filename): 
         with open(filename) as yamlFile:
@@ -28,9 +31,16 @@ class Config():
             cls.datasetConfigDict = yaml.full_load(yamlFile)
             cls.datasetConfig = munchify(cls.datasetConfigDict)
 
+    @classmethod
+    def readInference(cls, filename): 
+        with open(filename) as yamlFile:
+            cls.inferenceDict = yaml.full_load(yamlFile)
+            cls.inference = munchify(cls.inferenceDict)
+
 
 def readConfigs():
     Config.readParam("param.yaml")
     Config.readDatasetConfig("datasetConfig.yaml")
+    Config.readInference("inference.yaml")
 
 readConfigs()
