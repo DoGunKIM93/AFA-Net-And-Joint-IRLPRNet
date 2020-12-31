@@ -1,4 +1,6 @@
-#DEFINE "FIXED" Dataset Config
+#################################################################################
+#                          *** datasetConfig.yaml ***                           #
+#################################################################################
 version : 1.05.200806
 
 DIV2K_SR:
@@ -145,5 +147,18 @@ Blending_SR:
     classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
         - scaleMethod
         - scaleFactor
+    preprocessings: # Must be list
+        - Pass()
+
+LSH_SR:
+    origin: CUSTOM/LSH
+    dataType:
+        LR: ImageSequence-Float
+    labelType:
+        #HR: ImageSequence-Float
+    availableMode:
+        - test
+    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+        - class
     preprocessings: # Must be list
         - Pass()
