@@ -1,7 +1,7 @@
 '''
 utils.py
 '''
-version = "1.37.201006.2"
+version = "1.38.201230"
 
 
 #From Python
@@ -83,7 +83,7 @@ def addCaptionToImageTensor(imageTensor, caption, valueRangeType='-1~1', DEFAULT
     IMAGE_HEIGHT, IMAGE_WIDTH = imageTensor.size()[-2:]
 
     #DEFAULT_TEXT_SIZE = 24
-    TEXT_SIZE = max(12, int(DEFAULT_TEXT_SIZE * (IMAGE_WIDTH / 256)))
+    TEXT_SIZE = max(12, int(DEFAULT_TEXT_SIZE * (IMAGE_HEIGHT / 256)))
     PAD_LEFT = int(DEFAULT_TEXT_SIZE * 0.5)
     PAD_TOP = int(DEFAULT_TEXT_SIZE * 0.25)
     PAD_BOTTOM = int(DEFAULT_TEXT_SIZE * 0.5)
@@ -119,16 +119,15 @@ def addFrameCaptionToImageSequenceTensor(imageSequenceTensor):
     '''
     assert imageSequenceTensor.dim() == 5
 
-    return torch.cat( list( addCaptionToImageTensor(x, f"Frame {i}") for i, x in enumerate(imageSequenceTensor.split(1, dim=1).squeeze(1)) ) , 3)
+    return torch.cat( list( addCaptionToImageTensor(x.squeeze(1), f"Frame {i}") for i, x in enumerate(imageSequenceTensor.split(1, dim=1)) ) , 3)
 
 
-def saveImageTensorToFile(dataDict, fileName, saveDataDictKeys = None, colorMode='color', valueRangeType='-1~1', interpolation='bicubic'):
+def saveImageTensorToFile(dataDict, fileName, saveDataDictKeys = None, colorMode='color', valueRangeType='-1~1', interpolation='bicubic', caption=True):
 
-    rst = []
+    rstDict = {}
 
     MAX_HEIGHT = max( list( x.size(-2) for x in dataDict.values() ) )
     MAX_WIDTH = max( list( x.size(-1) for x in dataDict.values() ) )
-        
 
     if saveDataDictKeys is None or saveDataDictKeys == []:
         saveDataDictKeys = dataDict.keys()
@@ -137,31 +136,43 @@ def saveImageTensorToFile(dataDict, fileName, saveDataDictKeys = None, colorMode
         assert k in dataDict.keys(), f"utils.py :: No key '{k}' in dataDict."
     
 
-
     for name in saveDataDictKeys:
         dim = dataDict[name].dim()
         
         rstElem = dataDict[name]
 
-        #denorm & pp for save
-        rstElem = denorm(rstElem.cpu().view(rstElem.size(0), 1 if colorMode =='grayscale' else 3, rstElem.size(2), rstElem.size(3)), valueRangeType)
+        #denorm
+        rstElem = denorm(rstElem.cpu(), valueRangeType)
+
+        #resize to MAX_SIZE both image and imageSequence Tensors
         if dim == 4:
             if rstElem.size(-2) != MAX_HEIGHT or rstElem.size(-1) != MAX_WIDTH:
                 rstElem = F.interpolate(rstElem, size=(MAX_HEIGHT, MAX_WIDTH), mode=interpolation)
         elif dim == 5:
-            rstElem = torch.cat( list( F.interpolate(x, size=(MAX_HEIGHT, MAX_WIDTH), mode=interpolation) for x in rstElem.split(1, dim=1).squeeze(1) if (x.size(-2) != MAX_HEIGHT or x.size(-1) != MAX_WIDTH)  ) , 3)
+            rstElem = torch.cat( list( F.interpolate(x.squeeze(1), size=(MAX_HEIGHT, MAX_WIDTH), mode=interpolation).unsqueeze(1) for x in rstElem.split(1, dim=1) if (x.size(-2) != MAX_HEIGHT or x.size(-1) != MAX_WIDTH)  ) , 1)
+            if caption is True:
+                rstElem = addFrameCaptionToImageSequenceTensor(rstElem) #now all rstelems are dim 4
 
-        #ADD Frame Caption to ImageSequence
-        if dim == 5:
-            rstElem = addFrameCaptionToImageSequenceTensor(rstElem)
+        rstDict.update({name: rstElem})
 
-        rstElem = addCaptionToImageTensor(rstElem, caption = name, valueRangeType=valueRangeType)
+    #get max height after add frame caption
+    MAX_HEIGHT = max( list( x.size(-2) for x in rstDict.values() ) )
 
-        rst.append(rstElem)
+    for name in saveDataDictKeys:
+        dim = rstDict[name].dim()
+        rstElem = rstDict[name]
+        
+        if dim == 4:
+            rstElem = F.pad(rstElem, (0,0,0,MAX_HEIGHT - rstElem.size(-2)), 'constant', 0)
+
+        if caption is True:
+            rstElem = addCaptionToImageTensor(rstElem, caption = name, valueRangeType=valueRangeType)
+        rstDict[name] = rstElem
+        
     
-    assert len(rst) != 0, 'utils.py :: There is no save data...Make sure saveDataDictKeys in dataDict.keys()'
+    assert len(rstDict) != 0, 'utils.py :: There is no save data...Make sure saveDataDictKeys in dataDict.keys()'
 
-    rst = torch.cat(rst, 3) 
+    rst = torch.cat(list(rstDict.values()), 3) 
     save_image(rst, fileName, normalize=True)
 
 
@@ -189,9 +200,9 @@ def loadModels(modelList, version, subversion, loadModelNum):
             else:
                 try:
                     if(loadModelNum == '-1'):
-                        checkpoint = torch.load('./data/' + version + '/model/'+subversion+'/' + mdlStr + '.pth')
+                        checkpoint = torch.load('./data/' + version + '/checkpoint/'+subversion+'/' + mdlStr + '.pth')
                     else:
-                        checkpoint = torch.load('./data/' + version + '/model/'+subversion+'/' + mdlStr + '-' + loadModelNum+ '.pth')
+                        checkpoint = torch.load('./data/' + version + '/checkpoint/'+subversion+'/' + mdlStr + '-' + loadModelNum+ '.pth')
                 except:
                     print("utils.py :: Failed to load saved checkpoints.")
                     if modelList.getPretrainedPath(mdlStr) is not None:
@@ -276,7 +287,10 @@ def loadModels(modelList, version, subversion, loadModelNum):
                         print('utils.py :: Failed to load meta data. It may caused by loading old models. (before main.py version 3.00) ')
                         
                 
-                
+                try:
+                    startEpoch = checkpoint['epoch'] if checkpoint['epoch'] > startEpoch else startEpoch
+                except:
+                    print('utils.py :: error to load last epoch')
 
 
                 try:
@@ -312,9 +326,9 @@ def saveModels(modelList, version, subversion, epoch, metaData):
             saveData.update({'epoch': epoch + 1})
 
 
-            torch.save(saveData, './data/'+version+'/model/'+subversion+'/' + mdlStr + '.pth')
+            torch.save(saveData, './data/'+version+'/checkpoint/'+subversion+'/' + mdlStr + '.pth')
             if epoch % Config.param.train.step.archiveStep == 0:
-                torch.save(saveData, './data/'+version+'/model/'+subversion+'/'+ mdlStr +'-%d.pth' % (epoch + 1))
+                torch.save(saveData, './data/'+version+'/checkpoint/'+subversion+'/'+ mdlStr +'-%d.pth' % (epoch + 1))
 
 def saveTensorToNPY(tnsr, fileName):
     #print(tnsr.cpu().numpy())
@@ -462,7 +476,6 @@ def initArgParser():
 
     parser.add_argument('--inferenceTest', '-it', action='store_true', help="Model Inference")
     parser.add_argument('--load', '-l', nargs='?', default='None', const='-1', help="load 여부")
-    parser.add_argument('--irene', '-i', action='store_true', help="키지마세요")
     parser.add_argument('--nosave', '-n', action='store_true', help="epoch마다 validation 과정에 생기는 이미지를 가장 최근 이미지만 저장")
     parser.add_argument('--debug', '-d', action='store_true', help="VS코드 디버그 모드")
 
@@ -472,50 +485,3 @@ def initArgParser():
     
 
 
-
-def printirene():
-    print("	@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%//**,,,,*,**,,*(#&&&&&&@@@@@@@@@@@@@@@@@@@@&&&&%")
-    print("	@@@@@@@@@@@@@@@@@@@@@@@@@&(**,,,,,,,,,,,,,,,,,,,,,,,,,*%@@@@@@@@@@@@@@@@(@@&&&&%")
-    print("	@@@@@@@@@@@@@@@@@@@@@@@(,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,*,(@@@@@@@@@@@@@@&&&&%%")
-    print("	@@@@@@@@@@@@@@@@@@@@(*,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,*/@@@@@@@@@@@&&&&%%")
-    print("	@@@@@@@@@@@@@@@@@#,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,*/#@@@@@@@@&&&&%#")
-    print("	@@@@@@@@@@@@@&/,,,,,.,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,***#@@@@@@&&&&%#")
-    print("	@@@@@@@@@@&/,,.,,,,,.,,,,,,,,,,,,,.,,,,,.,,,,,,,,,.,..,.,,**,*,,,,,,*&@@@@&&&%%#")
-    print("	@@@@@@@&/,,,,,,,,.,,,,,.,,..,,.,,,.,,,,...        .. .....*(*,,,,,,,,*/@@@&&&%%#")
-    print("	@@@@@&*,.,...,.,,.,..,,.,.....,,,...              ,. .....,/****,,,,*,**&@&&&%%#")
-    print("	@@@@/,,....,,,........,..,,,.....               .,,***,*,,,,/. ,/**,,,**/&&&&%#(")
-    print("	@@%,,..,.,...,.,,....,..,.......  .     ....  ../(/#%%%%%#(//*, .,,,,**,,/&&&%#(")
-    print("	@#,,,.,,,,,,,...,,,..,,.,........      .....  .,/(/%&&&%%%%%%%#/. ,,*/****%&%%#/")
-    print("	&*,,,,,,,,,......,.,............,.    . .. ....,(*/&&&&&&&&&&&%%%,.,///***%&%%#/")
-    print("	*,.,,,,....,....... ,*.,.,...*.,..   .  .......*#(&&&&&&&&&&&&&&&&,,,****/%&%%(/")
-    print("	,................ .,,,..,..,,.,..    . ...,....,*(%&&&&&&&&&&&&&&&%,..*,*/&&%#(*")
-    print("	,,,............ ..,,,,.,*..*,/... . ...,,..,..**%%(*(/%%&&&&&&&&&@&, .,**/&&&#/,")
-    print("	,,............ ,.,,,*,**.,,,..,... ......,.. .*##(%%%&%%%&&&&&&&%&&( .,,*&&&&@/,")
-    print("	,,.....  ....,*,.*,,,*,*(,*,,,,..,....,,,.*. ,.. ,.,%&&&&&&&&%#(/**/ .,*#&&&&&&%")
-    print("	..  .    ..*,/,./*,,*,,,,*.,,,,.,,..,.,.,,,,,/##(**(%&&&&&&&&&&%&&&%,,,/&&&&&&&&")
-    print("	,,,.    ..(*/*,***,*.**,*,,,,**,*...*.*,,,.,*%&&&&&&&&&&&&&&%.  *./.,,(&&&&&&&&&")
-    print("	,...   /.(/#*,,*/**,*.,*,,.,*,,,*,..,,,.,**,%&&&&&&&&&&&&&&&%#(/%..,,%&&&&&&&&&&")
-    print("	@,.....*/#/*/../*/***/,,.,,**,/,,....,.*,,/(&&&&&&&&&&&%%&&&&&&&%%,(%%&&&&&&&&&&")
-    print("	@@*...,#**/**/,/,**,*,,**,,,**/**..,.,,,,*(&&&&&&&&%%%&%&&&&&&&&&&%%%%%&&&&&&&&&")
-    print("	@@@(%##*/(,,**,*#/,,,.,,,****/***,.*,,.,*/%&&&&&&&&#%#%###%%&&&&&&##%%%%&&&&&&&&")
-    print("	@@@@@%/(,/*,.*,//*,,.   .,*******,,,,.,,/#%&&&&&&&&&&&&&&%&&&&&&&((##%%%&&&&&&&&")
-    print("	@@@@@(/(( .***/*,.,        ,***,,.,.*.,*#&%%%&&&&&&&&&&&&&&&&&&&@###%%&%%#/,,.. ")
-    print("	@@@&#/*(,,*.(,,  .          .,,,.....,((#%,/#%%&&.,(/,,//#&&&&@@@&&&(,*..,/**/,,")
-    print("	@@&#(,**,,//..     .  . ,,(,,*,/,..,,**%%%&&&%&&%#(((//,,#&&&@@&&#  .,/*.....,/.")
-    print("	@@##//,,/(.. .,,*,*,**,*//(/*(/,******,#%%%&&&&&&&%#(((#&&&&@&&&*  .  ....... ,.")
-    print("	@#%/*(,//,.,*.****(/**#(/#**////#***,..,**(%&&&&&&&&&&&&&%&&&&&%..         .*(#%")
-    print("	&&#**,(,/,,*(//(/,*//((,*,,... / ../,,,/((///#%%&&&&&&&%./#%&&#/*/    . .,#%%%%%")
-    print("	&&#**(#(*,,,*/***.////,,.//....*...*,,.....,*,,/##%%%%.,.,//*,..*,  *,..,#%%%&%&")
-    print("	&/*/(//(,,**,**.,*/,*#*..(.,,.(.,.(/(((###(/%(/,.. .,, .(//..... . ,,.,.*%%%%&&&")
-    print("	#**//*.*,,*,./*,*,.,*..//..,#,**(/*,,**(#...     ,.  .**(,.**/////,,.,.*(%%&&&&&")
-    print("	**//.,...,./**.,, ./..,,..,(,,*/////(,..*.   .**.  .,,,*.........,,.,*,.(%&%&&&%")
-    print("	//*,..,,..**,*.,.  ..(,.,.(.,**,,*,   .*   .,,,  ./*,... .,,,..  ,*/(.,,#%%%%%%%")
-    print("	/,,,..*..,**,.,.   .,,.,*.,,(,,,/.   . .  ,,*,... ,  ,*,,.....   ./,/*/. ,##%%%#")
-    print("	/.,.,..,,,,,,,,,.. ......,,*,,....  .   .,*,..  ...,.,..        .*,........*(((*")
-    print("	,,,,..* /.***,..   ,.....,,..  ..  .....  ... .,.  .,.             .     ......,")
-    print("	..,...,,.,*,,.*     .........  ...,(  ..  .,,.*     ,..                      ...")
-    print("	....* ,/,,**,   ,    .,.,,.,.. .**.   ,/.. ..  . ...,...                     ...")
-    print("	.... ., .,,*...     .,,.,, ..*,  ..     .**,*,...  ..*,...           ,   .   ...")
-    print("	. .. .....,...,.     .,*......   ,,     .....      ..........  ...... ,**,./*...")
-    print("	.  .. ,/,.,... ...*...,.. (*. .,..    ...         ..   . ..,*..,* ..,,,,,..*(*,,")
-    print("	.  .,..,..,...     ...# .....  . .     .        . .,,.,,..    .     #%,., ,..*#*")
