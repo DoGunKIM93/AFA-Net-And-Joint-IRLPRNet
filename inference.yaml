@@ -1,0 +1,20 @@
+#################################################################################
+#                            *** inference.yaml ***                             #
+#################################################################################
+version : 1.01.201230
+
+
+General-Perceptual:
+    model: SPSR_Generator
+    param: 4
+    weight: SPSR-baseline-netG.pth
+
+General-Perceptual-Robust:
+    model: SPSR_Generator
+    param: 4
+    weight: SPSR-Robust-netG-General.pth
+
+General-PSNR:
+    model: EDVR
+    param: 128, 1, 1, 5, 40
+    weight: EDVR_SISR_general.pth 
