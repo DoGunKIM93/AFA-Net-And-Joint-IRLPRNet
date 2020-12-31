@@ -1,7 +1,7 @@
 '''
 structure.py
 '''
-version = "1.10.201015"
+version = "1.16.201230"
 
 import torch.nn as nn
 import torch
@@ -36,7 +36,8 @@ class Epoch():
                  resultSaveData = None,
                  resultSaveFileName = '',
                  isNoResultArchiving = False,
-                 earlyStopIteration = -1):
+                 earlyStopIteration = -1,
+                 name = None):
 
         self.dataLoader = dataLoader
         self.modelList = modelList
@@ -55,16 +56,19 @@ class Epoch():
         self.resultSaveFileName = resultSaveFileName
         self.isNoResultArchiving = isNoResultArchiving
         self.earlyStopIteration = earlyStopIteration
+        self.name = name
 
     def run(self, currentEpoch, metaData = None,
             do_resultSave = True, 
             do_modelSave = True,
-            do_calculateScore = True):
+            do_calculateScore = True,
+            do_calculateLoss = True):
 
 
-        assert do_resultSave in [True, False]
+        assert do_resultSave in [True, 'EVERY', False]
         assert do_modelSave in [True, False]
         assert do_calculateScore in [True, 'DETAIL', False]
+        #assert do_calculateLoss in [True, False]
 
 
 
@@ -121,7 +125,6 @@ class Epoch():
         #       in-Batch Instructions          
         ####################################
         for i, dataDict in enumerate(self.dataLoader):
-
             if i == self.earlyStopIteration: break
 
             batchSize = dataDict[list(dataDict.keys())[0]].size(0)
@@ -129,7 +132,7 @@ class Epoch():
 
 
             ####################################
-            #         Instruction Step             
+        #####         Instruction Step             
             ####################################
             lossDict, resultDict = self.step(currentEpoch, self.modelList, dataDict)
 
@@ -140,7 +143,7 @@ class Epoch():
 
 
             ####################################
-            #             SCORE CALC             
+        #####             SCORE CALC             
             ####################################
             if do_calculateScore is not False:
 
@@ -190,7 +193,7 @@ class Epoch():
 
 
             ####################################
-            #             LOSS              
+        #####             LOSS              
             ####################################
             for key in lossDict:
                 if key in AvgLossDict:
@@ -203,18 +206,35 @@ class Epoch():
 
 
 
+            ####################################        
+        #####            save Rst. (EVERY)            
+            ####################################W
+            if do_resultSave is 'EVERY':
+
+                # Save sampled images
+                if self.isNoResultArchiving :        
+                    savePath = './data/' + self.researchVersion + '/result/' + self.researchSubVersion + '/' + self.resultSaveFileName + '.png'
+                else :
+                    savePath = f'./data/{self.researchVersion}/result/{self.researchSubVersion}/{self.resultSaveFileName}-{currentEpoch}-{i}.png'
+                    
+                utils.saveImageTensorToFile(resultDict, savePath, saveDataDictKeys=self.resultSaveData, colorMode=COLOR_MODE, valueRangeType=VALUE_RANGE_TYPE, interpolation='nearest')
+
+                #Image Logging is not Supported now
+                #utils.logImages(self.writer, ['train_images', cated_images], currentEpoch)
+            
+
+
             ####################################
-            #        Printing & Logging              
+        #####        Printing & Logging              
             ####################################
-            if (i + 1) % 1 == 0:
+            if do_calculateScore is not 'DETAIL':
 
                 #calc Time per Batch
                 oldTimePerBatch = timePerBatch
                 timePerBatch = time.perf_counter()
 
                 #print Current status
-                print('E[%d/%d][%.2f%%] NET:'
-                        % (currentEpoch, MAX_EPOCH, (i + 1) / (DATASET_LENGTH / PARAM_BATCH_SIZE / 100)),  end=" ")
+                print(f'{(self.name + " :: ") if self.name is not None else ""}E[{currentEpoch}/{MAX_EPOCH}][{(i + 1) / (DATASET_LENGTH / PARAM_BATCH_SIZE / 100):.2f}%] NET:',  end=" ")
 
                 #print Loss
                 print('loss: [', end="")
@@ -239,7 +259,7 @@ class Epoch():
                 print(f"] time: {(timePerBatch - oldTimePerBatch):.2f} sec    ", end="\r")
 
 
-
+            
         ####################################
         #      ENDing Calcs of Epochs              
         ####################################
@@ -269,7 +289,7 @@ class Epoch():
         ####################################
 
         #print Epoch Status
-        print(f'E[{currentEpoch}/{Config.param.train.step.maxEpoch}] NET:',  end=" ")
+        print(f'{(self.name + " :: ") if self.name is not None else ""}E[{currentEpoch}/{Config.param.train.step.maxEpoch}] NET:',  end=" ")
 
         #print Epoch Loss & Score
         if len(AvgLossDict.keys()) > 0:
@@ -357,6 +377,7 @@ class Epoch():
         
 
         print('Finished.')
+        print('')
 
 
 
@@ -370,13 +391,6 @@ class Epoch():
 
 
         return metaData
-
-
-
-
-class DataLoaderVaultBase():
-    def __init__(self):
-        super(DataLoaderVaultBase, self).__init__()
 
 
 
