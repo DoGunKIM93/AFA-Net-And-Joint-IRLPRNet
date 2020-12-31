@@ -1,7 +1,7 @@
 '''
 data_loader.py
 '''
-version = "2.31.200916"
+version = "2.36.201230"
 
 
 #FROM Python LIBRARY
@@ -173,6 +173,7 @@ class DatasetComponent():
         elif self.datasetConfig.dataType['dataType'] == 'Image':
             # construct all of readable file lists in class path lists
             dataFileLists = list(map( lambda x :  list(filter( lambda x:(x.endswith(".png") or x.endswith(".jpg") or x.endswith(".jpeg") or x.endswith(".bmp")), list(map( lambda y : x + "/" + y, sorted(os.listdir(mainPath + x)))) )), pathList))
+        
         elif self.datasetConfig.dataType['dataType'] == 'ImageSequence':
             # construct all of sequence folders in class path lists
             dataFileLists = list(map( lambda x : list(map( lambda y : x + "/" + y, sorted(os.listdir(mainPath + x)) )), pathList))
@@ -550,7 +551,7 @@ class Dataset(torchDataset):
                 dFP = self.globalFileList[componentIndex][seqIdx]['dataFilePath'][fileIdx]
                 dFP = Config.param.data.path.datasetPath + dFP if isinstance(dFP, str) else [Config.param.data.path.datasetPath + x for x in dFP]
 
-                lFP = self.globalFileList[componentIndex][seqIdx]['labelFilePath'][fileIdx] if self.globalFileList[componentIndex][seqIdx]['labelFilePath'][fileIdx] is not None else None
+                lFP = self.globalFileList[componentIndex][seqIdx]['labelFilePath'][fileIdx] if self.globalFileList[componentIndex][seqIdx]['labelFilePath'] is not None else None
                 lFP = (Config.param.data.path.datasetPath + lFP if isinstance(lFP, str) else [Config.param.data.path.datasetPath + x for x in lFP]) if lFP is not None else None
 
                 dFPList.append(dFP)
@@ -635,7 +636,7 @@ class Dataset(torchDataset):
     # CROP OPERATION usually be here
     # Make Sure that ALL output Size (C, H, W) are same.
     def _dataAugmentation(self, tnsrList, augmentations: List[str]):
-        
+
         # If input is a list of two tensors -> make it to list of list of two tensors
         # The standard Input type is list of list of two tensors -> [  [data_1, label_1], ... , [data_N, label_N]  ]
         if not isinstance(tnsrList[0], list):
@@ -797,8 +798,8 @@ class Dataset(torchDataset):
         rstDict = {}
 
 
-        filePathList = [dataFilePath, labelFilePath]
-        typeList = [dataType, labelType]
+        filePathList = [dataFilePath] if labelFilePath is None else [dataFilePath, labelFilePath]
+        typeList = [dataType] if labelType == {} else [dataType, labelType]
 
 
         ###################################################################################
@@ -810,28 +811,31 @@ class Dataset(torchDataset):
             rstDict[Type['dataName']] = self._readItem(Type, FilePath, index, preProc)
 
 
-
-        #print(rstDict[dataType['dataName']])
-
-
         ###################################################################################
         # Data Augmentation
         ###################################################################################--------------------------------------------------------------
         #print(len((list(self._dataAugmentation( x , self.augmentation ) for x in list(zip(rstDict[dataType['dataName']], rstDict[labelType['dataName']]))))[0]))
         
-        if isinstance(rstDict[dataType['dataName']], list):
-            rstDict[dataType['dataName']], rstDict[labelType['dataName']] =  list(zip(*list(self._dataAugmentation( x , self.augmentation ) for x in list(zip(rstDict[dataType['dataName']], rstDict[labelType['dataName']])))))
+        if isinstance(rstDict[dataType['dataName']], list): #TODO:
+            if labelType != {}:#if label Exists
+                rstDict[dataType['dataName']], rstDict[labelType['dataName']] =  list(zip(*list(self._dataAugmentation( x , self.augmentation ) for x in list(zip(rstDict[dataType['dataName']], rstDict[labelType['dataName']])))))
+                rstDict[labelType['dataName']] = list ( self._setTensorValueRange( x , self.valueRangeType) for x in rstDict[labelType['dataName']] )
+            else:#if label not Exists
+                rstDict[dataType['dataName']] =  list(self._dataAugmentation( x , self.augmentation )[0] for x in list(zip(rstDict[dataType['dataName']])))
             rstDict[dataType['dataName']] = list ( self._setTensorValueRange( x , self.valueRangeType) for x in rstDict[dataType['dataName']] )
-            rstDict[labelType['dataName']] = list ( self._setTensorValueRange( x , self.valueRangeType) for x in rstDict[labelType['dataName']] )
         else:
-            rstDict[dataType['dataName']], rstDict[labelType['dataName']] =  self._dataAugmentation( (rstDict[dataType['dataName']], rstDict[labelType['dataName']]) , self.augmentation )
+            if labelType != {}:#if label Exists
+                rstDict[dataType['dataName']], rstDict[labelType['dataName']] =  self._dataAugmentation( [rstDict[dataType['dataName']], rstDict[labelType['dataName']]] , self.augmentation )
+                rstDict[labelType['dataName']] = self._setTensorValueRange(rstDict[labelType['dataName']], self.valueRangeType)
+            else:#if label not Exists
+                rstDict[dataType['dataName']] =  self._dataAugmentation( [rstDict[dataType['dataName']]] , self.augmentation )[0]
             rstDict[dataType['dataName']] = self._setTensorValueRange(rstDict[dataType['dataName']], self.valueRangeType)
-            rstDict[labelType['dataName']] = self._setTensorValueRange(rstDict[labelType['dataName']], self.valueRangeType)
+            
 
 
 
 
-
+        #print(rstDict)
 
         ###################################################################################
         # Data Demension Align
@@ -846,14 +850,14 @@ class Dataset(torchDataset):
             elif dataType['dataType'] == 'ImageSequence':
                 assert len(rstDict[dataType['dataName']][0].size()) == 4
 
-
-            if labelType['dataType'] == 'Text':
-                pass
-            elif labelType['dataType'] == 'Image':
-                assert len(rstDict[labelType['dataName']][0].size()) == 4
-                rstDict[labelType['dataName']] = rstDict[labelType['dataName']].squeeze(0)
-            elif labelType['dataType'] == 'ImageSequence':
-                assert len(rstDict[labelType['dataName']][0].size()) == 4
+            if labelType != {}:
+                if labelType['dataType'] == 'Text':
+                    pass
+                elif labelType['dataType'] == 'Image':
+                    assert len(rstDict[labelType['dataName']][0].size()) == 4
+                    rstDict[labelType['dataName']] = rstDict[labelType['dataName']].squeeze(0)
+                elif labelType['dataType'] == 'ImageSequence':
+                    assert len(rstDict[labelType['dataName']][0].size()) == 4
 
         else:
             if dataType['dataType'] == 'Text':
@@ -864,14 +868,14 @@ class Dataset(torchDataset):
             elif dataType['dataType'] == 'ImageSequence':
                 assert len(rstDict[dataType['dataName']].size()) == 4
 
-
-            if labelType['dataType'] == 'Text':
-                pass
-            elif labelType['dataType'] == 'Image':
-                assert len(rstDict[labelType['dataName']].size()) == 4
-                rstDict[labelType['dataName']] = rstDict[labelType['dataName']].squeeze(0)
-            elif labelType['dataType'] == 'ImageSequence':
-                assert len(rstDict[labelType['dataName']].size()) == 4
+            if labelType != {}:
+                if labelType['dataType'] == 'Text':
+                    pass
+                elif labelType['dataType'] == 'Image':
+                    assert len(rstDict[labelType['dataName']].size()) == 4
+                    rstDict[labelType['dataName']] = rstDict[labelType['dataName']].squeeze(0)
+                elif labelType['dataType'] == 'ImageSequence':
+                    assert len(rstDict[labelType['dataName']].size()) == 4
 
         return rstDict
 
