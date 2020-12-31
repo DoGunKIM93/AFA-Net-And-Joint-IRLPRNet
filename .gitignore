@@ -13,3 +13,4 @@ test.py
 test.ipynb
 *.pyx
 *.py.backup
+.ipynb*
