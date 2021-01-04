@@ -5,18 +5,6 @@
 
 
 
-
-*   1[TRAIN](#id-3.BasicUsage-TRAIN)
-    *   1.1 [Arguments](#id-3.BasicUsage-Arguments)
-*   2[INFERENCE](#id-3.BasicUsage-INFERENCE)
-    *   2.1 [Arguments](#id-3.BasicUsage-Arguments.1)
-
-  
-
-  
-
-  
-
 TRAIN
 =====
 
@@ -109,7 +97,7 @@ python inference.py
  
   
    
-   
+
 
 Index
 =====
