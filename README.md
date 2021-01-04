@@ -4,6 +4,106 @@
 
 
 
+
+
+*   1[TRAIN](#id-3.BasicUsage-TRAIN)
+    *   1.1 [Arguments](#id-3.BasicUsage-Arguments)
+*   2[INFERENCE](#id-3.BasicUsage-INFERENCE)
+    *   2.1 [Arguments](#id-3.BasicUsage-Arguments.1)
+
+  
+
+  
+
+  
+
+TRAIN
+=====
+
+[?](#)
+
+`python main.py`
+
+ Arguments
+----------
+
+**Load option (optional)**
+
+\--load
+
+\-l
+
+\--load <_**int**_\>
+
+\-l <_**int**_\>
+
+ Load and start training from last(or _**specific**_) epoch.
+
+**Training without result saving (optional)**
+
+\--nosave
+
+\-n
+
+ Training without result saving except a last result.
+
+**Inference test (optional)**
+
+\--inferenceTest
+
+\-it
+
+ With this argument, AIR Research Framework will start _**inference test**_ instead training with current script.
+
+  
+
+  
+
+INFERENCE
+=========
+
+[?](#)
+
+`python inference.py`
+
+ Arguments
+----------
+
+**Infernce preset name (necessary)**
+
+\--inferencePresetName <preset name>
+
+\-n <preset name>
+
+ Set the inference preset name. Presets are defined in _**inference.yaml.**_
+
+**Input path (necessary)**
+
+\--inputPath <path>
+
+\-i <path>
+
+ Input file path to inference. _**Image file path → Single image inference, Folder path → Multi Image inference.**_
+
+**Output path (necessary)**
+
+\--outputPath <path>
+
+\-o <path>
+
+ Output path including a file name. _**Single image → Image file ext., Multi image → Video file ext.  
+**_
+
+**Frame per second (necessary for multi image inferencing)**
+
+\--fps <int>
+
+\-f <ing>
+
+ FPS setting**.**
+
+
+
 Index
 =====
 
