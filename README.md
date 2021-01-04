@@ -30,10 +30,10 @@ python main.py
 **Load option (optional)**
 
 ```bash
-\--load
-\-l
-\--load <_**int**_\>
-\-l <_**int**_\>
+--load
+-l
+--load <int>
+-l <int>
 ```
 
  Load and start training from last(or _**specific**_) epoch.
@@ -41,8 +41,8 @@ python main.py
 **Training without result saving (optional)**
 
 ```bash
-\--nosave
-\-n
+--nosave
+-n
 ```
 
  Training without result saving except a last result.
@@ -50,8 +50,8 @@ python main.py
 **Inference test (optional)**
 
 ```bash
-\--inferenceTest
-\-it
+--inferenceTest
+-it
 ```
 
  With this argument, AIR Research Framework will start _**inference test**_ instead training with current script.
@@ -74,34 +74,38 @@ python inference.py
 
 **Infernce preset name (necessary)**
 
-\--inferencePresetName <preset name>
-
-\-n <preset name>
+```bash
+--inferencePresetName <preset name>
+-n <preset name>
+```
 
  Set the inference preset name. Presets are defined in _**inference.yaml.**_
 
 **Input path (necessary)**
 
-\--inputPath <path>
-
-\-i <path>
+```bash
+--inputPath <path>
+-i <path>
+```
 
  Input file path to inference. _**Image file path → Single image inference, Folder path → Multi Image inference.**_
 
 **Output path (necessary)**
 
-\--outputPath <path>
-
-\-o <path>
+```bash
+--outputPath <path>
+-o <path>
+```
 
  Output path including a file name. _**Single image → Image file ext., Multi image → Video file ext.  
 **_
 
 **Frame per second (necessary for multi image inferencing)**
 
-\--fps <int>
-
-\-f <ing>
+```bash
+--fps <int>
+-f <int>
+```
 
  FPS setting**.**
 
