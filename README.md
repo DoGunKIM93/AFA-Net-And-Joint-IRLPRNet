@@ -63,8 +63,6 @@ python main.py
 INFERENCE
 =========
 
-[?](#)
-
 ```bash
 python inference.py
 ```
@@ -98,7 +96,6 @@ python inference.py
 ```
 
  Output path including a file name. _**Single image → Image file ext., Multi image → Video file ext.  
-**_
 
 **Frame per second (necessary for multi image inferencing)**
 
@@ -107,9 +104,12 @@ python inference.py
 -f <int>
 ```
 
- FPS setting**.**
+ FPS setting
 
-
+ 
+  
+   
+   
 
 Index
 =====
