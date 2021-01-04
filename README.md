@@ -20,38 +20,39 @@
 TRAIN
 =====
 
-[?](#)
-
-`python main.py`
+```bash
+python main.py
+```
 
  Arguments
 ----------
 
 **Load option (optional)**
 
+```bash
 \--load
-
 \-l
-
 \--load <_**int**_\>
-
 \-l <_**int**_\>
+```
 
  Load and start training from last(or _**specific**_) epoch.
 
 **Training without result saving (optional)**
 
+```bash
 \--nosave
-
 \-n
+```
 
  Training without result saving except a last result.
 
 **Inference test (optional)**
 
+```bash
 \--inferenceTest
-
 \-it
+```
 
  With this argument, AIR Research Framework will start _**inference test**_ instead training with current script.
 
@@ -64,7 +65,9 @@ INFERENCE
 
 [?](#)
 
-`python inference.py`
+```bash
+python inference.py
+```
 
  Arguments
 ----------
