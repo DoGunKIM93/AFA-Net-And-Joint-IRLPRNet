@@ -11,3 +11,4 @@ old code
 *.pyx
 *.py.backup
 .ipynb*
+lp
