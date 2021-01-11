@@ -1,10 +1,10 @@
-'''
+"""
 model.py
-'''
-version = '1.60.201230'
+"""
+version = "1.60.201230"
 
 
-#from Python
+# from Python
 import time
 import csv
 import os
@@ -14,12 +14,12 @@ import sys
 import functools
 from shutil import copyfile
 
-#from Pytorch
+# from Pytorch
 import torch
 import torchvision
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.autograd import Variable,grad
+from torch.autograd import Variable, grad
 from torchvision import datasets
 from torchvision import transforms
 from torchvision.utils import save_image
@@ -28,15 +28,60 @@ from torch.autograd.function import once_differentiable
 from torch.nn.modules.utils import _pair
 from torch.autograd import Function
 
-#from this project
+# from this project
 from backbone.config import Config
 import backbone.vision as vision
-    #CovPool
-from backbone.module.module import CovpoolLayer, SqrtmLayer, CovpoolLayer3d, SqrtmLayer3d, TriuvecLayer, resBlock, Conv_ReLU_Block
-    #Attentions
+
+# CovPool
+from backbone.module.module import (
+    CovpoolLayer,
+    SqrtmLayer,
+    CovpoolLayer3d,
+    SqrtmLayer3d,
+    TriuvecLayer,
+    resBlock,
+    Conv_ReLU_Block,
+)
+
+# Attentions
 from backbone.module.module import SecondOrderChannalAttentionBlock, NonLocalBlock, CrissCrossAttention
 
 
+class tSeNseR(nn.Module):
+    def __init__(self, CW=2048, colorMode="color"):
+        super(tSeNseR, self).__init__()
+
+        self.CW = CW
+
+        self.decoder1 = self.decoder(CW, CW // 2)  # 2->4
+        self.decoder2 = self.decoder(CW // 2, CW // 4)  # 4->8
+        self.decoder3 = self.decoder(CW // 4, CW // 8)  # 8->16
+        self.decoder4 = self.decoder(CW // 8, CW // 16)  # 16->32
+
+        self.decoderHR = self.decoder(CW // 16, 3 if colorMode == "color" else 1, act=None)
+
+    def decoder(self, inCh, outCh, normLayer=nn.BatchNorm2d, act=nn.ReLU):  # C // 2 , HW X 2
+        mList = []
+        mList.append(nn.ConvTranspose2d(inCh, outCh, 4, 2, 1))
+        if normLayer is not None:
+            mList.append(normLayer(outCh))
+        if act is not None:
+            mList.append(act())
+        return nn.Sequential(*mList)
+
+    def forward(self, f1, f2, f3, f4, LR=None):
+
+        decoded_f4 = self.decoder1(f4)
+
+        decoded_f3 = self.decoder2(decoded_f4 + f3)
+
+        decoded_f2 = self.decoder3(decoded_f3 + f2)
+
+        decoded_f1 = self.decoder4(decoded_f2 + f1)
+
+        decoded = F.tanh(self.decoderHR(decoded_f1)) + LR if LR is not None else F.sigmoid(self.decoderHR(decoded_f1))
+
+        return decoded
 
 
 class DeNIQuA_Res(nn.Module):
@@ -49,14 +94,14 @@ class DeNIQuA_Res(nn.Module):
 
         self.inFeature = inFeature
 
-        self.oxo_in = nn.Conv2d( featureCW * inFeature, CW, 1, 1, 0)
+        self.oxo_in = nn.Conv2d(featureCW * inFeature, CW, 1, 1, 0)
         self.res = basicResBlocks(CW=CW, Blocks=9)
-        self.oxo_out = nn.Conv2d( CW, outCW, 1, 1, 0)
+        self.oxo_out = nn.Conv2d(CW, outCW, 1, 1, 0)
 
     def forward(self, xList):
 
         assert self.inFeature == len(xList)
-        
+
         if self.featureExtractor is not None:
             rstList = []
             for i in range(self.inFeature):
@@ -72,7 +117,6 @@ class DeNIQuA_Res(nn.Module):
         return F.sigmoid(x)
 
 
-
 class DeNIQuA(nn.Module):
     def __init__(self, featureExtractor, CW=64, inFeature=1, outCW=3, featureCW=1280):
         super(DeNIQuA, self).__init__()
@@ -83,18 +127,20 @@ class DeNIQuA(nn.Module):
 
         self.inFeature = inFeature
 
-        self.DecoderList = nn.ModuleList([ # 1/32
-            nn.ConvTranspose2d( featureCW * inFeature,   CW*8, 4, 2, 1), #1/16
-            nn.ConvTranspose2d( CW*8,  CW*4, 4, 2, 1), #1/8
-            nn.ConvTranspose2d( CW*4,  CW*2, 4, 2, 1), #1/4
-            nn.ConvTranspose2d( CW*2 , CW*1, 4, 2, 1), #1/2
-            nn.ConvTranspose2d( CW*1 , outCW, 4, 2, 1), #1/1
-        ])
+        self.DecoderList = nn.ModuleList(
+            [  # 1/32
+                nn.ConvTranspose2d(featureCW * inFeature, CW * 8, 4, 2, 1),  # 1/16
+                nn.ConvTranspose2d(CW * 8, CW * 4, 4, 2, 1),  # 1/8
+                nn.ConvTranspose2d(CW * 4, CW * 2, 4, 2, 1),  # 1/4
+                nn.ConvTranspose2d(CW * 2, CW * 1, 4, 2, 1),  # 1/2
+                nn.ConvTranspose2d(CW * 1, outCW, 4, 2, 1),  # 1/1
+            ]
+        )
 
-    def forward(self, xList):
+    def forward(self, xList, sc=None):
 
         assert self.inFeature == len(xList)
-        
+
         if self.featureExtractor is not None:
             rstList = []
             for i in range(self.inFeature):
@@ -105,327 +151,199 @@ class DeNIQuA(nn.Module):
 
         for i, decoder in enumerate(self.DecoderList):
             x = decoder(x)
-            if i + 1 < len(self.DecoderList):    
+            if i + 1 < len(self.DecoderList):
                 x = F.relu(x)
 
-        return F.sigmoid(x)
+        return F.sigmoid(x + sc) if sc is not None else F.sigmoid(x)
 
 
+class DeNIQuAdv(nn.Module):
+    def __init__(self, featureExtractor, CW=64, inFeature=1, outCW=3, featureCW=1280):
+        super(DeNIQuAdv, self).__init__()
+
+        self.featureExtractor = featureExtractor
+
+        self.CW = CW
+
+        self.inFeature = inFeature
+
+        self.oxo_in_1 = nn.Conv2d(featureCW * inFeature, featureCW, 1, 1, 0)
+        self.oxo_in_2 = nn.Conv2d(featureCW, featureCW // 4, 1, 1, 0)
+
+        self.res_1 = basicResBlocks(CW=featureCW // 4, Blocks=9, lastAct=False)
+        self.res_2 = basicResBlocks(CW=featureCW // 4, Blocks=9, lastAct=False)
+        self.res_3 = basicResBlocks(CW=featureCW // 4, Blocks=9, lastAct=False)
+
+        self.oxo_out_1 = nn.Conv2d(featureCW // 4, featureCW, 1, 1, 0)
+        self.oxo_out_2 = nn.Conv2d(featureCW, CW * 8, 1, 1, 0)
+
+        self.DecoderList = nn.ModuleList(
+            [  # 1/32
+                nn.ConvTranspose2d(CW * 8, CW * 8, 4, 2, 1),  # 1/16
+                nn.ConvTranspose2d(CW * 8, CW * 4, 4, 2, 1),  # 1/8
+                nn.ConvTranspose2d(CW * 4, CW * 2, 4, 2, 1),  # 1/4
+                nn.ConvTranspose2d(CW * 2, CW * 1, 4, 2, 1),  # 1/2
+                nn.ConvTranspose2d(CW * 1, outCW, 4, 2, 1),  # 1/1
+            ]
+        )
+
+    def forward(self, xList, sc=None):
+
+        assert self.inFeature == len(xList)
+
+        # FE
+        if self.featureExtractor is not None:
+            rstList = []
+            for i in range(self.inFeature):
+                rstList.append(self.featureExtractor(xList[i]))
+            x = torch.cat(rstList, 1)
+        else:
+            x = torch.cat(xList, 1)
+
+        # RES
+
+        x = F.relu(self.oxo_in_1(x))
+        sc2 = x
+        x = F.relu(self.oxo_in_2(x))
+
+        sc3 = x
+        x = F.relu(self.res_1(x) + sc3)
+        sc4 = x
+        x = F.relu(self.res_2(x) + sc4)
+        sc5 = x
+        x = F.relu(self.res_3(x) + sc5)
+
+        x = F.relu(self.oxo_out_1(x) + sc2)
+        x = F.relu(self.oxo_out_2(x))
+
+        # Decode
+        for i, decoder in enumerate(self.DecoderList):
+            x = decoder(x)
+            if i + 1 < len(self.DecoderList):
+                x = F.relu(x)
+
+        return F.tanh(x) + sc if sc is not None else F.sigmoid(x)
 
 
+class basicResBlocks(nn.Module):
+    def __init__(self, CW, Blocks, kernelSize=3, dim=2, lastAct=True):
+        super(basicResBlocks, self).__init__()
 
+        assert dim in [2, 3]
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-class D_class(nn.Module):
-
-    def __init__(self, NDF, NGF):
-        super(D_class, self).__init__()
-
-        self.conv1 = nn.Conv2d(NDF * 8, NDF * 4, 4, 2, 1)  # 32->16
-        self.conv2 = nn.Conv2d(NDF * 4, NDF * 2, 4, 2, 1)  # 16->8
-        self.conv3 = nn.Conv2d(NDF * 2, NDF * 1, 4, 2, 1)  # 8->4
-        self.conv4 = nn.Conv2d(NDF * 1, 1, 2, 1, 0)  # 4->1
-
-        self.IN_conv1 = nn.InstanceNorm2d(NGF * 4)
-        self.IN_conv2 = nn.InstanceNorm2d(NGF * 2)
-        self.IN_conv3 = nn.InstanceNorm2d(NGF * 1)
-
-    def parallelPool(self, x):
-        xSize = x.size()
-
-        x = x.contiguous()
-
-        lrX = torch.chunk(x.view(xSize[0], xSize[1], xSize[2], -1, 2), 2, 4)
-
-        lubX = torch.chunk(lrX[0].contiguous().view(xSize[0], xSize[1], xSize[2], -1, 2), 2, 4)
-        rubX = torch.chunk(lrX[1].contiguous().view(xSize[0], xSize[1], xSize[2], -1, 2), 2, 4)
-
-        x1 = lubX[0].contiguous().view(xSize[0], xSize[1], xSize[2], round(xSize[3] / 2), round(xSize[4] / 2))
-        x2 = rubX[0].contiguous().view(xSize[0], xSize[1], xSize[2], round(xSize[3] / 2), round(xSize[4] / 2))
-        x3 = lubX[1].contiguous().view(xSize[0], xSize[1], xSize[2], round(xSize[3] / 2), round(xSize[4] / 2))
-        x4 = rubX[1].contiguous().view(xSize[0], xSize[1], xSize[2], round(xSize[3] / 2), round(xSize[4] / 2))
-
-        x = torch.cat((x1, x2, x3, x4), 1)  # (N,C,D,H,W)->(N,C*4,D,H/2,W/2)
-        return x
-
-    def forward(self, x):
-
-        x = F.leaky_relu(self.IN_conv1(self.conv1(x)), 0.2)
-
-        x = F.leaky_relu(self.IN_conv2(self.conv2(x)), 0.2)
-
-        x = F.leaky_relu(self.IN_conv3(self.conv3(x)), 0.2)
-        
-        x = F.sigmoid(self.conv4(x))
-        
-        return x
-
-
-
-class D_AE_class(nn.Module):
-
-    def __init__(self, NDF, NGF):
-        super(D_AE_class, self).__init__()
-
-        self.conv1 = nn.Conv2d(3, NDF * 1, 4, 2, 1)  # 32->16
-        self.conv2 = nn.Conv2d(NDF * 1, NDF * 2, 4, 2, 1)  # 32->16
-        self.conv3 = nn.Conv2d(NDF * 2, NDF * 4, 4, 2, 1)  # 32->16
-        self.conv4 = nn.Conv2d(NDF * 4, NDF * 4, 4, 2, 1)  # 32->16
-        self.conv5 = nn.Conv2d(NDF * 4, NDF * 2, 4, 2, 1)  # 16->8
-        self.conv6 = nn.Conv2d(NDF * 2, NDF * 1, 4, 2, 1)  # 8->4
-        self.conv7 = nn.Conv2d(NDF * 1, 1, 4, 1, 0)  # 4->1
-
-        self.IN_conv1 = nn.InstanceNorm2d(NGF * 4)
-        self.IN_conv2 = nn.InstanceNorm2d(NGF * 2)
-        self.IN_conv3 = nn.InstanceNorm2d(NGF * 1)
+        self.Convs = nn.ModuleList()
+        self.Blocks = Blocks
+        for i in range(self.Blocks):
+            if dim == 2:
+                self.Convs.append(nn.Conv2d(CW, CW, kernelSize, 1, 1))
+                self.IN = nn.InstanceNorm2d(CW)
+            elif dim == 3:
+                self.Convs.append(nn.Conv3d(CW, CW, kernelSize, 1, 1))
+                self.IN = nn.InstanceNorm3d(CW)
+        self.act = nn.LeakyReLU(0.2)
+        self.lastAct = lastAct
 
     def forward(self, x):
 
-        x = F.leaky_relu(self.IN_conv1(self.conv1(x)), 0.2)
-
-        x = F.leaky_relu(self.IN_conv2(self.conv2(x)), 0.2)
-
-        x = F.leaky_relu(self.IN_conv3(self.conv3(x)), 0.2)
-
-        x = F.leaky_relu(self.IN_conv3(self.conv4(x)), 0.2)
-
-        x = F.leaky_relu(self.IN_conv2(self.conv5(x)), 0.2)
-
-        x = F.leaky_relu(self.IN_conv1(self.conv6(x)), 0.2)
-        
-        x = F.sigmoid(self.conv7(x))
-        
-        return x
-
-class TiedAE(nn.Module):
-
-    def __init__(self, NDF, NGF):
-        super(TiedAE, self).__init__()
-
-        self.conv1 = nn.Conv2d(1, NDF * 1, 4, 2, 1)  # 256->128
-        self.conv2 = nn.Conv2d(NDF * 1, NDF * 2, 4, 2, 1)  # 128->64
-        self.conv3 = nn.Conv2d(NDF * 2, NDF * 4, 4, 2, 1)  # 64->32
-        self.conv4 = nn.Conv2d(NDF * 4, NDF * 8, 4, 2, 1)  # 32->16
-        self.conv5 = nn.Conv2d(NDF * 4, NDF * 8, 4, 2, 1)  # ->8
-        self.conv6 = nn.Conv2d(NDF * 8, NDF * 16, 4, 2, 1)  # ->4
-        self.conv7 = nn.Conv2d(NDF * 16, NDF * 32, 4, 1, 0)  # ->1
-
-    def inverse_leaky_relu(self, x, val):
-    
-        x[x<0] = x[x<0] / val 
+        for i in range(self.Blocks):
+            res = x
+            x = self.Convs[i](x)
+            x = self.IN(x)
+            x = x + res
+            if i + 1 != self.Blocks or self.lastAct is True:
+                x = self.act(x)
 
         return x
-        
-    def inverse_tanh(self, x):
-        return torch.log((1 + x) / (1 - x)) / 2
-        
-
-    def forward(self, x, blur=None, mode="ED"):
-
-        if mode == "ED":
-
-            x = F.leaky_relu(self.conv1(x), 0.2)
-
-            x = F.leaky_relu(self.conv2(x), 0.2)
-
-            x = F.leaky_relu(self.conv3(x), 0.2)
-
-            x = F.leaky_relu(self.conv4(x), 0.2)
 
 
-
-            image, blur = x[:,:x.size(1)//2,:,:], x[:,x.size(1)//2:,:,:]
-
-            blur = F.leaky_relu(self.conv5(blur), 0.2)
-
-            blur = F.leaky_relu(self.conv6(blur), 0.2)
-
-            blur = F.tanh(self.conv7(blur))
-
-
-
-
-            blur = F.conv_transpose2d(self.inverse_tanh(blur), self.conv7.weight, stride=1, padding=0)
-
-            blur = F.conv_transpose2d(self.inverse_leaky_relu(blur, 0.2), self.conv6.weight, stride=2, padding=1)
-
-            blur = F.conv_transpose2d(self.inverse_leaky_relu(blur, 0.2), self.conv5.weight, stride=2, padding=1)
-
-            x = torch.cat((image, blur), 1)
-
-
-
-            x = F.conv_transpose2d(self.inverse_leaky_relu(x, 0.2), self.conv4.weight, stride=2, padding=1)
-
-            x = F.conv_transpose2d(self.inverse_leaky_relu(x, 0.2), self.conv3.weight, stride=2, padding=1)
-
-            x = F.conv_transpose2d(self.inverse_leaky_relu(x, 0.2), self.conv2.weight, stride=2, padding=1)
-
-            x = F.conv_transpose2d(self.inverse_leaky_relu(x, 0.2), self.conv1.weight, stride=2, padding=1)
-            
-            return x
-
-        elif mode == "E":
-
-            x = F.leaky_relu(self.conv1(x), 0.2)
-
-            x = F.leaky_relu(self.conv2(x), 0.2)
-
-            x = F.leaky_relu(self.conv3(x), 0.2)
-
-            x = F.leaky_relu(self.conv4(x), 0.2)
-
-            image, blur = x[:,:x.size(1)//2,:,:], x[:,x.size(1)//2:,:,:]
-
-            blur = F.leaky_relu(self.conv5(blur), 0.2)
-
-            blur = F.leaky_relu(self.conv6(blur), 0.2)
-
-            blur = F.tanh(self.conv7(blur))
-
-            return image, blur
-
-        elif mode == "D":
-
-            blur = F.conv_transpose2d(self.inverse_tanh(blur), self.conv7.weight, stride=1, padding=0)
-
-            blur = F.conv_transpose2d(self.inverse_leaky_relu(blur, 0.2), self.conv6.weight, stride=2, padding=1)
-
-            blur = F.conv_transpose2d(self.inverse_leaky_relu(blur, 0.2), self.conv5.weight, stride=2, padding=1)
-
-            x = torch.cat((x, blur), 1)
-
-            x = F.conv_transpose2d(self.inverse_leaky_relu(x, 0.2), self.conv4.weight, stride=2, padding=1)
-
-            x = F.conv_transpose2d(self.inverse_leaky_relu(x, 0.2), self.conv3.weight, stride=2, padding=1)
-
-            x = F.conv_transpose2d(self.inverse_leaky_relu(x, 0.2), self.conv2.weight, stride=2, padding=1)
-
-            x = F.conv_transpose2d(self.inverse_leaky_relu(x, 0.2), self.conv1.weight, stride=2, padding=1)
-
-            return x
-
-
-
-
-class TiedDisc(nn.Module):
-    
-    def __init__(self, NDF, NGF):
-        super(TiedDisc, self).__init__()
-
-        self.conv1 = nn.Conv2d(        3, NDF *   1, 4, 2, 1) # 256 -> 128
-        self.conv2 = nn.Conv2d(NDF *   1, NDF *   2, 4, 2, 1) # 256 -> 128
-        self.conv3 = nn.Conv2d(NDF *   2, NDF *   4, 4, 2, 1) # 256 -> 128
-        self.conv4 = nn.Conv2d(NDF *   4, NDF *   8, 4, 2, 1) # 256 -> 128
-        self.conv5 = nn.Conv2d(NDF *   8, NDF *  16, 4, 2, 1) # 256 -> 128
-        self.conv6 = nn.Conv2d(NDF *  16, NDF *  32, 4, 2, 1) # 256 -> 128
-        self.conv7 = nn.Conv2d(NDF *  32,         1, 4, 1, 0) # 256 -> 128
-        
+##########DMPHN##########
+class DMPHN_Encoder(nn.Module):
+    def __init__(self):
+        super(DMPHN_Encoder, self).__init__()
+        # Conv1
+        self.layer1 = nn.Conv2d(3, 32, kernel_size=3, padding=1)
+        self.layer2 = nn.Sequential(
+            nn.Conv2d(32, 32, kernel_size=3, padding=1), nn.ReLU(), nn.Conv2d(32, 32, kernel_size=3, padding=1)
+        )
+        self.layer3 = nn.Sequential(
+            nn.Conv2d(32, 32, kernel_size=3, padding=1), nn.ReLU(), nn.Conv2d(32, 32, kernel_size=3, padding=1)
+        )
+        # Conv2
+        self.layer5 = nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1)
+        self.layer6 = nn.Sequential(
+            nn.Conv2d(64, 64, kernel_size=3, padding=1), nn.ReLU(), nn.Conv2d(64, 64, kernel_size=3, padding=1)
+        )
+        self.layer7 = nn.Sequential(
+            nn.Conv2d(64, 64, kernel_size=3, padding=1), nn.ReLU(), nn.Conv2d(64, 64, kernel_size=3, padding=1)
+        )
+        # Conv3
+        self.layer9 = nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1)
+        self.layer10 = nn.Sequential(
+            nn.Conv2d(128, 128, kernel_size=3, padding=1), nn.ReLU(), nn.Conv2d(128, 128, kernel_size=3, padding=1)
+        )
+        self.layer11 = nn.Sequential(
+            nn.Conv2d(128, 128, kernel_size=3, padding=1), nn.ReLU(), nn.Conv2d(128, 128, kernel_size=3, padding=1)
+        )
 
     def forward(self, x):
-
-        x = F.leaky_relu(self.conv1(x), 0.2)
-
-        x = F.leaky_relu(self.conv2(x), 0.2)
-
-        x = F.leaky_relu(self.conv3(x), 0.2)
-
-        x = F.leaky_relu(self.conv4(x), 0.2)
-
-        x = F.leaky_relu(self.conv5(x), 0.2)
-
-        x = F.leaky_relu(self.conv6(x), 0.2)
-
-        x = F.sigmoid(self.conv7(x))
-
+        # Conv1
+        # print("Encoder input : ", x.shape)
+        x = self.layer1(x)
+        x = self.layer2(x) + x
+        x = self.layer3(x) + x
+        # Conv2
+        x = self.layer5(x)
+        x = self.layer6(x) + x
+        x = self.layer7(x) + x
+        # Conv3
+        x = self.layer9(x)
+        x = self.layer10(x) + x
+        x = self.layer11(x) + x
+        # print("Encoder output : ", x.shape)
         return x
 
 
-class TiedGAN(nn.Module):
+class DMPHN_Decoder(nn.Module):
+    def __init__(self):
+        super(DMPHN_Decoder, self).__init__()
+        # Deconv3
+        self.layer13 = nn.Sequential(
+            nn.Conv2d(128, 128, kernel_size=3, padding=1), nn.ReLU(), nn.Conv2d(128, 128, kernel_size=3, padding=1)
+        )
+        self.layer14 = nn.Sequential(
+            nn.Conv2d(128, 128, kernel_size=3, padding=1), nn.ReLU(), nn.Conv2d(128, 128, kernel_size=3, padding=1)
+        )
+        self.layer16 = nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1)
+        # Deconv2
+        self.layer17 = nn.Sequential(
+            nn.Conv2d(64, 64, kernel_size=3, padding=1), nn.ReLU(), nn.Conv2d(64, 64, kernel_size=3, padding=1)
+        )
+        self.layer18 = nn.Sequential(
+            nn.Conv2d(64, 64, kernel_size=3, padding=1), nn.ReLU(), nn.Conv2d(64, 64, kernel_size=3, padding=1)
+        )
+        self.layer20 = nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1)
+        # Deconv1
+        self.layer21 = nn.Sequential(
+            nn.Conv2d(32, 32, kernel_size=3, padding=1), nn.ReLU(), nn.Conv2d(32, 32, kernel_size=3, padding=1)
+        )
+        self.layer22 = nn.Sequential(
+            nn.Conv2d(32, 32, kernel_size=3, padding=1), nn.ReLU(), nn.Conv2d(32, 32, kernel_size=3, padding=1)
+        )
+        self.layer24 = nn.Conv2d(32, 3, kernel_size=3, padding=1)
 
-    def __init__(self, NDF, NGF):
-        super(TiedGAN, self).__init__()
-
-        self.deconv1 = nn.ConvTranspose2d(NDF * 32, NDF * 16, 4, 2, 1)  #   4   4   256  ->  8   8   128
-        self.deconv2 = nn.ConvTranspose2d(NDF * 16, NDF *  8, 4, 2, 1)  #   8   8   128  ->  16  16  64
-        self.deconv3 = nn.ConvTranspose2d(NDF *  8, NDF *  4, 4, 2, 1)  #   16  16  64   ->  32  32  32
-        self.deconv4 = nn.ConvTranspose2d(NDF *  4, NDF *  2, 4, 2, 1)  #   32  32  32   ->  64  64  16
-        self.deconv5 = nn.ConvTranspose2d(NDF *  2, NDF *  1, 4, 2, 1)  #   64  64  16   ->  128 128 8
-        self.deconv6 = nn.ConvTranspose2d(NDF *  1,        3, 4, 2, 1)  #   128 128 8    ->  256 256 3
-
-        self.conv1 = nn.Conv2d(        3, NDF *   1, 4, 2, 1) # 256 -> 128
-        self.conv2 = nn.Conv2d(NDF *   1, NDF *   2, 4, 2, 1) # 256 -> 128
-        self.conv3 = nn.Conv2d(NDF *   2, NDF *   4, 4, 2, 1) # 256 -> 128
-        self.conv4 = nn.Conv2d(NDF *   4, NDF *   8, 4, 2, 1) # 256 -> 128
-        self.conv5 = nn.Conv2d(NDF *   8, NDF *  16, 4, 2, 1) # 256 -> 128
-        self.conv6 = nn.Conv2d(NDF *  16, NDF *  32, 4, 2, 1) # 256 -> 128
-        self.conv7 = nn.Conv2d(NDF *  32,         1, 4, 1, 0) # 256 -> 128
-
-    def inverse_leaky_relu(self, x, val):
-    
-        x[x<0] = x[x<0] / val 
-
+    def forward(self, x):
+        # Deconv3
+        # print("Decoder input : ", x.shape)
+        x = self.layer13(x) + x
+        x = self.layer14(x) + x
+        x = self.layer16(x)
+        # Deconv2
+        x = self.layer17(x) + x
+        x = self.layer18(x) + x
+        x = self.layer20(x)
+        # Deconv1
+        x = self.layer21(x) + x
+        x = self.layer22(x) + x
+        x = self.layer24(x)
+        # print("Decoder output : ", x.shape)
         return x
-        
-    def inverse_tanh(self, x):
-        return torch.log((1 + x) / (1 - x)) / 2
-        
-
-    def forward(self, x, mode):
-
-        if mode == "Dc":
-
-            x = F.leaky_relu(self.deconv1(x), 0.2)
-
-            x = F.leaky_relu(self.deconv2(x), 0.2)
-
-            x = F.leaky_relu(self.deconv3(x), 0.2)
-
-            x = F.leaky_relu(self.deconv4(x), 0.2)
-
-            x = F.leaky_relu(self.deconv5(x), 0.2)
-
-            x = F.leaky_relu(self.deconv6(x), 0.2)
-            
-            return x
-
-        elif mode == "Ec":
-
-            x = F.conv2d(self.inverse_leaky_relu(x, 0.2), self.deconv6.weight, stride=2, padding=1)
-
-            x = F.conv2d(self.inverse_leaky_relu(x, 0.2), self.deconv5.weight, stride=2, padding=1)
-
-            x = F.conv2d(self.inverse_leaky_relu(x, 0.2), self.deconv4.weight, stride=2, padding=1)
-
-            x = F.conv2d(self.inverse_leaky_relu(x, 0.2), self.deconv3.weight, stride=2, padding=1)
-
-            x = F.conv2d(self.inverse_leaky_relu(x, 0.2), self.deconv2.weight, stride=2, padding=1)
-
-            x = F.conv2d(self.inverse_leaky_relu(x, 0.2), self.deconv1.weight, stride=2, padding=1)
-
-            return x
-
-
-

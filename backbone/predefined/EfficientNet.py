@@ -218,14 +218,6 @@ class EfficientNet(nn.Module):
                 rstList.append(x.mean().unsqueeze(0))
             return torch.sum(torch.cat(rstList, 0))
 
-    def decode_features(self, x):
-        x = self.conv_head_reverse(x)
-        x = self.blocks_reverse(x)
-
-        x = self.act1_reverse(x)
-        x = self.bn1_reverse(x)
-        x = self.conv_stem_reverse(x)
-
     def forward(self, x):
 
         if self.mode in ["classifier"]:
