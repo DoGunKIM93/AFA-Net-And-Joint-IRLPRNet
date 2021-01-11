@@ -372,6 +372,16 @@ def matchChannel(xList: list, channelSize):
 
     return rst
 
+def randomMotionBlur(
+    xList: list, randomPossiblity, kernelSizeMin, kernelSizeMax, angleMin, angleMax, directionMin, directionMax
+):
+    assert randomPossiblity <= 1 and randomPossiblity >= 0
+    if random.uniform(0, 1) < randomPossiblity:
+        return motionBlur(xList, kernelSizeMin, kernelSizeMax, angleMin, angleMax, directionMin, directionMax)
+    else:
+        return xList
+
+
 ########################################################################################################################################################################
 
 # Private Basis Functions
@@ -419,6 +429,20 @@ def _toTensor(x) -> torch.Tensor:
 
     elif _getType(x) == "TENSOR":  # Tensor Implementation
         pass
+
+    return x
+
+
+def _toNPArray(x):
+
+    if _getType(x) == "PIL":  # PIL Implemenataion
+        x = np.array(x)
+
+    elif _getType(x) == "NPARRAY":
+        pass
+
+    elif _getType(x) == "TENSOR":  # Tensor Implementation
+        x = x.numpy()
 
     return x
 
@@ -567,7 +591,13 @@ def _motionBlur(x, kernelSize, angle, direction):
         raise NotImplementedError("augmentation.py :: motionBlur Augmentation has not implemented for PIL Image")
 
     elif _getType(x) in ["TENSOR"]:  # PIL & Tensor Implemenataion
-        raise NotImplementedError("augmentation.py :: motionBlur Augmentation has not implemented for TENSOR Image")
+        x = _toNPArray(x)
+        x = np.moveaxis(x, 0, -1)
+        x = np.expand_dims(x, 0)
+        x = imgaug.augmenters.blur.MotionBlur(k=kernelSize, angle=angle, direction=direction)(images=x)
+        x = np.squeeze(x, 0)
+        x = np.moveaxis(x, -1, 0)
+        x = _toTensor(x)
 
     elif _getType(x) is "NPARRAY":  # Tensor Implementation
         x = np.moveaxis(x, 0, -1)
