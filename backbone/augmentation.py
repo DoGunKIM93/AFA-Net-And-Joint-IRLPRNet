@@ -361,6 +361,16 @@ def motionBlur(xList: list, kernelSizeMin, kernelSizeMax, angleMin, angleMax, di
     direction = random.uniform(directionMin, directionMax)
     return [_motionBlur(xList[0], kernelSize, angle, direction), xList[1]]
 
+def matchChannel(xList: list, channelSize):
+    
+    rst = []
+    for x in xList:
+        if x is not None:
+            rst.append(_getChannelMatching(x, channelSize))
+        else:
+            rst.append(None)
+
+    return rst
 
 ########################################################################################################################################################################
 
@@ -565,5 +575,27 @@ def _motionBlur(x, kernelSize, angle, direction):
         x = imgaug.augmenters.blur.MotionBlur(k=kernelSize, angle=angle, direction=direction)(images=x)
         x = np.squeeze(x, 0)
         x = np.moveaxis(x, -1, 0)
+
+    return x
+
+def _getChannelMatching(x, channelSize):
+
+    if _getType(x) in ["PIL"]:  # PIL Implemenataion
+        if channelSize == 3:
+            x = x.convert(mode='RGB')
+        elif channelSize == 1:
+            x = x.convert(mode='L')
+
+    elif _getType(x) in ["TENSOR"]:  # Tensor Implemenataion
+        if channelSize == 3:
+            x = torch.cat((x,x,x),0)
+        elif channelSize == 1:
+            x = (x[0:1,:,:] + x[1:2,:,:] + x[2:3,:,:]) / 3
+
+    elif _getType(x) is "NPARRAY":  # numpy array Implementation
+        if channelSize == 3:
+            x = np.stack((x,)*3, axis=-1)
+        elif channelSize == 1:
+            x = np.dot(x[...,:3], [0.299, 0.587, 0.114])
 
     return x
