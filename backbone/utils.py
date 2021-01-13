@@ -1,7 +1,7 @@
 """
 utils.py
 """
-version = "1.38.201230"
+version = "1.39.210112"
 
 
 # From Python
@@ -185,6 +185,7 @@ def saveImageTensorToFile(
     assert len(rstDict) != 0, "utils.py :: There is no save data...Make sure saveDataDictKeys in dataDict.keys()"
 
     rst = torch.cat(list(rstDict.values()), 3)
+
     save_image(rst, fileName, normalize=True)
 
 
