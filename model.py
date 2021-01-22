@@ -1,7 +1,7 @@
 """
 model.py
 """
-version = "1.60.201230"
+version = "1.61.210122"
 
 
 # from Python
@@ -13,6 +13,7 @@ import numpy as np
 import sys
 import functools
 from shutil import copyfile
+from fast_pytorch_kmeans import KMeans
 
 # from Pytorch
 import torch
@@ -47,9 +48,168 @@ from backbone.module.module import (
 from backbone.module.module import SecondOrderChannalAttentionBlock, NonLocalBlock, CrissCrossAttention
 
 
+
+
+
+
+
+class OASIS(nn.Module):
+    '''
+    output image size == feature size * (2 ** power)
+    memoryMode == ['poor' || 'rich']
+    DO_NOT_FORCE_CUDA needs to utils.loadmodel cannot load this model cuda
+    '''
+    def __init__(self, ResNeStFeatureExtractor, numClass=64, inCh=2048, power=6, CWDevider=4, colorMode = 'color', memoryMode = 'rich', maxClusterMemorySize = 5):
+        super(OASIS, self).__init__()
+
+        self.DO_NOT_FORCE_CUDA = True
+
+        assert ResNeStFeatureExtractor is not None
+        self.ResNeStFeatureExtractor = ResNeStFeatureExtractor
+
+        self.numClass = numClass
+        self.inCh = inCh
+        self.CWDevider = CWDevider
+        assert colorMode in ['color', 'grayscale']
+        self.outCh = 3 if colorMode == 'color' else 1
+        self.power = power
+        assert memoryMode in ['poor', 'rich']
+        self.memoryMode = memoryMode
+
+        self.maxClusterMemorySize = maxClusterMemorySize
+        self.clusterMemory = []
+        self.clusterer = KMeans(n_clusters=self.numClass, mode='euclidean', verbose=0, max_iter=50)
+
+        self.reconstructorList = nn.ModuleList([self._makeReconstructor(self.inCh, self.outCh, self.CWDevider, self.power, self.memoryMode) for i in range(self.numClass)])
+
+    def _makeReconstructor(self, inCh, outCh, CWDevider, power, memoryMode):
+        return tSeNseR(inCh=inCh, outCh=outCh, CWDevider=CWDevider, power=power).cpu() if memoryMode == 'poor' else tSeNseR(inCh=inCh, outCh=outCh, CWDevider=CWDevider, power=power).cuda()
+
+    def _clustring(self, scoreMap):
+
+        #N 256 64 64
+        N, C, H, W = scoreMap.size()
+        
+        scoreMap = scoreMap.view(N,C,H*W).transpose(1,2).reshape(N*H*W,C)
+        #scoreMap = scoreMap.view(N*H*W, C)
+
+        if len(self.clusterMemory) == self.maxClusterMemorySize:
+            self.clusterMemory.pop(0)
+        self.clusterMemory.append(scoreMap)
+
+        self.clusterer.fit(torch.cat(self.clusterMemory, 0))
+
+        classMap = self.clusterer.predict(scoreMap)
+        classMap = classMap.view(N,H,W).unsqueeze(1)
+
+        return classMap
+
+    def _makeClassMap(self, f1, size):
+        classMap = F.interpolate(f1, size = size, mode='bicubic')
+        classMap = self._clustring(classMap)
+
+        return classMap
+
+    def _applyDecoder(self, fList, classNumber, LR = None):
+        
+        if self.memoryMode == 'poor':
+            self.reconstructorList[classNumber].cuda()
+
+        x = self.reconstructorList[classNumber](fList, LR)
+
+        if self.memoryMode == 'poor':
+            self.reconstructorList[classNumber].cpu()
+
+        return x
+
+    def _fusion(self, xList, classMap):
+        rst = torch.zeros_like(xList[0])
+        for i in range(self.numClass):
+            rst = rst + xList[i] * (classMap == i)
+        return rst
+
+    def forward(self, x):
+
+        f1, f2, f3, f4 = self.ResNeStFeatureExtractor(x)
+
+        srList = [self._applyDecoder([f1, f2, f3, f4], i) for i in range(self.numClass)]
+
+        classMap = self._makeClassMap(f1, srList[0].size()[-2:])
+
+        rst = self._fusion(srList, classMap)
+
+        return rst
+
+
+
+        
+
+
+
+
+
+
+
 class tSeNseR(nn.Module):
-    def __init__(self, CW=2048, colorMode="color"):
+    def __init__(self, inCh=2048, outCh=3, CWDevider=1, power=5):
         super(tSeNseR, self).__init__()
+
+        self.inCh = inCh
+        self.CWDevider = CWDevider
+        self.outCh = outCh
+        self.power = power
+
+        self.decoderList, self.oxoConvList = self._makeDecoderList(self.inCh, self.outCh, self.CWDevider, self.power)
+
+    def _decoder(self, inCh, outCh, normLayer=nn.BatchNorm2d, act=nn.ReLU):  # C // 2 , HW X 2
+        mList = []
+        mList.append(nn.ConvTranspose2d(inCh, outCh, 4, 2, 1))
+        if normLayer is not None:
+            mList.append(normLayer(outCh))
+        if act is not None:
+            mList.append(act())
+        return nn.Sequential(*mList)
+
+    def _makeDecoderList(self, inCh, outCh, CWDevider, power):
+        decoderList = [self._decoder(inCh, inCh // (2 * CWDevider))]
+        oxoConvList = [None]
+
+        for x in range(1, power - 1):
+            _ic = inCh // (2 ** x)
+            _oc = inCh // (2 ** (x+1))
+            decoderList.append(self._decoder(_ic // CWDevider, _oc // CWDevider))
+            oxoConvList.append(nn.Conv2d(_ic, _ic // CWDevider, kernel_size=1))
+
+        decoderList.append(self._decoder(inCh // (2 ** (power - 1) * CWDevider), outCh, act=None))
+        oxoConvList.append(nn.Conv2d(inCh // (2 ** (power - 1)), inCh // (2 ** (power - 1) * CWDevider), kernel_size=1))
+        return nn.ModuleList(decoderList), nn.ModuleList(oxoConvList)
+
+
+    def forward(self, fList, LR=None):
+
+        x = None
+
+        for i in range(len(self.decoderList)):
+            decoder = self.decoderList[i]
+            oxoConv = self.oxoConvList[i]
+
+            if i == 0:
+                x = decoder(fList[-1])
+
+            elif len(self.decoderList) - 1 > i > 0:
+                x = decoder(x + oxoConv(fList[-(1 + i)])) if len(fList) >= i+1 else decoder(x)
+                
+            elif i == len(self.decoderList) - 1:
+                x = decoder(x + oxoConv(fList[-(1 + i)])) if len(fList) >= i+1 else decoder(x)
+                x = F.tanh(x) + LR if LR is not None else F.sigmoid(x)
+
+        return x
+
+
+
+class tSeNseR_OLD(nn.Module):
+    def __init__(self, CW=2048, colorMode="color"):
+        super(tSeNseR_OLD, self).__init__()
 
         self.CW = CW
 

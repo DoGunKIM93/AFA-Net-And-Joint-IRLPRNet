@@ -1,7 +1,7 @@
 """
 utils.py
 """
-version = "1.39.210112"
+version = "1.40.210120"
 
 
 # From Python
@@ -207,7 +207,11 @@ def loadModels(modelList, version, subversion, loadModelNum):
             else None
         )
 
-        modelObj.cuda()
+        #if model has DO_NOT_FORCE_CUDA -> CPU
+        if 'DO_NOT_FORCE_CUDA' in dir(modelObj) and modelObj.DO_NOT_FORCE_CUDA is True:
+            modelObj.cpu()
+        else:
+            modelObj.cuda()
 
         checkpoint = None
         if (
