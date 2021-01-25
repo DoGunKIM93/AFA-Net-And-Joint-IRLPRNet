@@ -4,7 +4,7 @@
 version : 1.05.200806
 
 DIV2K_SR:
-    origin: DIV2K
+    origin: superResolution/SISR/DIV2K
     dataType: 
         LR: Image-Float #  dataName: dataType(InputType)-tensorType(OutputType)  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
     labelType:
@@ -19,7 +19,7 @@ DIV2K_SR:
         - Pass()
 
 DIV2K_SR_V:
-    origin: DIV2K
+    origin: superResolution/SISR/DIV2K
     dataType: 
         LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
     labelType:
@@ -32,24 +32,8 @@ DIV2K_SR_V:
         - Pass()
 
 
-DIV2K_SR:
-    origin: DIV2K
-    dataType: 
-        LR: Image-Float #  dataName: dataType(InputType)-tensorType(OutputType)  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
-    labelType:
-        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
-    availableMode: 
-        - train
-        - validation #train, validation, test
-    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
-        - scaleMethod
-        - scaleFactor
-    preprocessings: # Must be list
-        - Pass()
-
-
 291_SR:
-    origin: 291
+    origin: superResolution/SISR/291
     dataType: 
         LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
     labelType:
@@ -64,7 +48,7 @@ DIV2K_SR:
 
 
 REDS_SR:
-    origin: REDS
+    origin: superResolution/MISR/REDS
     dataType: 
         LR: ImageSequence-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
     labelType:
@@ -80,7 +64,7 @@ REDS_SR:
         - Pass()
 
 VID4_SR:
-    origin: Vid4
+    origin: superResolution/MISR/Vid4
     dataType: 
         LR: ImageSequence-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
     labelType:
@@ -94,8 +78,8 @@ VID4_SR:
         - Pass()
 
 
-FFHQ_FACE_SR:
-    origin: FFHQ/Face
+FFHQ_FACE_SR_V:
+    origin: domainDataset/face/FFHQ/Face
     dataType: 
         LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
     labelType:
@@ -110,7 +94,7 @@ FFHQ_FACE_SR:
 
 
 Set5_SR:
-    origin: benchmark/Set5
+    origin: superResolution/SISR/benchmark/Set5
     dataType: 
         LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
     labelType:
@@ -124,7 +108,7 @@ Set5_SR:
         - Pass()
 
 Set5_SR_V:
-    origin: benchmark/Set5
+    origin: superResolution/SISR/benchmark/Set5
     dataType: 
         LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
     labelType:
@@ -137,7 +121,7 @@ Set5_SR_V:
         - Pass()
 
 Blending_SR:
-    origin: benchmark/Blending
+    origin: superResolution/SISR/benchmark/Blending
     dataType: 
         LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
     labelType:
@@ -150,21 +134,8 @@ Blending_SR:
     preprocessings: # Must be list
         - Pass()
 
-LSH_SR:
-    origin: CUSTOM/LSH
-    dataType:
-        LR: ImageSequence-Float
-    labelType:
-        #HR: ImageSequence-Float
-    availableMode:
-        - test
-    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
-        - class
-    preprocessings: # Must be list
-        - Pass()
-
-Satellite_DOTA_SR:
-    origin: forFinetuning/Satellite/DOTA
+Satellite_DOTA_SR_V:
+    origin: domainDataset/satellite/DOTA
     dataType: 
         LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
     labelType:
@@ -178,8 +149,8 @@ Satellite_DOTA_SR:
     preprocessings: # Must be list
         - Pass()
 
-Satellite_xView_Building_SR:
-    origin: forFinetuning/Satellite/xView_Building
+Satellite_xView_Building_SR_V:
+    origin: domainDataset/satellite/xView_Building
     dataType: 
         LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
     labelType:

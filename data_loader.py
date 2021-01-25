@@ -694,21 +694,7 @@ class Dataset(torchDataset):
 
     def _applyAugmentationFunction(self, tnsr, augmentationFuncStr: str):
 
-        assert (
-            augmentationFuncStr.split("(")[0] in AUGMENTATION_DICT.keys()
-        ), "data_loader.py :: invalid Augmentation Function!! chcek param.yaml."
-
-        augFunc = AUGMENTATION_DICT[augmentationFuncStr.split("(")[0]]
-        args = list(
-            str(x)
-            if (x[1:] if x[0] == "-" else x).replace(".", "", 1).isdigit() is False
-            else (int(x) if x.find(".") == -1 else float(x))
-            for x in list(filter(lambda y: y != "", augmentationFuncStr.split("(")[1][:-1].replace(" ", "").split(",")))
-        )
-
-        tnsr = augFunc(tnsr, *args)
-
-        return tnsr
+        return _applyAugmentationFunctionFunc(tnsr, augmentationFuncStr)
 
     # DATA AUGMENTATION ON CPU - Multiprocessing with Forked Worker processes -
     # Before toTensor() Augmentation
@@ -1107,19 +1093,7 @@ class _MultiProcessingDataLoaderIterWithDataAugmentation(_MultiProcessingDataLoa
 
     def _applyAugmentationFunction(self, tnsr, augmentationFuncStr: str):
 
-        assert (
-            augmentationFuncStr.split("(")[0] in AUGMENTATION_DICT.keys()
-        ), "data_loader.py :: invalid Augmentation Function!! chcek param.yaml."
-
-        augFunc = AUGMENTATION_DICT[augmentationFuncStr.split("(")[0]]
-        args = list(
-            int(x)
-            for x in list(filter(lambda y: y != "", augmentationFuncStr.split("(")[1][:-1].replace(" ", "").split(",")))
-        )
-
-        tnsr = augFunc(tnsr, *args)
-
-        return tnsr
+        return _applyAugmentationFunctionFunc(tnsr, augmentationFuncStr)
 
     def _GPUDataAugmentation(self, tnsrList, augmentations: List[str]):
 
@@ -1211,3 +1185,27 @@ class _MultiProcessingDataLoaderIterWithDataAugmentation(_MultiProcessingDataLoa
             else:
                 del self._task_info[idx]
                 return self._process_data(data)  # CUDA MULTIPROC ERROR HERE!!
+
+
+
+def _applyAugmentationFunctionFunc(tnsr, augmentationFuncStr: str):
+
+    assert (
+        augmentationFuncStr.split("(")[0] in AUGMENTATION_DICT.keys()
+    ), "data_loader.py :: invalid Augmentation Function!! chcek param.yaml."
+
+    augFunc = AUGMENTATION_DICT[augmentationFuncStr.split("(")[0]]
+    args = []
+    for x in list(filter(lambda y: y != "", augmentationFuncStr.split("(")[1][:-1].replace(" ", "").split(","))):
+        if (x[1:] if x[0] == "-" else x).replace(".", "", 1).isdigit() is False:
+            args.append(str(x))
+        else:
+            if x.find(".") == -1:
+                args.append(int(x))
+            else: 
+                args.append(float(x))
+    
+
+    tnsr = augFunc(tnsr, *args)
+
+    return tnsr

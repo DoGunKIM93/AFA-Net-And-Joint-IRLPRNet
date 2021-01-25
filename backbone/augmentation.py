@@ -383,6 +383,9 @@ def randomMotionBlur(
     else:
         return xList
 
+def normalize3Ch(xList: list, meanC1, meanC2, meanC3, stdC1, stdC2, stdC3):
+    return [_normalize(x, [meanC1, meanC2, meanC3], [stdC1, stdC2, stdC3]) for x in xList]
+
 
 ########################################################################################################################################################################
 
@@ -652,3 +655,20 @@ def _getChannelMatching(x, channelSize):
             x = np.dot(x[..., :3], [0.299, 0.587, 0.114])
 
     return x
+
+def _normalize(x, mean, std):
+
+    if _getType(x) in ["PIL"]:  # PIL Implemenataion
+        x = _toTensor(x)
+        x = vF.normalize(x, mean, std)
+        x = _toPIL(x)
+
+    elif _getType(x) in ["TENSOR"]:  # Tensor Implemenataion
+        x = vF.normalize(x, mean, std)
+
+    elif _getType(x) in ["NPARRAY"]:  # Tensor Implemenataion
+        x = _toTensor(x)
+        x = vF.normalize(x, mean, std)
+        x = _toNPArray(x)
+        
+    return x 
