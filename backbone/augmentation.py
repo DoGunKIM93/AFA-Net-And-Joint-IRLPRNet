@@ -677,7 +677,7 @@ def _normalize(x, mean, std):
         
     return x 
 
-def _to3(x):
+def _toRGB(x):
 
     if _getType(x) in ["PIL"]:  #TODO: PIL Implemenataion
         x = _toTensor(x)
