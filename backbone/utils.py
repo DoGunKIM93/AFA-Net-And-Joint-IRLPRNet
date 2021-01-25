@@ -251,32 +251,45 @@ def loadModels(modelList, version, subversion, loadModelNum):
             
             """
             if checkpoint is not None:
-                try:
-                    mthd = "NORMAL"
-                    modelObj.load_state_dict(checkpoint["model"], strict=True)
-                except:
+                while(True):
                     try:
-                        mthd = "STATE_DICT FINITE MODE"
-                        modelObj.module.load_state_dict(checkpoint["state_dict"], strict=True)
+                        mthd = "NORMAL"
+                        modelObj.load_state_dict(checkpoint["model"], strict=True)
+                        break
                     except:
-                        try:
-                            mthd = "GLOBAL STRUCTURE"
-                            modelObj.load_state_dict(checkpoint, strict=True)
-                        except:
-                            try:
-                                mthd = "INNER MODEL GLOBAL STRUCTURE"
-                                modelObj.module.load_state_dict(checkpoint, strict=True)
-                            except:
-                                try:
-                                    mthd = "UNSTRICT (WARNING : load weights imperfectly)"
-                                    modelObj.load_state_dict(checkpoint["model"], strict=False)
-                                except:
-                                    try:
-                                        mthd = "GLOBAL STRUCTURE UNSTRICT (WARNING : load weights imperfectly)"
-                                        modelObj.load_state_dict(checkpoint, strict=False)
-                                    except:
-                                        mthd = "FAILED"
-                                        print("utils.py :: model load failed..... I'm sorry~")
+                        pass
+                    try:
+                        mthd = "GLOBAL STRUCTURE"
+                        modelObj.load_state_dict(checkpoint, strict=True)
+                        break
+                    except:
+                        pass
+                    try:
+                        mthd = "INNER MODEL"
+                        modelObj.module.load_state_dict(checkpoint["model"], strict=True)
+                        break
+                    except:
+                        pass
+                    try:
+                        mthd = "INNER MODEL GLOBAL STRUCTURE"
+                        modelObj.module.load_state_dict(checkpoint, strict=True)
+                        break
+                    except:
+                        pass
+                    try:
+                        mthd = "UNSTRICT (WARNING : load weights imperfectly)"
+                        modelObj.load_state_dict(checkpoint["model"], strict=False)
+                        break
+                    except:
+                        pass
+                    try:
+                        mthd = "GLOBAL STRUCTURE UNSTRICT (WARNING : load weights imperfectly)"
+                        modelObj.load_state_dict(checkpoint, strict=False)
+                        break
+                    except:
+                        mthd = "FAILED"
+                        print("utils.py :: model load failed..... I'm sorry~")
+                        break
 
                 print(f"{mdlStr} Loaded with {mthd} mode." if mthd != "FAILED" else f"{mdlStr} Load Failed.")
 
