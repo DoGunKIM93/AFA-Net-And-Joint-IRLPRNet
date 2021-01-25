@@ -386,6 +386,10 @@ def randomMotionBlur(
 def normalize3Ch(xList: list, meanC1, meanC2, meanC3, stdC1, stdC2, stdC3):
     return [_normalize(x, [meanC1, meanC2, meanC3], [stdC1, stdC2, stdC3]) for x in xList]
 
+def toRGB(xList: list):
+    return [_toRGB(x) for x in xList]
+
+
 
 ########################################################################################################################################################################
 
@@ -672,3 +676,47 @@ def _normalize(x, mean, std):
         x = _toNPArray(x)
         
     return x 
+
+def _to3(x):
+
+    if _getType(x) in ["PIL"]:  #TODO: PIL Implemenataion
+        x = _toTensor(x)
+        c, _, _ = _getSize(x)
+        assert c in [1,3,4]
+
+        if c == 1:
+            x = torch.cat([x, x, x], 0)
+        elif c == 3:
+            pass
+        elif c == 4:
+            x = x[0:3,:,:]
+        x = _toPIL(x)
+
+    elif _getType(x) in ["TENSOR"]:  # Tensor Implemenataion
+         
+        c, _, _ = _getSize(x)
+        assert c in [1,3,4]
+
+        if c == 1:
+            x = torch.cat([x, x, x], 0)
+        elif c == 3:
+            pass
+        elif c == 4:
+            x = x[0:3,:,:]
+
+
+    elif _getType(x) in ["NPARRAY"]:  #TODO: NPA Implemenataion
+        x = _toTensor(x)
+        c, _, _ = _getSize(x)
+        assert c in [1,3,4]
+
+        if c == 1:
+            x = torch.cat([x, x, x], 0)
+        elif c == 3:
+            pass
+        elif c == 4:
+            x = x[0:3,:,:]
+        x = _toNPArray(x)
+        
+    return x 
+
