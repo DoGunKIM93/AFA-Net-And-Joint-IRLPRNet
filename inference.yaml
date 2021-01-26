@@ -18,3 +18,13 @@ General-PSNR:
     model: EDVR
     param: 128, 1, 1, 5, 40
     weight: EDVR_SISR_general.pth 
+
+Medical-x4:
+    model: DeFiAN
+    param: 64, 20, 10, 4
+    weight: DeFiAN_Medical_x4.pth
+
+Medical-x8:
+    model: DeFiAN
+    param: 64, 20, 10, 8
+    weight: DeFiAN_Medical_x8.pth

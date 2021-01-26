@@ -196,7 +196,7 @@ class SingleModule(nn.Module):
 
 
 class Generator(nn.Module):
-    def __init__(self, n_channels, n_blocks, n_modules, act=nn.ReLU(True), attention=True, scale=(2, 3, 4)):
+    def __init__(self, n_channels, n_blocks, n_modules, scale, act=nn.ReLU(True), attention=True): #scale=(2,3,4)
         super(Generator, self).__init__()
         self.n_modules = n_modules
         self.input = nn.Conv2d(in_channels=3, out_channels=n_channels, kernel_size=3, stride=1, padding=1, bias=True)
@@ -207,6 +207,7 @@ class Generator(nn.Module):
 
         self.tail = nn.Conv2d(n_channels, n_channels, 3, 1, 1, bias=True)
 
+        scale = [scale]
         self.upscale = nn.ModuleList([UpScale(n_channels=n_channels, scale=s, act=False) for s in scale])
 
         self.output = nn.Conv2d(in_channels=n_channels, out_channels=3, kernel_size=3, stride=1, padding=1, bias=True)
