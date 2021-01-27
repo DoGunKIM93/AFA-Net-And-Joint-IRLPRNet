@@ -48,7 +48,7 @@ def initTensorboard(ver, subversion):
             proc.kill()
 
     logdir = f"./data/{ ver }/log"
-    subprocess.Popen(["tensorboard", "--logdir=" + logdir, "--port=6006"])
+    subprocess.Popen(["tensorboard", "--logdir=" + logdir, "--port=6007"])
     writer = SummaryWriter(f"{ logdir }/{ subversion }/")
 
     return writer
