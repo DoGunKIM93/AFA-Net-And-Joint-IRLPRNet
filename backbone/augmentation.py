@@ -1,7 +1,7 @@
 """
 augmentation.py
 """
-version = "1.18.210127"
+version = "1.17.211008"
 
 # FROM Python LIBRARY
 import random
@@ -361,6 +361,19 @@ def motionBlur(xList: list, kernelSizeMin, kernelSizeMax, angleMin, angleMax, di
     direction = random.uniform(directionMin, directionMax)
     return [_motionBlur(xList[0], kernelSize, angle, direction), xList[1]]
 
+
+def matchChannel(xList: list, channelSize):
+
+    rst = []
+    for x in xList:
+        if x is not None:
+            rst.append(_getChannelMatching(x, channelSize))
+        else:
+            rst.append(None)
+
+    return rst
+
+
 def randomMotionBlur(
     xList: list, randomPossiblity, kernelSizeMin, kernelSizeMax, angleMin, angleMax, directionMin, directionMax
 ):
@@ -624,6 +637,29 @@ def _motionBlur(x, kernelSize, angle, direction):
 
     return x
 
+
+def _getChannelMatching(x, channelSize):
+
+    if _getType(x) in ["PIL"]:  # PIL Implemenataion
+        if channelSize == 3:
+            x = x.convert(mode="RGB")
+        elif channelSize == 1:
+            x = x.convert(mode="L")
+
+    elif _getType(x) in ["TENSOR"]:  # Tensor Implemenataion
+        if channelSize == 3:
+            x = torch.cat((x, x, x), 0)
+        elif channelSize == 1:
+            x = (x[0:1, :, :] + x[1:2, :, :] + x[2:3, :, :]) / 3
+
+    elif _getType(x) is "NPARRAY":  # numpy array Implementation
+        if channelSize == 3:
+            x = np.stack((x,) * 3, axis=-1)
+        elif channelSize == 1:
+            x = np.dot(x[..., :3], [0.299, 0.587, 0.114])
+
+    return x
+
 def _normalize(x, mean, std):
 
     if _getType(x) in ["PIL"]:  # PIL Implemenataion
@@ -643,29 +679,7 @@ def _normalize(x, mean, std):
 
 def _toRGB(x):
 
-    if _getType(x) in ["PIL"]:  # PIL Implemenataion
-        c, _, _ = _getSize(x)
-        assert c in [1,3,4]
-
-        if c == 1:
-            x = x.convert(mode="RGB")
-        elif c == 3:
-            pass
-        elif c == 4:
-            x = x.convert(mode="RGB")
-        
-    elif _getType(x) in ["TENSOR"]:  # Tensor Implemenataion
-        c, _, _ = _getSize(x)
-        assert c in [1,3,4]
-
-        if c == 1:
-            x = torch.cat([x, x, x], 0)
-        elif c == 3:
-            pass
-        elif c == 4:
-            x = x[0:3,:,:]
-
-    elif _getType(x) in ["NPARRAY"]:  # NPA Implemenataion
+    if _getType(x) in ["PIL"]:  #TODO: PIL Implemenataion
         x = _toTensor(x)
         c, _, _ = _getSize(x)
         assert c in [1,3,4]
@@ -676,7 +690,33 @@ def _toRGB(x):
             pass
         elif c == 4:
             x = x[0:3,:,:]
+        x = _toPIL(x)
 
+    elif _getType(x) in ["TENSOR"]:  # Tensor Implemenataion
+         
+        c, _, _ = _getSize(x)
+        assert c in [1,3,4]
+
+        if c == 1:
+            x = torch.cat([x, x, x], 0)
+        elif c == 3:
+            pass
+        elif c == 4:
+            x = x[0:3,:,:]
+
+
+    elif _getType(x) in ["NPARRAY"]:  #TODO: NPA Implemenataion
+        x = _toTensor(x)
+        c, _, _ = _getSize(x)
+        assert c in [1,3,4]
+
+        if c == 1:
+            x = torch.cat([x, x, x], 0)
+        elif c == 3:
+            pass
+        elif c == 4:
+            x = x[0:3,:,:]
         x = _toNPArray(x)
         
     return x 
+

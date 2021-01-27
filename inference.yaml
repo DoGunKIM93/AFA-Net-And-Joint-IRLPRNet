@@ -12,22 +12,12 @@ General-Perceptual:
 General-Perceptual-Robust:
     model: SPSR_Generator
     param: 4
-    weight: SPSR-Robust-netG-General.pt
+    weight: SPSR-Robust-netG-General.pth
 
 General-PSNR:
     model: EDVR
     param: 128, 1, 1, 5, 40
     weight: EDVR_SISR_general.pth 
-
-Satellite-Perceptual:
-    model: SPSR_Generator
-    param: 4
-    weight: SPSR-netG-DOTA.pt
-
-Satellite-PSNR:
-    model: EDVR
-    param: 128, 1, 1, 5, 40
-    weight: EDVR-DOTA.pth
 
 Medical-x4:
     model: DeFiAN
@@ -38,14 +28,3 @@ Medical-x8:
     model: DeFiAN
     param: 64, 20, 10, 8
     weight: DeFiAN_Medical_x8.pth
-
-Medical-Perceptual:
-    model: SPSR_Generator
-    param: 4
-    weight: SPSR-netG-CXR8.pt
-
-Medical-PSNR:
-    model: EDVR
-    param: 128, 1, 1, 5, 40
-    weight: EDVR-CXR8.pth
-

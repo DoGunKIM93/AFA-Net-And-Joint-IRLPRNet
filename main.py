@@ -144,7 +144,7 @@ if args.inferenceTest == False:
                   researchVersion = edit.version,
                researchSubVersion = edit.subversion,
                            writer = writer,
-                  scoreMetricDict = { 'Train_PSNR': {
+                  scoreMetricDict = { 'AE_PSNR': {
                                             'function' : utils.calculateImagePSNR, 
                                         'argDataNames' : ['SR', 'HR'], 
                                         'additionalArgs' : ['$VALUE_RANGE_TYPE', '$COLOR_MODE'],
@@ -161,7 +161,7 @@ if args.inferenceTest == False:
                     researchVersion = edit.version,
                     researchSubVersion = edit.subversion,
                                 writer = writer,
-                    scoreMetricDict = { 'Validation_PSNR': {
+                    scoreMetricDict = { 'PSNR': {
                                                     'function' : utils.calculateImagePSNR, 
                                                 'argDataNames' : ['SR', 'HR'], 
                                             'additionalArgs' : ['$VALUE_RANGE_TYPE', '$COLOR_MODE'],
@@ -182,7 +182,7 @@ else:
                                             'argDataNames' : ['LR', 'HR'], 
                                             'additionalArgs' : ['$VALUE_RANGE_TYPE', '$COLOR_MODE'],
                                         }},
-                    resultSaveData = ['LR', 'SR'] ,
+                    resultSaveData = ['LR_center', 'SR'] ,
                 resultSaveFileName = 'inference',)
 
 
