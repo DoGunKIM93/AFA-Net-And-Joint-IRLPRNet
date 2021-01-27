@@ -12,7 +12,7 @@ General-Perceptual:
 General-Perceptual-Robust:
     model: SPSR_Generator
     param: 4
-    weight: SPSR-Robust-netG-General.pt
+    weight: SPSR-Robust-netG-General.pth
 
 General-PSNR:
     model: EDVR
@@ -22,7 +22,7 @@ General-PSNR:
 Satellite-Perceptual:
     model: SPSR_Generator
     param: 4
-    weight: SPSR-netG-DOTA.pt
+    weight: SPSR-netG-DOTA.pth
 
 Satellite-PSNR:
     model: EDVR
@@ -32,7 +32,7 @@ Satellite-PSNR:
 Medical-Perceptual:
     model: SPSR_Generator
     param: 4
-    weight: SPSR-netG-CXR8.pt
+    weight: SPSR-netG-CXR8.pth
 
 Medical-PSNR:
     model: EDVR
