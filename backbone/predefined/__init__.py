@@ -27,8 +27,6 @@ __all__ = [ 'ESPCN',
             'RetinaFace',
             'ResNeSt',
             'DeFiAN',
-            'DMPHN_Decoder', 
-            'DMPHN_Encoder'
-
+            'DMPHN_Decoder', 'DMPHN_Encoder'
 ]
 

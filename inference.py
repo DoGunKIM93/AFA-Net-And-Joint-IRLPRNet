@@ -45,28 +45,45 @@ def _loadModel(inferencePresetName):
     # load checkpoint weight
     checkpoint = torch.load(Config.param.data.path.pretrainedPath + Config.inferenceDict[inferencePresetName]["weight"])
     # model.load_state_dict(checkpoint['model'],strict=True)
-    try:
-        mthd = "NORMAL"
-        model.load_state_dict(checkpoint["model"], strict=True)
-    except:
+    while(True):
+        try:
+            mthd = "NORMAL"
+            model.load_state_dict(checkpoint["model"], strict=True)
+            break
+        except:
+            pass
         try:
             mthd = "GLOBAL STRUCTURE"
             model.load_state_dict(checkpoint, strict=True)
+            break
         except:
-            try:
-                mthd = "INNER MODEL GLOBAL STRUCTURE"
-                model.module.load_state_dict(checkpoint, strict=True)
-            except:
-                try:
-                    mthd = "UNSTRICT (WARNING : load weights imperfectly)"
-                    model.load_state_dict(checkpoint["model"], strict=False)
-                except:
-                    try:
-                        mthd = "GLOBAL STRUCTURE UNSTRICT (WARNING : load weights imperfectly)"
-                        model.load_state_dict(checkpoint, strict=False)
-                    except:
-                        mthd = "FAILED"
-                        print("inference.py :: model load failed..... I'm sorry~")
+            pass
+        try:
+            mthd = "INNER MODEL"
+            model.module.load_state_dict(checkpoint["model"], strict=True)
+            break
+        except:
+            pass
+        try:
+            mthd = "INNER MODEL GLOBAL STRUCTURE"
+            model.module.load_state_dict(checkpoint, strict=True)
+            break
+        except:
+            pass
+        try:
+            mthd = "UNSTRICT (WARNING : load weights imperfectly)"
+            model.load_state_dict(checkpoint["model"], strict=False)
+            break
+        except:
+            pass
+        try:
+            mthd = "GLOBAL STRUCTURE UNSTRICT (WARNING : load weights imperfectly)"
+            model.load_state_dict(checkpoint, strict=False)
+            break
+        except:
+            mthd = "FAILED"
+            print("utils.py :: model load failed..... I'm sorry~")
+            break
 
     model.eval()
     print(

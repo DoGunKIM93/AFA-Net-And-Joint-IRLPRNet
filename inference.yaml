@@ -8,16 +8,19 @@ General-Perceptual:
     model: SPSR_Generator
     param: 4
     weight: SPSR-baseline-netG.pth
+    valueRangeType: 0~1
 
 General-Perceptual-Robust:
     model: SPSR_Generator
     param: 4
     weight: SPSR-Robust-netG-General.pth
+    valueRangeType: 0~1
 
 General-PSNR:
     model: EDVR
     param: 128, 1, 1, 5, 40
     weight: EDVR_SISR_general.pth 
+    valueRangeType: 0~1
 
 Satellite-Perceptual:
     model: SPSR_Generator
@@ -43,8 +46,16 @@ Medical-x4:
     model: DeFiAN
     param: 64, 20, 10, 4
     weight: DeFiAN_Medical_x4.pth
+    valueRangeType: 0~1
 
 Medical-x8:
     model: DeFiAN
     param: 64, 20, 10, 8
     weight: DeFiAN_Medical_x8.pth
+    valueRangeType: 0~1
+
+General-PSNR-Advanced:
+    model: DeFiAN
+    param: 64, 20, 10, 4, 1
+    weight: DeFiAN_L_x4_air.pth
+    valueRangeType: 0~1

@@ -196,7 +196,7 @@ class SingleModule(nn.Module):
 
 
 class Generator(nn.Module):
-    def __init__(self, n_channels, n_blocks, n_modules, scale, act=nn.ReLU(True), attention=True): #scale=(2,3,4)
+    def __init__(self, n_channels, n_blocks, n_modules, scale, normalize=False, act=nn.ReLU(True), attention=True): #scale=(2,3,4)
         super(Generator, self).__init__()
         self.n_modules = n_modules
         self.input = nn.Conv2d(in_channels=3, out_channels=n_channels, kernel_size=3, stride=1, padding=1, bias=True)
@@ -211,8 +211,14 @@ class Generator(nn.Module):
         self.upscale = nn.ModuleList([UpScale(n_channels=n_channels, scale=s, act=False) for s in scale])
 
         self.output = nn.Conv2d(in_channels=n_channels, out_channels=3, kernel_size=3, stride=1, padding=1, bias=True)
+        self.normalize = normalize
 
     def forward(self, x):
+
+        if self.normalize in [True, 1] :
+            mean = torch.tensor([0.485, 0.456, 0.406], device=torch.device('cuda')).view(1,-1,1,1)
+            std = torch.tensor([0.229, 0.224, 0.225],device=torch.device('cuda')).view(1,-1,1,1)
+            x = (x - mean) / std
 
         body_input = self.input(x)
         body_output = self.body(body_input)
@@ -221,6 +227,11 @@ class Generator(nn.Module):
         else:
             sr_high = self.upscale[0](self.tail(body_output) + body_input)
         results = self.output(sr_high)
+
+        if self.normalize in [True, 1]:
+            mean = torch.tensor([-2.118, -2.036, -1.804], device=torch.device('cuda')).view(1,-1,1,1)
+            std = torch.tensor([4.367, 4.464, 4.444],device=torch.device('cuda')).view(1,-1,1,1)
+            x = (x - mean) / std
 
         return results
 
