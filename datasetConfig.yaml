@@ -105,7 +105,7 @@ Set5_SR:
         - scaleMethod
         - scaleFactor
     preprocessings: # Must be list
-        - Pass()
+        - Pass
 
 Set5_SR_V:
     origin: superResolution/SISR/benchmark/Set5
@@ -117,6 +117,20 @@ Set5_SR_V:
         - test
     classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
         - class
+    preprocessings: # Must be list
+        - Pass()
+
+Set14_SR:
+    origin: superResolution/SISR/benchmark/Set14
+    dataType: 
+        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
+    labelType:
+        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
+    availableMode:
+        - test
+    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+        - scaleMethod
+        - scaleFactor
     preprocessings: # Must be list
         - Pass()
 
