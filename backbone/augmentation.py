@@ -14,6 +14,7 @@ from PIL import Image as PILImage
 from PIL import PngImagePlugin
 from PIL.PngImagePlugin import PngImageFile
 from PIL.JpegImagePlugin import JpegImageFile
+from PIL.BmpImagePlugin import BmpImageFile
 from typing import List, Dict, Tuple, Union, Optional
 
 # FROM PyTorch
@@ -391,6 +392,7 @@ def _getType(x) -> str:
         PngImageFile: "PIL",
         JpegImageFile: "PIL",
         PILImage.Image: "PIL",
+        BmpImageFile: "PIL",
         np.memmap: "NPARRAY",
         np.ndarray: "NPARRAY",
         torch.Tensor: "TENSOR",
@@ -415,7 +417,7 @@ def _getSize(x) -> List[int]:  # C H W
     return sz
 
 
-def _toTensor(x) -> torch.Tensor:
+def _toTensor(x) -> torch.Tensor: #0~255 INT
 
     if _getType(x) == "PIL":  # PIL Implemenataion
         x = vF.to_tensor(x)
@@ -429,10 +431,10 @@ def _toTensor(x) -> torch.Tensor:
     return x
 
 
-def _toNPArray(x):
+def _toNPArray(x): #float32 0~1
 
     if _getType(x) == "PIL":  # PIL Implemenataion
-        x = np.array(x)
+        x = np.array(x, dtype=np.float32).transpose(2,0,1) / 255
 
     elif _getType(x) == "NPARRAY":
         pass
@@ -443,12 +445,13 @@ def _toNPArray(x):
     return x
 
 
-def _toPIL(x):
+def _toPIL(x): #float32 0~1
 
     if _getType(x) == "PIL":  # PIL Implemenataion
         pass
 
     elif _getType(x) == "NPARRAY":
+        x = _toTensor(x)
         x = vF.to_pil_image(x)
 
     elif _getType(x) == "TENSOR":  # Tensor Implementation
@@ -543,14 +546,23 @@ def _resize(x, height, width, interpolation=3):
     3 : Bicubic
 
     숫자가 커질수록 품질이 좋고 속도가 느려짐
+
+    torchvision의 tensor interpolation이 PIL과 달라 부득이하게 PIL로 변환 후 리사이즈 후 원래대로 변환함 (속도 저하됨)
+
     """
-    if _getType(x) in ["PIL", "TENSOR"]:  # PIL & Tensor Implemenataion
+
+    if _getType(x) is "PIL":  # PIL & Tensor Implemenataion
         x = vF.resize(x, [height, width], interpolation=interpolation)
 
     elif _getType(x) is "NPARRAY":  # Tensor Implementation
-        x = torch.tensor(x)
+        x = _toPIL(x)
         x = vF.resize(x, [height, width], interpolation=interpolation)
-        x = x.numpy()
+        x = _toNPArray(x)
+
+    elif _getType(x) is "TENSOR":  # Tensor Implementation
+        x = _toPIL(x)
+        x = vF.resize(x, [height, width], interpolation=interpolation)
+        x = _toTensor(x)
 
     return x
 
