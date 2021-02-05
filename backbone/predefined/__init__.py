@@ -6,6 +6,7 @@ from backbone.predefined.EDVR import EDVR
 from backbone.predefined.VESPCN import VESPCN
 from backbone.predefined.SPSR import SPSR_Generator, SPSR_FeatureExtractor, SPSR_Discriminator, SPSR_Get_gradient, SPSR_Get_gradient_nopadding
 from backbone.predefined.DeFiAN import Generator as DeFiAN
+from backbone.predefined.DRLN import DRLN
 
 ##### DEBLUR #####
 from backbone.predefined.DMPHN import DMPHN_Decoder, DMPHN_Encoder
@@ -27,6 +28,7 @@ __all__ = [ 'ESPCN',
             'RetinaFace',
             'ResNeSt',
             'DeFiAN',
-            'DMPHN_Decoder', 'DMPHN_Encoder'
+            'DMPHN_Decoder', 'DMPHN_Encoder',
+            'DRLN'
 ]
 
