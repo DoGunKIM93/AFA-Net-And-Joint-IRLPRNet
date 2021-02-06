@@ -1,7 +1,7 @@
 #################################################################################
 #                               *** param.yaml ***                              #
 #################################################################################
-version : 2.08.201230
+version : 2.10.210206
  
 
 
@@ -13,7 +13,7 @@ version : 2.08.201230
 general:
     #maxMemoryCachingSizeGB: 64
     #maxVRAMCachingSizeGB: 8 # will be devide by # of GPU
-    GPUNum: 1 # comma-separated
+    GPUNum: 0 # comma-separated
 
 
 
@@ -63,6 +63,14 @@ data:
                     - 4
             colorMode: color  # 'color' || 'grayscale'
 
+        DIV2K_SR_validation_virtual:
+            dataConfig: DIV2K_SR_V
+            mode: validation # 'train' || 'validation' || 'test'.  # See above table
+            classParameter:
+                class: 
+                    - GT
+            colorMode: color  # 'color' || 'grayscale'
+
         DIV2K_SR_train_virtual:
             dataConfig: DIV2K_SR_V
             mode: train # 'train' || 'validation' || 'test'.  # See above table
@@ -89,43 +97,228 @@ data:
                     - 4
             colorMode: color
 
+        Set5_SR_test_virtual:
+            dataConfig: Set5_SR_V
+            mode: test
+            classParameter:
+                class:
+                    - GT
+            colorMode: color
+
+        Set14_SR_test:
+            dataConfig: Set14_SR
+            mode: test
+            classParameter:
+                scaleMethod:
+                    - bicubic
+                scaleFactor:
+                    - 4
+            colorMode: color
+
+        CXR8_SR_train_virtual:
+            dataConfig: Medical_CXR8_V
+            mode: train
+            classParameter:
+                class: 
+                    - GT
+            colorMode: color
+
+        CXR8_SR_validation_virtual:
+            dataConfig: Medical_CXR8_V
+            mode: validation
+            classParameter:
+                class: 
+                    - GT
+            colorMode: color
+
+        CXR8_SR_test_virtual:
+            dataConfig: Medical_CXR8_V
+            mode: test
+            classParameter:
+                class: 
+                    - GT
+            colorMode: color
+
+        REDS_DEBLUR_LR_train:
+            dataConfig: REDS_SR
+            mode: train
+            classParameter:
+                scaleMethod:
+                    - blur_bicubic
+                scaleFactor:
+                    - 4
+            colorMode: color
+
+        REDS_DEBLUR_LR_validation:
+            dataConfig: REDS_SR
+            mode: validation
+            classParameter:
+                scaleMethod:
+                    - blur_bicubic
+                scaleFactor:
+                    - 4
+            colorMode: color
+
+        REDS_DEBLUR_LR_test:
+            dataConfig: REDS_SR
+            mode: test
+            classParameter:
+                scaleMethod:
+                    - blur_bicubic
+                scaleFactor:
+                    - 4
+            colorMode: color
+
+        REDS_DEBLUR_JPEG_train:
+            dataConfig: REDS_SR
+            mode: train
+            classParameter:
+                scaleMethod:
+                    - bicubic
+                scaleFactor:
+                    - 1
+            colorMode: color
+
+        REDS_DEBLUR_JPEG_validation:
+            dataConfig: REDS_SR
+            mode: validation
+            classParameter:
+                scaleMethod:
+                    - bicubic
+                scaleFactor:
+                    - 1
+            colorMode: color
+
+        REDS_DEBLUR_JPEG_test:
+            dataConfig: REDS_SR
+            mode: test
+            classParameter:
+                scaleMethod:
+                    - bicubic
+                scaleFactor:
+                    - 1
+            colorMode: color
+
 
 
     dataLoader:
     
-        train:
+        train_REDS:
             datasetComponent: # Must be list
-                - DIV2K_SR_train_virtual
+                - DIV2K_SR_train
                 #- 291_SR_train_virtual
             batchSize: 64
             valueRangeType : 0~1
             isEval: False
             makePreprocessedFile: True
+            caching: True
             augmentation: # Must be list of dict   /   toTensor() Must be here
-                - randomCrop(192,192)
-                - virtualScaling(4) 
+                - randomCrop(96,96)
+                #- virtualScaling(4) 
                 #- normalize3Ch(0.485, 0.456, 0.406, 0.229, 0.224, 0.225)
                 - toTensor()
                 - randomFlip()
+                - randomRotate()
 
-        validation:
+        train_SR:
             datasetComponent: # Must be list
-                - Set5_SR_test #_virtual
+                - DIV2K_SR_train
+                #- 291_SR_train_virtual
+            batchSize: 64
+            valueRangeType : 0~1
+            isEval: False
+            makePreprocessedFile: True
+            caching: True
+            augmentation: # Must be list of dict   /   toTensor() Must be here
+                - randomCrop(96,96)
+                #- virtualScaling(4) 
+                #- normalize3Ch(0.485, 0.456, 0.406, 0.229, 0.224, 0.225)
+                - toTensor()
+                - randomFlip()
+                - randomRotate()
+
+        train_CXR8:
+            datasetComponent:
+                - CXR8_SR_train_virtual
+            batchSize: 48
+            valueRangeType : 0~1
+            isEval: False
+            makePreprocessedFile: True
+            caching: True
+            augmentation: 
+                - toRGB()
+                - randomCrop(192,192)
+                - virtualScaling(4) 
+                - toTensor()
+                - randomFlip()
+                - randomRotate()
+
+
+
+
+
+
+        validation_REDS:
+            datasetComponent: # Must be list
+                - Set5_SR_test_virtual
             batchSize: 1
             valueRangeType : 0~1
             isEval: True
             makePreprocessedFile: True
-            augmentation: # Must be list of dict   /   toTensor() Must be here
-                #- normalize3Ch(0.485, 0.456, 0.406, 0.229, 0.224, 0.225)
+            caching: True
+            augmentation: # Must be list of dict   /   toTensor() Must be here\
+                - virtualScaling(4, 1) 
                 - toTensor()
 
-        inference:
+                
+        validation_SR:
+            datasetComponent: # Must be list
+                - Set5_SR_test_virtual
+            batchSize: 1
+            valueRangeType : 0~1
+            isEval: True
+            makePreprocessedFile: True
+            caching: True
+            augmentation: # Must be list of dict   /   toTensor() Must be here\
+                - virtualScaling(4, 1) 
+                - toTensor()
+
+        validation_CXR8:
+            datasetComponent: 
+                - CXR8_SR_validation_virtual
+            batchSize: 1
+            valueRangeType : 0~1
+            isEval: True
+            makePreprocessedFile: True
+            caching: False
+            augmentation: 
+                - toRGB()
+                - virtualScaling(8) 
+                - toTensor()
+
+
+
+
+
+        inference_REDS:
             datasetComponent: # Must be list
                 - Set5_SR_test #_virtual
             batchSize: 1
             valueRangeType: 0~1
             isEval: True
             makePreprocessedFile: False
+            caching: False
+            augmentation: # Must be list of dict   /   toTensor() Must be here
+                - toTensor()
+
+        inference_SR:
+            datasetComponent: # Must be list
+                - Set5_SR_test #_virtual
+            batchSize: 1
+            valueRangeType: 0~1
+            isEval: True
+            makePreprocessedFile: False
+            caching: False
             augmentation: # Must be list of dict   /   toTensor() Must be here
                 - toTensor()
 
@@ -139,14 +332,14 @@ train:
 
     step:
         maxEpoch: 180000
-        validationStep: 100
-        archiveStep: 100
+        validationStep: 10
+        archiveStep: 5
         earlyStopStep: -1
 
     method:
         mixedPrecision: False 
 
-    dataLoaderNumWorkers: 1
+    dataLoaderNumWorkers: 16
 
 
 

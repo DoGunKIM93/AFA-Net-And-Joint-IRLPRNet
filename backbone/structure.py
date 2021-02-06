@@ -1,7 +1,7 @@
 """
 structure.py
 """
-version = "1.18.210112.2"
+version = "1.19.210206"
 
 import torch.nn as nn
 import torch
@@ -78,7 +78,7 @@ class Epoch:
         do_calculateLoss=True,
         do_printLoss=True,
     ):
-
+        #print(f"RUN PHASE 1")
         assert do_resultSave in [True, "EVERY", False]
         assert do_modelSave in [True, False]
         assert do_calculateScore in [True, "DETAIL", False]
@@ -124,7 +124,7 @@ class Epoch:
         AvgLossDict = {}
         timePerBatch = time.perf_counter()  # 1배치당 시간
         timePerEpoch = time.perf_counter()  # 1에폭당 시간
-
+        #print(f"RUN PHASE 2")
         ####################################
         #       in-Batch Instructions
         ####################################

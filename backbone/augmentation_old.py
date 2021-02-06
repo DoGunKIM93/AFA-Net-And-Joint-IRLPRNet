@@ -1,7 +1,7 @@
 """
 augmentation.py
 """
-version = "1.20.210206"
+version = "1.18.210127"
 
 # FROM Python LIBRARY
 import random
@@ -394,6 +394,8 @@ def _getType(x) -> str:
         JpegImageFile: "PIL",
         PILImage.Image: "PIL",
         BmpImageFile: "PIL",
+        np.memmap: "NPARRAY",
+        np.ndarray: "NPARRAY",
         torch.Tensor: "TENSOR",
         type(None): "NONE",
     }
@@ -410,6 +412,10 @@ def _getSize(x) -> List[int]:  # C H W
     elif _getType(x) == "TENSOR":  # Tensor Implementation
         sz = list(x.size())[-3:]
 
+    
+    elif _getType(x) == "NPARRAY":
+        sz = list(x.shape)
+    
     return sz
 
 
@@ -418,28 +424,44 @@ def _toTensor(x) -> torch.Tensor: #0~255 INT    C H W
     if _getType(x) == "PIL":  # PIL Implemenataion
         x = vF.to_tensor(x)
 
+    elif _getType(x) == "NPARRAY":
+        x = torch.tensor(x)
+        
     elif _getType(x) == "TENSOR":  # Tensor Implementation
         pass
 
     return x
 
-'''
+
 def _toNPArray(x): #float32 0~1   H W C
 
     if _getType(x) == "PIL":  # PIL Implemenataion
         x = np.array(x, dtype=np.float32).transpose(2,0,1) / 255
 
+    elif _getType(x) == "NPARRAY":
+        pass
+
     elif _getType(x) == "TENSOR":  # Tensor Implementation
         x = x.numpy()
 
     return x
-'''
 
 
 def _toPIL(x): #float32 0~1   W H C
 
     if _getType(x) == "PIL":  # PIL Implemenataion
         pass
+
+    elif _getType(x) == "NPARRAY":
+        #print(f"RUN PHASE VS 3-1")
+        t = time.perf_counter()
+        #x = _toTensor(x)
+
+        #Convert np array to standard np array dim order
+        x = (x.transpose(1,2,0) * 255).astype(np.uint8) # CHW -> HWC 
+        print(time.perf_counter() - t)
+        #print(f"RUN PHASE VS 3-2")
+        x = vF.to_pil_image(x)
 
     elif _getType(x) == "TENSOR":  # Tensor Implementation
         x = vF.to_pil_image(x)
@@ -455,6 +477,9 @@ def _crop(x, top: int, left: int, height: int, width: int):
 
     elif _getType(x) in ["TENSOR"]:  # PIL & Tensor Implemenataion
         x = vF.crop(x, top, left, height, width)
+
+    elif _getType(x) is "NPARRAY":  # Tensor Implementation
+        x = x[..., top : top + height, left : left + width]
 
     return x
 
@@ -495,6 +520,15 @@ def _flip(x, horiz, verti):
         if verti is True:
             x = vF.vflip(x)
 
+    elif _getType(x) is "NPARRAY":  # Tensor Implementation
+
+        if horiz is True:
+            x2 = np.flip(x, 1)
+            x = x2.copy()
+        if verti is True:
+            x2 = np.flip(x, 0)
+            x = x2.copy()
+
     return x
 
 
@@ -505,6 +539,10 @@ def _rotate(x, angle):
 
     elif _getType(x) in ["TENSOR"]:  # PIL & Tensor Implemenataion
         x = torch.rot90(x, angle, (2, 3))
+
+    elif _getType(x) is "NPARRAY":  # Tensor Implementation
+        x2 = np.rot90(x, angle, (1, 2))
+        x = x2.copy()
 
     return x
 
@@ -525,6 +563,14 @@ def _resize(x, height, width, interpolation=3):
     if _getType(x) is "PIL":  # PIL & Tensor Implemenataion
         x = vF.resize(x, [height, width], interpolation=interpolation)
 
+    elif _getType(x) is "NPARRAY":  # Tensor Implementation
+        #print(f"RUN PHASE VS 3")
+        x = _toPIL(x)
+        #print(f"RUN PHASE VS 4")
+        x = vF.resize(x, [height, width], interpolation=interpolation)
+        #print(f"RUN PHASE VS 5")
+        x = _toNPArray(x)
+        #print(f"RUN PHASE VS 6")
 
     elif _getType(x) is "TENSOR":  # Tensor Implementation
         x = _toPIL(x)
@@ -566,12 +612,41 @@ def _gaussianBlur(x, kernelSize, sigma):
     elif _getType(x) in ["TENSOR"]:  # PIL & Tensor Implemenataion
         x = vision.Gaussian(x, kernelSize, sigma)
 
+    elif _getType(x) is "NPARRAY":  # Tensor Implementation
+        raise NotImplementedError(
+            "augmentation.py :: gaussianBlur Augmentation has not implemented for NP array due to speed issue. please use it for Tensor after toTensor() augmentation."
+        )
+
     return x
 
 
 def _motionBlur(x, kernelSize, angle, direction):
 
-    x = _applyImgAug(x, imgaug.augmenters.blur.MotionBlur(k=kernelSize, angle=angle, direction=direction))
+    if _getType(x) in ["PIL"]:  # PIL & Tensor Implemenataion
+        x = _toNPArray(x)
+        x = np.moveaxis(x, 0, -1)
+        x = np.expand_dims(x, 0)
+        x = imgaug.augmenters.blur.MotionBlur(k=kernelSize, angle=angle, direction=direction)(images=x)
+        x = np.squeeze(x, 0)
+        x = np.moveaxis(x, -1, 0)
+        x = _toPIL(x)
+
+    elif _getType(x) in ["TENSOR"]:  # PIL & Tensor Implemenataion
+        x = _toNPArray(x)
+        x = np.moveaxis(x, 0, -1)
+        x = np.expand_dims(x, 0)
+        x = imgaug.augmenters.blur.MotionBlur(k=kernelSize, angle=angle, direction=direction)(images=x)
+        x = np.squeeze(x, 0)
+        x = np.moveaxis(x, -1, 0)
+        x = _toTensor(x)
+
+    elif _getType(x) is "NPARRAY":  # Tensor Implementation
+        x = np.moveaxis(x, 0, -1)
+        x = np.expand_dims(x, 0)
+        x = imgaug.augmenters.blur.MotionBlur(k=kernelSize, angle=angle, direction=direction)(images=x)
+        x = np.squeeze(x, 0)
+        x = np.moveaxis(x, -1, 0)
+
     return x
 
 def _normalize(x, mean, std):
@@ -584,6 +659,11 @@ def _normalize(x, mean, std):
     elif _getType(x) in ["TENSOR"]:  # Tensor Implemenataion
         x = vF.normalize(x, mean, std)
 
+    elif _getType(x) in ["NPARRAY"]:  # Tensor Implemenataion
+        x = _toTensor(x)
+        x = vF.normalize(x, mean, std)
+        x = _toNPArray(x)
+        
     return x 
 
 def _toRGB(x):
@@ -609,29 +689,19 @@ def _toRGB(x):
             pass
         elif c == 4:
             x = x[0:3,:,:]
+
+    elif _getType(x) in ["NPARRAY"]:  # NPA Implemenataion
+        x = _toTensor(x)
+        c, _, _ = _getSize(x)
+        assert c in [1,3,4]
+
+        if c == 1:
+            x = torch.cat([x, x, x], 0)
+        elif c == 3:
+            pass
+        elif c == 4:
+            x = x[0:3,:,:]
+
+        x = _toNPArray(x)
         
     return x 
-
-def _applyImgAug(x, imgAugAugmenter):
-
-    if _getType(x) in ["PIL"]:  # PIL & Tensor Implemenataion
-        x = np.asarray(x) #HWC
-        x = np.moveaxis(x, 0, 1) #WHC
-        x = np.expand_dims(x, 0) #0WHC
-        x = imgAugAugmenter(images=x)
-        x = np.squeeze(x, 0) #WHC
-        x = np.moveaxis(x, 1, 0) #HWC
-        x = PILImage.fromarray(x)
-
-
-    elif _getType(x) in ["TENSOR"]:  # PIL & Tensor Implemenataion 
-
-        x = x.numpy() # CHW
-        x = np.moveaxis(x, 0, -1) #WHC
-        x = np.expand_dims(x, 0) #0WHC
-        x = imgAugAugmenter(images=x)
-        x = np.squeeze(x, 0) #WHC
-        x = np.moveaxis(x, -1, 0) #CHW
-        x = torch.tensor(x)
-
-    return x
