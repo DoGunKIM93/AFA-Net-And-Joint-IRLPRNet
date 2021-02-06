@@ -992,6 +992,7 @@ class DatasetHighball(torchDataset):
         numWorkers: int,
         makePreprocessedFile: bool,
         isCaching: bool,
+        forceImageDataType: bool,
     ):
         '''
         Dataset Settings
@@ -1013,6 +1014,7 @@ class DatasetHighball(torchDataset):
         self.PILImageToTensorFunction = transforms.ToTensor()
 
         self.isCaching = isCaching
+        self.forceImageDataType = forceImageDataType
 
         '''
         Dataset data
@@ -1036,20 +1038,21 @@ class DatasetHighball(torchDataset):
             for filePath, preProc in zippedLists:
                 cache.update({filePath: self._readImage(filePath, preProc)})
                 self.cache_cnt.value += 1
-                print(f"{self.cache_cnt.value} / {self.cache_MX_LEN}       ", end='\r')
-            return cache
+                print(f"ETA : {(self.cache_MX_LEN - self.cache_cnt.value) / self.cache_cnt.value * (time.perf_counter() - self.cache_startTime):.0f} sec [{self.cache_cnt.value} / {self.cache_MX_LEN}]       ", end='\r')
         else:
             cache = {}
             cnt = 0
             for filePath, preProc in zippedLists:
                 cache.update({filePath: self._readImage(filePath, preProc)})
                 cnt += 1
-                print(f"{cnt} / {self.cache_MX_LEN}       ", end='\r')
-            return cache
+                print(f"ETA : {(self.cache_MX_LEN - cnt) / cnt * (time.perf_counter() - self.cache_startTime):.0f} sec [{cnt} / {self.cache_MX_LEN}]       ", end='\r')
+        return cache
 
 
     def _caching(self):
         
+        datasetComponentType = self.datasetComponentObjectList[0].datasetConfig.dataType["dataType"]
+
         t = time.perf_counter()
 
         MULTIPROC = 0
@@ -1064,10 +1067,14 @@ class DatasetHighball(torchDataset):
             for i, dfDict in enumerate(dCO.dataFileList):
                 for dfDictKey in dfDict.keys():
 
-                    filePath = dfDict[dfDictKey]
-                    #if filePath not in fileList:
-                    fileListDict.update({filePath:preProc})
-                    #preProcList.append(preProc)
+                    assert datasetComponentType in ['Image', 'ImageSequence']
+                    if datasetComponentType == 'Image':
+                        filePath = dfDict[dfDictKey]
+                        fileListDict.update({filePath:preProc})
+                    elif datasetComponentType == 'ImageSequence':
+                        for filePath in dfDict[dfDictKey]:
+                            fileListDict.update({filePath:preProc})
+                        
                     cnt += 1
                     print(f"Make list... {cnt}   ", end='\r')
         
@@ -1077,15 +1084,16 @@ class DatasetHighball(torchDataset):
 
         print(f"Start Caching with {MULTIPROC} processes...")
 
+
+        self.cache = {}
+        MX_LEN = len(fileList)
+        self.cache_MX_LEN = MX_LEN
+        self.cache_startTime = time.perf_counter()
+
+
         if MULTIPROC == 0:
-            self.cache = {}
-            MX_LEN = len(fileList)
-            self.cache_MX_LEN = MX_LEN
             self.cache = self._cachingFunc(zip(fileList,preProcList), isMultiProc=False)
         else:
-            self.cache = {}
-            MX_LEN = len(fileList)
-            self.cache_MX_LEN = MX_LEN
             CHNK_SIZE = MX_LEN // MULTIPROC
             cacheeList = []
             for i in range(MULTIPROC):
@@ -1660,41 +1668,57 @@ class DatasetHighball(torchDataset):
         # Data Demension Align
         ###################################################################################
 
-        if isinstance(rstDict[dataType["dataName"]], list):
-            if dataType["dataType"] == "Text":
-                pass
-            elif dataType["dataType"] == "Image":
-                assert len(rstDict[dataType["dataName"]][0].size()) == 4
-                rstDict[dataType["dataName"]] = rstDict[dataType["dataName"]].squeeze(0)
-            elif dataType["dataType"] == "ImageSequence":
-                assert len(rstDict[dataType["dataName"]][0].size()) == 4
+        types = [dataType, labelType]
 
-            if labelType != {}:
-                if labelType["dataType"] == "Text":
+        for typ in types:
+        
+            #if isinstance(rstDict[typ["dataName"]], list):
+
+            if typ != {}:
+                if typ["dataType"] == "Text":
                     pass
-                elif labelType["dataType"] == "Image":
-                    assert len(rstDict[labelType["dataName"]][0].size()) == 4
-                    rstDict[labelType["dataName"]] = rstDict[labelType["dataName"]].squeeze(0)
-                elif labelType["dataType"] == "ImageSequence":
-                    assert len(rstDict[labelType["dataName"]][0].size()) == 4
-
-        else:
-            if dataType["dataType"] == "Text":
-                pass
-            elif dataType["dataType"] == "Image":
-                assert len(rstDict[dataType["dataName"]].size()) == 4
-                rstDict[dataType["dataName"]] = rstDict[dataType["dataName"]].squeeze(0)
-            elif dataType["dataType"] == "ImageSequence":
-                assert len(rstDict[dataType["dataName"]].size()) == 4
-
-            if labelType != {}:
-                if labelType["dataType"] == "Text":
+                elif typ["dataType"] == "Image":
+                    assert len(rstDict[typ["dataName"]].size()) == 4
+                    rstDict[typ["dataName"]] = rstDict[typ["dataName"]].squeeze(0)
+                elif typ["dataType"] == "ImageSequence":
+                    assert len(rstDict[typ["dataName"]][0].size()) == 4
+                    if self.forceImageDataType is True:
+                        rstDict[typ["dataName"]] = [x.squeeze(0) for x in rstDict[typ["dataName"]]]
+                '''
+                if labelType != {}:
+                    if labelType["dataType"] == "Text":
+                        pass
+                    elif labelType["dataType"] == "Image":
+                        assert len(rstDict[labelType["dataName"]][0].size()) == 4
+                        rstDict[labelType["dataName"]] = rstDict[labelType["dataName"]].squeeze(0)
+                    elif labelType["dataType"] == "ImageSequence":
+                        assert len(rstDict[labelType["dataName"]][0].size()) == 4
+                        if self.forceImageDataType is True:
+                            rstDict[dataType["dataName"]] = rstDict[dataType["dataName"]].squeeze(0)
+                '''
+            '''
+            else:
+                if dataType["dataType"] == "Text":
                     pass
-                elif labelType["dataType"] == "Image":
-                    assert len(rstDict[labelType["dataName"]].size()) == 4
-                    rstDict[labelType["dataName"]] = rstDict[labelType["dataName"]].squeeze(0)
-                elif labelType["dataType"] == "ImageSequence":
-                    assert len(rstDict[labelType["dataName"]].size()) == 4
+                elif dataType["dataType"] == "Image":
+                    assert len(rstDict[dataType["dataName"]].size()) == 4
+                    rstDict[dataType["dataName"]] = rstDict[dataType["dataName"]].squeeze(0)
+                elif dataType["dataType"] == "ImageSequence":
+                    assert len(rstDict[dataType["dataName"]].size()) == 4
+                    if self.forceImageDataType is True:
+                        rstDict[dataType["dataName"]] = rstDict[dataType["dataName"]].squeeze(0)
+
+                if labelType != {}:
+                    if labelType["dataType"] == "Text":
+                        pass
+                    elif labelType["dataType"] == "Image":
+                        assert len(rstDict[labelType["dataName"]].size()) == 4
+                        rstDict[labelType["dataName"]] = rstDict[labelType["dataName"]].squeeze(0)
+                    elif labelType["dataType"] == "ImageSequence":
+                        assert len(rstDict[labelType["dataName"]].size()) == 4
+                        if self.forceImageDataType is True:
+                            rstDict[dataType["dataName"]] = rstDict[dataType["dataName"]].squeeze(0)
+            '''
         #print(f"RUN PHASE 3-6")
         return rstDict
 
@@ -1725,6 +1749,7 @@ class DataLoader(torchDataLoader):
         numWorkers: Optional[int] = None,
         makePreprocessedFile: Optional[bool] = None,
         isCaching: Optional[bool] = None,
+        sequenceLength: Optional[bool] = None,
     ):
 
         # INIT PARAMs #
@@ -1740,6 +1765,8 @@ class DataLoader(torchDataLoader):
         self.makePreprocessedFile = makePreprocessedFile
         
         self.isCaching = isCaching
+        self.sequenceLength = sequenceLength
+        self.forceImageDataType = None
 
         self.fromParam = fromParam
 
@@ -1795,10 +1822,14 @@ class DataLoader(torchDataLoader):
             )
             for name in datasetNameList
         )
-        sequenceLength = [yamlData["sequenceLength"] if "sequenceLength" in yamlData.keys() else None] * len(datasetNameList)
+        self.sequenceLength = yamlData["sequenceLength"] if "sequenceLength" in yamlData.keys() else None
+
+        sequenceLengthForDatasetComponentParamList = 1 if self.sequenceLength == 0 else self.sequenceLength
+
+        sequenceLengthForDatasetComponentParamList = [sequenceLengthForDatasetComponentParamList] * len(datasetNameList)
 
         self.datasetComponentParamList = zip(
-            datasetNameList, datasetModeList, datasetClassParameterList, datasetLabelClassNameList, sequenceLength
+            datasetNameList, datasetModeList, datasetClassParameterList, datasetLabelClassNameList, sequenceLengthForDatasetComponentParamList
         )
 
         self.batchSize = int(yamlData["batchSize"])
@@ -1808,6 +1839,8 @@ class DataLoader(torchDataLoader):
         self.numWorkers = Config.param.train.dataLoaderNumWorkers
         self.makePreprocessedFile = yamlData["makePreprocessedFile"]
         self.isCaching = yamlData["caching"]
+        self.forceImageDataType = True if self.sequenceLength == 0 else False
+        
 
     def _constructDataset(self):
 
@@ -1819,7 +1852,8 @@ class DataLoader(torchDataLoader):
             augmentation=self.augmentation,
             numWorkers=self.numWorkers,
             makePreprocessedFile=self.makePreprocessedFile,
-            isCaching=self.isCaching
+            isCaching=self.isCaching,
+            forceImageDataType=self.forceImageDataType
         )
 
         for dc in self.dataset.datasetComponentObjectList:
