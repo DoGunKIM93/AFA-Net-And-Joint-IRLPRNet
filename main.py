@@ -128,14 +128,14 @@ modelList = ModelList()
 
 
 
-print("Load below models")
+print("Load below models...")
 startEpoch, metaData = utils.loadModels(modelList, edit.version, edit.subversion, args.load)
 print(f"All model loaded. Last Epoch: {startEpoch}")#", Loss: {lastLoss.item():.6f}, BEST Score: {bestScore:.2f} dB")
 
 
 
 
-
+print("Init Epoch...")
 #Define Epochs
 if args.inferenceTest == False:
     trainEpoch = Epoch(dataLoader = trainDataLoader,
@@ -167,7 +167,8 @@ if args.inferenceTest == False:
                                             'additionalArgs' : ['$VALUE_RANGE_TYPE', '$COLOR_MODE'],
                                         }},
                         resultSaveData = ['LR', 'SR', 'HR'] ,
-                    resultSaveFileName = 'valid',
+                    resultSaveFileName = 'valid/valid',
+                    earlyStopIteration = Config.param.train.step.earlyStopStep,
                     name='VAILD')
 
 else:
@@ -185,7 +186,7 @@ else:
                     resultSaveData = ['LR_center', 'SR'] ,
                 resultSaveFileName = 'inference',)
 
-
+print(f"Running...")
 
 
 
