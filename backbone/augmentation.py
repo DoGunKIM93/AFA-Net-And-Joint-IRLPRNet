@@ -504,7 +504,7 @@ def _rotate(x, angle):
         x = vF.rotate(x, angle * 90)
 
     elif _getType(x) in ["TENSOR"]:  # PIL & Tensor Implemenataion
-        x = torch.rot90(x, angle, (2, 3))
+        x = torch.rot90(x, angle, (-2, -1))
 
     return x
 
