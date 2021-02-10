@@ -1099,18 +1099,14 @@ class DatasetHighball(torchDataset):
             for i in range(MULTIPROC):
                 stIdx = i * CHNK_SIZE
                 edIdx = (i + 1) * CHNK_SIZE if i != MULTIPROC - 1 else MX_LEN
-                #print(stIdx,edIdx)
                 cacheeList.append(list(zip(fileList[stIdx: edIdx],preProcList[stIdx: edIdx])))
-            #[print(len(list(x))) for x in cacheeList]
 
             with multiprocessing.Manager() as manager:
-                #self.cache = manager.dict()
                 self.cache_cnt = manager.Value(int, 0)
                 pool = multiprocessing.Pool(processes=MULTIPROC + 1)
                 [self.cache.update(x) for x in pool.map(self._cachingFunc, cacheeList)]
                 pool.close()
                 pool.join()
-                #self.cache = dict(self.cache)
 
 
         print(f"Cached in {time.perf_counter() - t:.1f} sec.                                  ")
@@ -1587,9 +1583,10 @@ class DatasetHighball(torchDataset):
                 rstList = []
 
                 for seqFilePath in seqFileList:
-                    rstList.append(self._readImage(seqFilePath, preProc)  if self.isCaching is False else self.cache[FilePath])
+                    rstList.append(self._readImage(seqFilePath, preProc)  if self.isCaching is False else self.cache[seqFilePath])
 
                 rst = rstList
+                
 
         # data information not defined in config
         else:
@@ -1625,7 +1622,6 @@ class DatasetHighball(torchDataset):
         ###################################################################################
         # Data Augmentation
         ###################################################################################--------------------------------------------------------------
-        # print(len((list(self._dataAugmentation( x , self.augmentation ) for x in list(zip(rstDict[dataType['dataName']], rstDict[labelType['dataName']]))))[0]))
 
         if isinstance(rstDict[dataType["dataName"]], list):  # TODO:
             if labelType != {}:  # if label Exists
