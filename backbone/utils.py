@@ -48,7 +48,7 @@ def initTensorboard(ver, subversion):
             proc.kill()
 
     logdir = f"./data/{ ver }/log"
-    subprocess.Popen(["tensorboard", "--logdir=" + logdir, "--port=6006"])
+    subprocess.Popen(["tensorboard", "--logdir=" + logdir, "--port=6007"])
     writer = SummaryWriter(f"{ logdir }/{ subversion }/")
 
     return writer
@@ -466,7 +466,8 @@ def backproagateAndWeightUpdate(modelList, loss, modelNames=None):
 ########################################################################################################################################################################
 
 # TODO: BATCH
-def calculateImagePSNR(a, b, valueRangeType, colorMode):
+def calculateImagePSNR(a, b, valueRangeType, colorMode, colorSpace = 'YCbCr'):
+    assert colorSpace in ['YCbCr', 'RGB'], 'calculateImagePSNR must be one of "YCbCr", "RGB"'
 
     pred = a.cpu().data[0].numpy().astype(np.float32)
     gt = b.cpu().data[0].numpy().astype(np.float32)
@@ -478,24 +479,27 @@ def calculateImagePSNR(a, b, valueRangeType, colorMode):
         pred = (pred + 1) / 2
         gt = (gt + 1) / 2
 
-    if colorMode == "grayscale":
-        pred = np.round(pred * 219.0)
-        pred[pred < 0] = 0
-        pred[pred > 219.0] = 219.0
-        pred = pred[0, :, :] + 16
+    if colorSpace == "YCbCr":
+        if colorMode == "grayscale":
+            pred = np.round(pred * 219.0)
+            pred[pred < 0] = 0
+            pred[pred > 219.0] = 219.0
+            pred = pred[0, :, :] + 16
 
-        gt = np.round(gt * 219.0)
-        gt[gt < 0] = 0
-        gt[gt > 219.0] = 219.0
-        gt = gt[0, :, :] + 16
-    elif colorMode == "color":
-        pred = 16 + 65.481 * pred[0:1, :, :] + 128.553 * pred[1:2, :, :] + 24.966 * pred[2:3, :, :]
-        pred[pred < 16.0] = 16.0
-        pred[pred > 235.0] = 235.0
+            gt = np.round(gt * 219.0)
+            gt[gt < 0] = 0
+            gt[gt > 219.0] = 219.0
+            gt = gt[0, :, :] + 16
+        elif colorMode == "color":
+            pred = 16 + 65.481 * pred[0:1, :, :] + 128.553 * pred[1:2, :, :] + 24.966 * pred[2:3, :, :]
+            pred[pred < 16.0] = 16.0
+            pred[pred > 235.0] = 235.0
 
-        gt = 16 + 65.481 * gt[0:1, :, :] + 128.553 * gt[1:2, :, :] + 24.966 * gt[2:3, :, :]
-        gt[gt < 16.0] = 16.0
-        gt[gt > 235.0] = 235.0
+            gt = 16 + 65.481 * gt[0:1, :, :] + 128.553 * gt[1:2, :, :] + 24.966 * gt[2:3, :, :]
+            gt[gt < 16.0] = 16.0
+            gt[gt > 235.0] = 235.0 
+    elif colorSpace == "RGB":
+        pass
 
     imdff = pred - gt
     rmse = math.sqrt(np.mean(imdff ** 2))
