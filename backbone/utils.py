@@ -499,7 +499,8 @@ def calculateImagePSNR(a, b, valueRangeType, colorMode, colorSpace = 'YCbCr'):
             gt[gt < 16.0] = 16.0
             gt[gt > 235.0] = 235.0 
     elif colorSpace == "RGB":
-        pass
+        pred = np.round(pred * 255.0)
+        gt = np.round(gt * 255.0)
 
     imdff = pred - gt
     rmse = math.sqrt(np.mean(imdff ** 2))
