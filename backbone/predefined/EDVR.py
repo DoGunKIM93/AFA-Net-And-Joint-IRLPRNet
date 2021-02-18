@@ -26,7 +26,6 @@ from torch.autograd import Function
 from backbone.module.EDVR.EDVR import EDVR_Predeblur_ResNet_Pyramid, EDVR_PCD_Align, EDVR_TSA_Fusion, EDVR_make_layer, EDVR_ResidualBlock_noBN
 
 
-
 class EDVR(nn.Module):
     def __init__(self, nf=64, nframes=7, groups=8, front_RBs=5, back_RBs=10, center=None,
                  predeblur=False, HR_in=False, w_TSA=True):

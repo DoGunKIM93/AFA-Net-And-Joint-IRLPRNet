@@ -8,10 +8,14 @@ version = "1.40.210120"
 import argparse
 import math
 import numpy as np
-import apex.amp as amp
 import os
 import subprocess
 import psutil
+
+try:
+    import apex.amp as amp
+except:
+    pass
 
 # from apex.parallel import DistributedDataParallel as DDP
 from shutil import copyfile
@@ -546,6 +550,7 @@ def initArgParser():
     parser.add_argument("--load", "-l", nargs="?", default="None", const="-1", help="load 여부")
     parser.add_argument("--nosave", "-n", action="store_true", help="epoch마다 validation 과정에 생기는 이미지를 가장 최근 이미지만 저장")
     parser.add_argument("--debug", "-d", action="store_true", help="VS코드 디버그 모드")
+    parser.add_argument("--tag", "-t", default="None", help="Tag")
 
     args = parser.parse_args()
 

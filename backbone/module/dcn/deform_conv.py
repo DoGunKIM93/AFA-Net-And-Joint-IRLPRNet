@@ -7,7 +7,10 @@ from torch.autograd import Function
 from torch.autograd.function import once_differentiable
 from torch.nn.modules.utils import _pair
 
-from . import deform_conv_cuda
+try:
+    from . import deform_conv_cuda
+except:
+    print("backbone/module/dcn.py :: ERROR : Can not use DCN Module. It only works on pytorch 1.5.0 BETA. EDVR Disabled.")
 
 logger = logging.getLogger('base')
 

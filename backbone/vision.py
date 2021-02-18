@@ -34,7 +34,8 @@ from backbone.config import Config
 import backbone.utils as utils
 
 eps = 1e-6 if Config.param.train.method.mixedPrecision == False else 1e-4
-
+TORCH_MAJOR = int(torch.__version__.split('.')[0])
+TORCH_MINOR = int(torch.__version__.split('.')[1])
 
 
 def SLIC(input, numCompo, compactness, isAvx2 = False, colorMode = 'color'):
@@ -48,8 +49,6 @@ def SLIC(input, numCompo, compactness, isAvx2 = False, colorMode = 'color'):
     
     return torch.cat(rst,0).cuda()#, slic.slic_model.clusters #cluster map / The cluster information of superpixels.
 
-
-     
 
 
 def E2EBlending(input1, input2, IQAMap, superPixelMap, softMode = False):
@@ -100,6 +99,16 @@ def Gaussian(input,ksize,sigma):
     return output
 
 
+def gaussianKernel(ksize, sigma,isdouble=False):
+    assert ksize % 2 == 1
+    ax = np.arange(-ksize // 2 + 1., ksize // 2 + 1.)
+    xx, yy = np.meshgrid(ax, ax)
+    kernel = np.exp(-(xx**2 + yy**2) / (2. * sigma**2))
+    kernel = kernel / np.sum(kernel)
+
+    kernel = torch.from_numpy(kernel).float() if isdouble is False else torch.from_numpy(kernel).double()
+    return kernel
+
 def HLCombine(inputH,inputL,kernel):
     H_mag,H_pha = polarFFT(inputH)
     L_mag,L_pha = polarFFT(inputL)
@@ -141,38 +150,56 @@ def HLCombine(inputH,inputL,kernel):
     
     
 
+def freqMagRearrangement(magnitude):
+    half = [magnitude.size(-2)//2, magnitude.size(-1)//2]
+    magnitude = torch.cat((magnitude[:,:,half[0]:,:],magnitude[:,:,0:half[0],:]),-2)
+    magnitude = torch.cat((magnitude[:,:,:,half[1]:],magnitude[:,:,:,0:half[1]]),-1)
+    return magnitude
+
+
+def freqMagToInterpretable(magnitude, rearrange = True):
+    if rearrange == True: 
+        mag_f_a_view = freqMagRearrangement(magnitude)
+    mag_f_a_view = torch.log(mag_f_a_view)
+    mag_f_a_view = (mag_f_a_view - mag_f_a_view.min()) / (mag_f_a_view.max() - mag_f_a_view.min())
+    return mag_f_a_view
+
 
 def polarIFFT(x_mag, x_pha):
-    #x_mag = torch.cat((x_mag[:,:,128:,:],x_mag[:,:,0:128,:]),2)
-    #x_mag = torch.cat((x_mag[:,:,:,128:],x_mag[:,:,:,0:128]),3)
-
     x_f_r = x_mag * torch.cos(x_pha)
     x_f_i = x_mag * torch.sin(x_pha)
-    x_f = torch.cat((x_f_r.view(x_f_r.size(0),x_f_r.size(1),x_f_r.size(2),x_f_r.size(3),1),x_f_i.view(x_f_r.size(0),x_f_r.size(1),x_f_r.size(2),x_f_r.size(3),1)),4)
-    
-    output = torch.irfft(x_f,2,onesided=False)
+
+    if TORCH_MAJOR == 1 and TORCH_MINOR < 8:
+        x_f = torch.cat((x_f_r.view(x_f_r.size(0),x_f_r.size(1),x_f_r.size(2),x_f_r.size(3),1),x_f_i.view(x_f_r.size(0),x_f_r.size(1),x_f_r.size(2),x_f_r.size(3),1)),4)
+        output = torch.irfft(x_f,2,onesided=False)
+    else:
+        x_f = torch.complex(x_f_r,x_f_i)
+        output = torch.fft.ifft2(x_f)
+
     return output
 
 
-
-
 def polarFFT(input):
-    x_f = torch.rfft(input,2,onesided=False)
-    x_f_r = x_f[:,:,:,:,0].contiguous()
-    x_f_i = x_f[:,:,:,:,1].contiguous()
+    if TORCH_MAJOR == 1 and TORCH_MINOR < 8:
+        x_f = torch.rfft(input,2,onesided=False)
 
-    x_f_r[x_f_r==0] = eps
-    x_mag = torch.sqrt(x_f_r*x_f_r + x_f_i*x_f_i)
-    #x_mag[torch.isnan(x_mag)] = 0 
-    x_pha = torch.atan2(x_f_i,x_f_r)
-    #x_pha[torch.isnan(x_pha)] = 0
-    #x_mag = (x_mag - torch.min(x_mag)) / (torch.max(x_mag) - torch.min(x_mag)) * 2 - 1
-    #x_mag = x_mag * 10 
-    
-    #print(torch.min(x_mag),torch.max(x_mag))
-    return x_mag,x_pha
+        x_f_r = x_f[:,:,:,:,0].contiguous()
+        x_f_i = x_f[:,:,:,:,1].contiguous()
+
+        x_f_r[x_f_r==0] = eps
+
+        x_mag = torch.sqrt(x_f_r*x_f_r + x_f_i*x_f_i)
+        x_pha = torch.atan2(x_f_i,x_f_r)
+
+    else:
+        x_f = torch.fft.fft2(input)
+        x_mag = x_f.abs()
+        x_pha = x_f.angle()
+
+    return x_mag, x_pha
     
 
+    
 def HPFinFreq(input,sigma,freqReturn=False):
 
     half = [input.size(2)//2, input.size(3)//2]
@@ -282,35 +309,6 @@ def InverseLPFinFreq(input,sigma):
     
     return output
 
-def Nonzero(input): # replace nonzero elements to 1s
-
-    out = torch.ones(input.size())
-    out = eps*out
-    input = (torch.abs(input))
-    out = Min(input, out)
-    out = out / eps
-
-    return out
-
-def Max(A,B): #3 ch input
-    
-    return torch.max(torch.cat((A.unsqueeze(-1),B.unsqueeze(-1)),-1),-1)[0]
-
-def Min(A,B):
-
-    return torch.min(torch.cat((A.unsqueeze(-1),B.unsqueeze(-1)),-1),-1)[0]
-
-def FilterByValue(input, min, max):  # min<=input<max
-    
-    th1 = Max((input - min),torch.zeros(input.size()).cuda()) / ((input - min) + eps)
-    
-    th1s = 1 - Nonzero(input - min)
-    th1 = th1 + th1s
-    
-    th2 = Max(-(input - max),torch.zeros(input.size()).cuda()) / (-(input - max) + eps)
-    return input*th1*th2
-    
-
 def RGB2HSI(input): #c0:Hue(0~1) c1:Sat(0~1) c2:Value(0-1)
     input = (1-Nonzero(input))*eps + input
     
@@ -387,87 +385,6 @@ def HSI2RGB(input):
                         B.view(input.size()[0],1,input.size()[2],input.size()[3])),1)
     
     return output
-
-class SoftHistogram(nn.Module):
-    def __init__(self, bins, min, max, sigma):
-        super(SoftHistogram, self).__init__()
-        self.bins = bins
-        self.min = min
-        self.max = max
-        self.sigma = sigma
-        self.delta = float(max - min) / float(bins)
-        self.centers = float(min) + self.delta * (torch.arange(bins).float() + 0.5)
-
-    def forward(self, x):
-        x = torch.unsqueeze(x, 0) - torch.unsqueeze(self.centers, 1)
-        x = torch.sigmoid(self.sigma * (x + self.delta/2)) - torch.sigmoid(self.sigma * (x - self.delta/2))
-        x = x.sum(dim=1)
-        return x
-
-class BatchSoftHistogram(nn.Module):
-    def __init__(self, bins, min, max, sigma):
-        super(SoftHistogram, self).__init__()
-        self.bins = bins
-        self.min = min
-        self.max = max
-        self.sigma = sigma
-        self.delta = float(max - min) / float(bins)
-        self.centers = float(min) + self.delta * (torch.arange(bins).float() + 0.5)
-
-    def forward(self, x):
-        x = torch.unsqueeze(x, 0) - torch.unsqueeze(self.centers, 1)
-        x = torch.sigmoid(self.sigma * (x + self.delta/2)) - torch.sigmoid(self.sigma * (x - self.delta/2))
-        x = x.sum(dim=1)
-        return x
-
-
-def HistogramEqualization(input):
-    """Implements Equalize function from PIL using PyTorch ops based on:
-    https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352"""
-
-    def scale_channel(input, c):
-        """Scale the data in the channel to implement equalize."""
-        input = input[:, c, :, :] # B C H W
-        
-        # Compute the histogram of the image channel.
-        histo = BatchSoftHistogram(bins=256, min=0, max=255, sigma=3)(im)#torch.histc(im, bins=256, min=0, max=255)#.type(torch.int32)
-
-        # For the purposes of computing the step, filter out the nonzeros.
-        nonzero_histo = histo[histo != 0]#histo[Nonzero(histo).type(torch.long)]
-        nonzero_histo = torch.reshape(nonzero_histo, [-1])
-
-        step = (torch.sum(nonzero_histo) - nonzero_histo[-1]) // 255
-        def build_lut(histo, step):
-            # Compute the cumulative sum, shifting by step // 2
-            # and then normalization by step.
-            lut = ((torch.cumsum(histo, 0) + (step // 2)) // step)
-
-            # Shift lut, prepending with 0.
-            lut = torch.cat([torch.zeros(1), lut[:-1]])
-
-            # Clip the counts to be in range.  This is done
-            # in the C code for image.point.
-            return torch.clamp(lut, 0, 255)
-
-        # If step is zero, return the original image.  Otherwise, build
-        # lut from the full histogram and step and then index from it.
-        if step == 0:
-            result = im
-        else:
-            # can't index using 2d index. Have to flatten and then reshape
-            
-            result = torch.gather(build_lut(histo, step), 0, im.flatten().long().clamp(0,255).cpu())
-            result = result.reshape_as(im)
-        
-        return result.type(torch.uint8)
-
-    # Assumes RGB for now.  Scales each channel independently
-    # and then stacks the result.
-    s1 = scale_channel(image, 0)
-    s2 = scale_channel(image, 1)
-    s3 = scale_channel(image, 2)
-    image = torch.stack([s1, s2, s3], 2)
-    return image
 
 def gaussianKernelSpray(height, width, kernelMinCount, kernelMaxCount, rois):
     # rois -> 카우시안 커널의 기본 area을 설정 
@@ -647,5 +564,3 @@ def BlendingMethod(blending_method, source, destination, rois, colorMode):
 
     return blended_img
  
-#os.environ["CUDA_VISIBLE_DEVICES"]='3'
-#print(GaussianSpray(21, 21, 1, 2))

@@ -5,7 +5,11 @@ version = "1.19.210206"
 
 import torch.nn as nn
 import torch
-import apex.amp as amp
+
+try:
+    import apex.amp as amp
+except:
+    print("structure.py :: WARNING : Can not import NVIDIA APEX")
 
 from torch.autograd import Variable
 
