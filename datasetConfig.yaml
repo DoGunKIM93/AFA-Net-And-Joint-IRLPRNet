@@ -77,6 +77,20 @@ REDS_NTIRE:
     preprocessings: # Must be list
         - Pass()
 
+REDS_Reduced:
+    origin: superResolution/MISR/REDS_Reduced
+    dataType: 
+        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
+    labelType:
+        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
+    availableMode: 
+        - train #train, validation, test
+    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+        - degradationMethod
+        - scaleFactor
+    preprocessings: # Must be list
+        - Pass()
+
 VID4_SR:
     origin: superResolution/MISR/Vid4
     dataType: 
