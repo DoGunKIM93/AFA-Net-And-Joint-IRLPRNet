@@ -1,8 +1,8 @@
 '''
 
-MP4 Video to Image Sequence (file)
+Video to Image Sequence 
 
-Usage ::: VideoToimageSequence.py -i [Video Folder Path (relative)] -o [output video path] -f [fps]
+Usage ::: videoToImageSequence.py -i [Video Folder(File) Path] -o [output image sequence path]
 
 ::: by DGK :::
 
@@ -24,8 +24,8 @@ def tryint(s):
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--inputPath', '-i', help="입력할 비디오 파일 또는 폴더 (상대경로)")
-parser.add_argument('--outputPath', '-o', help="출력할 영상 시퀀스 파일 이름 (상대경로)")
+parser.add_argument('--inputPath', '-i', help="입력할 비디오 파일 또는 폴더 (절대/상대경로)")
+parser.add_argument('--outputPath', '-o', help="출력할 영상 시퀀스 파일 이름 (절대/상대경로)")
 
 args = parser.parse_args()
 
