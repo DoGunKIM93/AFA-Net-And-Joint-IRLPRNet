@@ -41,8 +41,12 @@ class resBlock(nn.Module):
     def __init__(self, channelDepth, windowSize=5, inputCD=None):
         
         super(resBlock, self).__init__()
+        self.isOxO = False
         if inputCD == None:
             inputCD = channelDepth
+        elif inputCD != channelDepth:
+            self.oxo = nn.Conv2d(inputCD, channelDepth, 1, 1, 0)
+            self.isOxO = True
         padding = math.floor(windowSize/2)
         self.conv1 = nn.Conv2d(inputCD, channelDepth, windowSize, 1, padding)
         self.conv2 = nn.Conv2d(channelDepth, channelDepth, windowSize, 1, padding)
@@ -54,7 +58,7 @@ class resBlock(nn.Module):
         res = x
         x = F.leaky_relu(self.conv1(x),0.2)
         x = F.leaky_relu(self.conv2(x),0.2)
-        x = self.conv3(x + res)
+        x = self.conv3(x if self.isOxO is False else x + self.oxo(res))
         
         return x
     
