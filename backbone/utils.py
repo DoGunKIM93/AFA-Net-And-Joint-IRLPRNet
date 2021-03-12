@@ -93,7 +93,7 @@ def addCaptionToImageTensor(imageTensor, caption, valueRangeType="-1~1", DEFAULT
         imageTensor = imageTensor.clamp(0, 1)
 
     ToPILImageFunc = ToPILImage()
-    pilImageList = list([ToPILImageFunc(x) for x in (imageTensor)])
+    pilImageList = list([ToPILImageFunc(x).convert("RGB") for x in (imageTensor)])
 
     tmpPilImageList = []
     for pilImage in pilImageList:
@@ -468,6 +468,23 @@ def backproagateAndWeightUpdate(modelList, loss, modelNames=None):
 # Etc.
 
 ########################################################################################################################################################################
+
+def calculateImageRecoverPercentage(inp, outp, gt, lossFunction='MSE'):
+    LOSSFUNC_DICT = {'MSE': nn.MSELoss,
+                     'L1': nn.L1Loss}
+    assert lossFunction in LOSSFUNC_DICT.keys()
+
+    with torch.no_grad():
+        criterion = LOSSFUNC_DICT[lossFunction]()
+
+        inpLoss = criterion(inp, gt)
+        outpLoss = criterion(outp, gt)
+
+        RP = inpLoss / outpLoss
+
+    return RP
+
+
 
 # TODO: BATCH
 def calculateImagePSNR(a, b, valueRangeType, colorMode, colorSpace = 'YCbCr'):
