@@ -92,9 +92,8 @@ def Gaussian(input,ksize,sigma):
     xx, yy = np.meshgrid(ax, ax)
     kernel = np.exp(-(xx**2 + yy**2) / (2. * sigma**2))
     kernel = kernel / np.sum(kernel)
-
-    kernel = Variable((torch.from_numpy(kernel).float()).cuda()).view(1,1,1,ksize,ksize)
-    output = F.conv3d(input.view(input.size()[0],1,3,input.size()[2],input.size()[3]),kernel,padding = [0, int(ksize/2), int(ksize/2)]).view(input.size()[0],-1,input.size()[2],input.size()[3])
+    kernel = torch.from_numpy(kernel).float().to(input.device).view(1,1,1,ksize,ksize)
+    output = F.conv3d(input.view(input.size()[0],1,input.size()[1],input.size()[2],input.size()[3]),kernel,padding = [0, int(ksize/2), int(ksize/2)]).view(input.size()[0],-1,input.size()[2],input.size()[3])
     
     return output
 
@@ -564,3 +563,5 @@ def BlendingMethod(blending_method, source, destination, rois, colorMode):
 
     return blended_img
  
+
+
