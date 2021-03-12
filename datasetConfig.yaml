@@ -133,7 +133,7 @@ Set5_SR:
         - scaleMethod
         - scaleFactor
     preprocessings: # Must be list
-        - Pass
+        - Pass()
 
 Set5_SR_V:
     origin: superResolution/SISR/benchmark/Set5
