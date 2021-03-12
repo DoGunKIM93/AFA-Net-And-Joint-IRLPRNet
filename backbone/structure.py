@@ -337,7 +337,7 @@ class Epoch:
         if len(AvgScoreDict.keys()) > 0:
             print("score: [", end="")
             for key in AvgScoreDict:
-                print(f"{key}: {AvgScoreDict[key]:.2f}, ", end="")
+                print(f"{key}: {AvgScoreDict[key]:.{max(0, 5 - len(str(int(AvgScoreDict[key]))))}f}, ", end="")
             print("]", end=" ")
 
         # print LR
