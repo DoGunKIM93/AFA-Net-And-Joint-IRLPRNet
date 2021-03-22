@@ -149,79 +149,15 @@ def _getAngles(intensity, numSteps):
 
 
 
-def createMotionBlurKernel(kernelSize, intensity, superSampleScale = 2) -> np.ndarray:
+def motionBlurKernel(kernelSize, intensityRange, superSampleScale = 1, device='cuda') -> np.ndarray:
     
-    assert isinstance(kernelSize, tuple)
-    assert 1 >= intensity >= 0 
-
-    kWSS = kernelSize[0] * superSampleScale
-    kHSS = kernelSize[1] * superSampleScale
-
-    # Get steps and angles
-    numSteps, steps = _getSteps(kWSS, kHSS, intensity)
-    angles = _getAngles(intensity, numSteps)
-
-
-    # we turn angles and steps into complex numbers
-    complexIncrements = _polar2z(steps, angles)
-
-    # generate path as the cumsum of these increments
-    pathComplex = np.cumsum(complexIncrements)
-
-    # find center of mass of path
-    comComplex = sum(pathComplex) / numSteps
-
-    # Shift path s.t. center of mass lies in the middle of
-    # the kernel and a apply a random rotation
-    ###
-
-    # center it on COM
-    centerOfKernel = (kHSS + 1j * kWSS) / 2
-    pathComplex -= comComplex
-
-    # randomly rotate path by an angle a in (0, PI)
-    pathComplex *= np.exp(1j * uniform(0, PI))
-
-    # center COM on center of kernel
-    pathComplex += centerOfKernel
-
-    # convert complex path to final list of coordinate tuples
-    pathList = [(i.real, i.imag) for i in pathComplex]
-
-
-    kernelImage = Image.new("RGB", (kWSS, kHSS))
-
-    # ImageDraw instance that is linked to the kernel image that
-    # we can use to draw on our kernel_image
-    painter = ImageDraw.Draw(kernelImage)
-
-    diagonal = _diagonal(kWSS, kHSS)
-
-    # draw the path
-    painter.line(xy=pathList, width=int(diagonal / 150))
-
-    # applying gaussian blur for realism
-    kernelImage = kernelImage.filter(
-        ImageFilter.GaussianBlur(radius=int(diagonal * 0.01)))
-
-    # Resize to actual size
-    kernelImage = kernelImage.resize(kernelSize, resample=Image.LANCZOS)
-
-    # convert to gray scale
-    kernelImage = kernelImage.convert("L")
-
-    kernel = np.asarray(kernelImage, dtype=np.float32)
-    kernel /= np.sum(kernel)
-
-    kernel = torch.tensor(kernel)
-
-    return kernel
+    return fourPointsNonUniformMotionBlurKernel((1,1), kernelSize, intensityRange, superSampleScale, device).squeeze(3).squeeze(3)
 
 
 
 
 
-def fourPointsNonUniformMotionBlurKernel(mapSize, kernelSize, intensityRange, superSampleScale = 1, device='cuda') -> np.ndarray:
+def fourPointsNonUniformMotionBlurKernel(mapSize, kernelSize, intensityRange, superSampleScale = 1, device='cuda') -> torch.Tensor:
     
     assert isinstance(kernelSize, tuple)
     assert isinstance(mapSize, tuple)
