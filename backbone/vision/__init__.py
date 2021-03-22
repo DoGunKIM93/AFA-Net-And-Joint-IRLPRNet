@@ -1,4 +1,4 @@
-from backbone.vision.vision import (SLIC, 
+from backbone.vision.vision import ( 
 E2EBlending, 
 Laplacian, 
 Gaussian, 
@@ -16,7 +16,8 @@ HSI2RGB,
 gaussianKernelSpray,
 rectangleKernelSpray,
 BlendingMethod,)
-from backbone.vision.motionBlur import fourPointsNonUniformMotionBlurKernel
+from backbone.vision.motionBlur import fourPointsNonUniformMotionBlurKernel, motionBlurKernel
+from backbone.vision.slic import SLIC
 
 __all__ = [ 'SLIC', 
             'E2EBlending', 
@@ -36,6 +37,7 @@ __all__ = [ 'SLIC',
             'gaussianKernelSpray',
             'rectangleKernelSpray',
             'BlendingMethod',
-            'fourPointsNonUniformMotionBlurKernel'
+            'fourPointsNonUniformMotionBlurKernel',
+            'motionBlurKernel'
 ]
 
