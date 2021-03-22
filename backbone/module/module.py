@@ -30,6 +30,208 @@ import backbone.vision as vision
 
 
 
+#####################################################################################################################
+
+# Non-Uniform Operators
+
+#####################################################################################################################
+
+
+def nonUniformConv2d(inp, weight, padding=0, padding_mode='constant'):
+    '''
+    Non-Uniform Convolution Funcfion
+    input : 4-dim image tensor (N,C,H,W)
+    weight : 7-dim tensor (N, out_ch, in_ch, weight_height, weight_width, kernel_height, kernel_width)
+
+    expected weight size:
+        height: H - kernel_height + 1 + 2*pad
+        width:  W - kernel_width  + 1 + 2*pad
+    '''
+    assert len(inp.size()) == 4
+    N, C, H, W = inp.size()
+
+
+    assert len(weight.size()) == 7
+    wN, oC, iC, wH, wW, kH, kW = weight.size() 
+    sH = H - kH + 1 + 2*padding
+    sW = W - kW + 1 + 2*padding
+
+    assert N == wN
+    assert C == iC
+    assert sH == wH
+    assert sW == wW
+
+    assert padding_mode in ['constant', 'reflect', 'replicate', 'circular']
+
+
+    inp = inp if padding == 0 else F.pad(inp, (padding, padding, padding, padding), mode=padding_mode)
+
+    weight = weight.permute(0,3,4,1,2,5,6).contiguous()
+    weight = weight.view(N * sH * sW, oC, iC, kH, kW)
+
+    weight = weight.view(N * sH * sW, weight.size(1), -1)
+    weight = weight.permute(0,2,1)
+
+
+    inp_unf = F.unfold(inp, (kH, kW))
+    out_unf = inp_unf.transpose(1, 2)
+
+    out_unf = out_unf.reshape(N * sH * sW, 1, C * kH * kW)
+    out_unf = out_unf.bmm(weight)
+    out_unf = out_unf.view(N, sH * sW, C)
+
+    out_unf = out_unf.transpose(1, 2)
+
+    out = out_unf.view(N, C, sH, sW)
+    return out
+
+
+def wienerDeconvoltionOperator(inp, weight):
+    #g = IDFT( DFT(K)* / (DFT(K)DFT(K)* + sn/sx) )
+    kH, kW = weight.size()[-2:]
+    H, W = inp.size()[-2:]
+
+    windowedInp = torch.cat([F.unfold(inp[:,i:i+1,:,:], (kH,kW), padding=(kH//2, kW//2)).unsqueeze(1) for i in range(inp.size(1))], 1).permute(0,1,3,2)
+    windowedInp = windowedInp.view(*windowedInp.size()[:-1],kH,kW)
+
+    meanedInp = F.interpolate(F.avg_pool2d(inp, kernel_size=3), size=inp.size()[-2:], mode='bicubic')
+    windowedMeanedInp = torch.cat([F.unfold(meanedInp[:,i:i+1,:,:], (kH,kW), padding=(kH//2, kW//2)).unsqueeze(1) for i in range(meanedInp.size(1))], 1).permute(0,1,3,2)
+    windowedMeanedInp = windowedMeanedInp.view(*windowedMeanedInp.size()[:-1],kH,kW)
+
+    sx = torch.std(windowedInp, dim=(-1,-2), keepdim=True).unsqueeze(1).view(1,1,1,H,W,1,1)
+    sn = torch.var(windowedMeanedInp - windowedInp, dim=(-1,-2), keepdim=True).unsqueeze(1).view(1,1,1,H,W,1,1)
+    f_weight = torch.fft.fft2(weight)
+    G = torch.fft.ifft2( f_weight.conj() / (f_weight.conj()*f_weight + sn/sx) )
+    
+    return G.real
+
+
+
+def nonUniformInverseConv2d(inp, weight, pad=0, stride=1):
+    '''
+    Non-Uniform inverse Convolution Funcfion
+    input : 4-dim image tensor (N,C,H,W)
+    weight : 7-dim tensor (N, out_ch, in_ch, weight_height, weight_width, kernel_height, kernel_width)
+
+    expected weight size:
+        height: H - kernel_height + 1 + 2*pad
+        width:  W - kernel_width  + 1 + 2*pad
+    '''
+    assert len(inp.size()) == 4
+    N, C, H, W = inp.size()
+
+
+    assert len(weight.size()) == 7
+    wN, oC, iC, wH, wW, kH, kW = weight.size() 
+    sH = H - kH + 1 + 2*pad
+    sW = W - kW + 1 + 2*pad
+
+    assert N == wN
+    assert C == iC == oC == 1
+    assert math.ceil(sH / stride) == wH
+    assert math.ceil(sW / stride) == wW
+
+
+    inp = inp if pad == 0 else F.pad(inp, (pad, pad, pad, pad))
+
+    NORM = 'backward'
+
+    # kernel Fourier transform
+    #weight_f_mag, weight_f_pha = vision.polarFFT(weight)
+    #weight_f_mag = weight_f_mag.view(-1, kH, kW)
+    weight_f = torch.fft.fft2(weight).view(-1, kH, kW)#.view(N, -1, kH, kW)
+
+    #print(weight_f_mag.max(), weight_f_mag.min())
+
+    #unfold it
+    inp_unf = F.unfold(inp, (kH, kW), stride=stride)
+
+    norm_map = F.fold(F.unfold(torch.ones_like(inp), kernel_size=(kH,kW), stride=stride), (sH, sW), kernel_size=(kH,kW), padding=pad, stride=stride)
+
+    # input fourier transform
+    inp_unf = inp_unf.view(N, kH, kW, -1).permute(0,3,1,2)
+    #inp_unf_f_mag, inp_unf_f_pha = vision.polarFFT(inp_unf)
+    #inp_unf_f_mag = inp_unf_f_mag.view(-1, kH, kW)
+    inp_unf_f = torch.fft.fft2(inp_unf).view(-1, kH, kW)
+    #print(inp_unf_f_mag.max(), inp_unf_f_mag.min())
+
+    # apply kernel in freq. domain
+
+    #out_unf_f_mag = inp_unf_f_mag * (1 / (weight_f_mag + 1e-12))
+    #out_unf_f_mag = out_unf_f_mag.view(N, C * H * W, kH, kW)
+    out_unf_f = (inp_unf_f * (1/ (weight_f + 1e-12))).view(N, C * wH * wW, kH, kW)
+
+    # bring it real world
+    #out_unf = vision.polarIFFT(out_unf_f_mag, inp_unf_f_pha).real
+    out_unf = torch.fft.ifft2(out_unf_f).real
+    out_unf = out_unf.view(N, C * wH * wW, kH * kW)
+    out_unf = out_unf.permute(0,2,1)
+
+    out = F.fold(out_unf, (sH, sW), (kH, kW), padding=pad, stride=stride) / norm_map
+
+
+
+    return out
+
+
+def getDegradationKernel(inp, gt, kernelSize):
+
+    assert len(inp.size()) == 4
+    N, C, H, W = inp.size()
+
+    assert inp.size() == gt.size()
+
+    kH = kernelSize
+    kW = kernelSize
+    pad = kernelSize // 2
+
+
+    inp = inp if pad == 0 else F.pad(inp, (pad, pad, pad, pad))
+
+    NORM = 'backward'
+
+    #unfold it
+    inp_unf = F.unfold(inp, (kH, kW))
+
+    norm_map = F.fold(F.unfold(torch.ones_like(inp), kernel_size=(kH,kW)), (sH, sW), kernel_size=(kH,kW), padding=pad)
+
+    # input fourier transform
+    inp_unf = inp_unf.view(N, kH, kW, -1).permute(0,3,1,2)
+    inp_unf_f_mag, inp_unf_f_pha = vision.polarFFT(inp_unf)
+    inp_unf_f_mag = inp_unf_f_mag.view(-1, kH, kW)
+
+    # gt fourier transform
+    gt_unf = gt_unf.view(N, kH, kW, -1).permute(0,3,1,2)
+    gt_unf_f_mag, gt_unf_f_pha = vision.polarFFT(gt_unf)
+    gt_unf_f_mag = gt_unf_f_mag.view(-1, kH, kW)
+
+
+    # get degradation kernel
+    out_unf_f_mag = inp_unf_f_mag * (1 / (weight_f_mag + 1e-12))
+    out_unf_f_mag = out_unf_f_mag.view(N, C * H * W, kH, kW)
+
+    # bring it real world
+    out_unf = vision.polarIFFT(out_unf_f_mag, inp_unf_f_pha).real
+    out_unf = out_unf.view(N, C * H * W, kH * kW)
+    out_unf = out_unf.permute(0,2,1)
+
+    out = F.fold(out_unf, (sH, sW), (kH, kW), padding=pad) / norm_map
+
+
+    return out
+
+
+
+
+
+
+
+
+
+
+
+
+
 ######################################################################################################################################################################## 
 
 # Basic Blocks
@@ -38,7 +240,7 @@ import backbone.vision as vision
 
 class resBlock(nn.Module):
     
-    def __init__(self, channelDepth, windowSize=5, inputCD=None):
+    def __init__(self, channelDepth, windowSize=5, inputCD=None, outAct=None):
         
         super(resBlock, self).__init__()
         self.isOxO = False
@@ -51,6 +253,7 @@ class resBlock(nn.Module):
         self.conv1 = nn.Conv2d(inputCD, channelDepth, windowSize, 1, padding)
         self.conv2 = nn.Conv2d(channelDepth, channelDepth, windowSize, 1, padding)
         self.conv3 = nn.Conv2d(channelDepth, channelDepth, windowSize, 1, padding)
+        self.outAct = outAct
 
                       
     def forward(self, x):
@@ -58,9 +261,9 @@ class resBlock(nn.Module):
         res = x
         x = F.leaky_relu(self.conv1(x),0.2)
         x = F.leaky_relu(self.conv2(x),0.2)
-        x = self.conv3(x if self.isOxO is False else x + self.oxo(res))
+        x = self.conv3(x + res if self.isOxO is False else x + self.oxo(res))
         
-        return x
+        return x if self.outAct is None else self.outAct(x)
     
 
 
