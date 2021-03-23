@@ -10,6 +10,7 @@ from backbone.predefined.DRLN import DRLN
 
 ##### DEBLUR #####
 from backbone.predefined.DMPHN import DMPHN_Decoder, DMPHN_Encoder
+from backbone.predefined.MPRNet import MPRNet
 
 ##### FACE RECOG #####
 from backbone.predefined.RetinaFace import RetinaFace
@@ -29,6 +30,7 @@ __all__ = [ 'ESPCN',
             'ResNeSt',
             'DeFiAN',
             'DMPHN_Decoder', 'DMPHN_Encoder',
-            'DRLN'
+            'DRLN',
+            'MPRNet'
 ]
 
