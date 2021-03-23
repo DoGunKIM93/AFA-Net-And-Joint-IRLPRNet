@@ -733,8 +733,10 @@ class Dataset(torchDataset):
 
     def _setTensorValueRange(self, tnsr, valueRangeType: str):
 
-        if valueRangeType == "-1~1":
+        if valueRangeType == '-1~1':
             tnsr = tnsr * 2 - 1
+        elif valueRangeType == '0~255':
+            tnsr = np.round(tnsr * 255).type(torch.FloatTensor)
 
         return tnsr
 
@@ -1479,8 +1481,10 @@ class DatasetHighball(torchDataset):
 
     def _setTensorValueRange(self, tnsr, valueRangeType: str):
 
-        if valueRangeType == "-1~1":
+        if valueRangeType == '-1~1':
             tnsr = tnsr * 2 - 1
+        elif valueRangeType == '0~255':
+            tnsr = np.round(tnsr * 255).type(torch.FloatTensor)
 
         return tnsr
 
