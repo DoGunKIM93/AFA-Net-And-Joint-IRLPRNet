@@ -65,8 +65,20 @@ def _loadModel(inferencePresetName):
         except:
             pass
         try:
+            mthd = "NORMAL state_dict"
+            model.load_state_dict(checkpoint["state_dict"])
+            break
+        except:
+            pass
+        try:
             mthd = "INNER MODEL GLOBAL STRUCTURE"
             model.module.load_state_dict(checkpoint, strict=True)
+            break
+        except:
+            pass
+        try:
+            mthd = "INNER NORMAL state_dict"
+            model.module.load_state_dict(checkpoint["state_dict"])
             break
         except:
             pass
@@ -132,7 +144,7 @@ def inferenceSingle(inp, inferencePresetName, model=None, outputType=None, outpu
         outputType == "FILE" and outputPath is not None
     ), "inference.py :: outputPath must be exist if outputType is 'FILE'"
     inp = augmentation.toTensor([inp])[0].unsqueeze(0).cuda()
-    inp = inp * 2 - 1 if Config.inferenceDict[inferencePresetName]["valueRangeType"] == "-1~1" else inp
+    inp = inp * 2 - 1 if Config.inferenceDict[inferencePresetName]["valueRangeType"] == "-1~1" else torch.round(inp * 255) if Config.inferenceDict[inferencePresetName]["valueRangeType"] == "0~255" else inp
 
     if model is None:
         # load Model
@@ -145,19 +157,27 @@ def inferenceSingle(inp, inferencePresetName, model=None, outputType=None, outpu
 
     # convert to output
     if outputType == "FILE":
+        # result save
         [
             utils.saveImageTensorToFile(
-                {"Result": x}, f'{outputPath.split(".")[0]}-{i}.{outputPath.split(".")[1]}', caption=False
+                {"Result": x}, 
+                f'{outputPath.split(".")[0]}-{i}.{outputPath.split(".")[1]}', 
+                caption=False, 
+                valueRangeType=Config.inferenceDict[inferencePresetName]["valueRangeType"]
             )
             for i, x in enumerate(out)
         ] if isinstance(out, tuple) or isinstance(out, list) else utils.saveImageTensorToFile(
-            {"Result": out}, outputPath, caption=False
+            {"Result": out}, 
+            outputPath, 
+            caption=False, 
+            valueRangeType=Config.inferenceDict[inferencePresetName]["valueRangeType"]
         )
+        # original save
         utils.saveImageTensorToFile(
             {"Result": inp},
             f'{outputPath.split(".")[0]}-original.{outputPath.split(".")[1]}',
             caption=False,
-            valueRangeType=Config.inferenceDict[inferencePresetName]["valueRangeType"],
+            valueRangeType=Config.inferenceDict[inferencePresetName]["valueRangeType"]
         )
         print("Saved.")
         return
