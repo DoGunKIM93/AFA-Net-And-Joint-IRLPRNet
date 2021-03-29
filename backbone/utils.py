@@ -269,6 +269,12 @@ def loadModels(modelList, version, subversion, loadModelNum):
                     except:
                         pass
                     try:
+                        mthd = "NORMAL state_dict"
+                        modelObj.load_state_dict(checkpoint["state_dict"], strict=True)
+                        break
+                    except:
+                        pass
+                    try:
                         mthd = "INNER MODEL"
                         modelObj.module.load_state_dict(checkpoint["model"], strict=True)
                         break
@@ -277,6 +283,12 @@ def loadModels(modelList, version, subversion, loadModelNum):
                     try:
                         mthd = "INNER MODEL GLOBAL STRUCTURE"
                         modelObj.module.load_state_dict(checkpoint, strict=True)
+                        break
+                    except:
+                        pass
+                    try:
+                        mthd = "INNER NORMAL state_dict"
+                        modelObj.module.load_state_dict(checkpoint["state_dict"], strict=True)
                         break
                     except:
                         pass
@@ -421,6 +433,9 @@ def denorm(x, valueRangeType):
     out = x
     if valueRangeType == "-1~1":
         out = (x + 1) / 2
+    elif valueRangeType == "0~255":
+        out = out / 255
+        out = out.type(torch.Tensor)
 
     return out.clamp(0, 1)
 

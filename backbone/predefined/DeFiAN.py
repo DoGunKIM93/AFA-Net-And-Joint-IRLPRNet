@@ -231,7 +231,7 @@ class Generator(nn.Module):
         if self.normalize in [True, 1]:
             mean = torch.tensor([-2.118, -2.036, -1.804], device=torch.device('cuda')).view(1,-1,1,1)
             std = torch.tensor([4.367, 4.464, 4.444],device=torch.device('cuda')).view(1,-1,1,1)
-            x = (x - mean) / std
+            results = (results - mean) / std
 
         return results
 

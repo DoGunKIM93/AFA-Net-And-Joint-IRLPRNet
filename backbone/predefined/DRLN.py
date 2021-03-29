@@ -4,9 +4,6 @@ import torch.nn.functional as F
 
 from backbone.module.DRLN.DRLN import MeanShift, BasicBlock, GBasicBlock, BasicBlockSig, ResidualBlock, GResidualBlock, EResidualBlock, ConvertBlock, UpsampleBlock, _UpsampleBlock
 
-def make_model(args, parent=False):
-    return DRLN(args)
-
 class CALayer(nn.Module):
     def __init__(self, channel, reduction=16):
         super(CALayer, self).__init__()
@@ -69,8 +66,8 @@ class DRLN(nn.Module):
         self.scale = scale
         chs=64
 
-        #self.sub_mean = MeanShift((0.4488, 0.4371, 0.4040), sub=True)
-        #self.add_mean = MeanShift((0.4488, 0.4371, 0.4040), sub=False)
+        self.sub_mean = MeanShift((0.4488, 0.4371, 0.4040), sub=True)
+        self.add_mean = MeanShift((0.4488, 0.4371, 0.4040), sub=False)
         
         self.head = nn.Conv2d(3, chs, 3, 1, 1)
 
@@ -121,7 +118,7 @@ class DRLN(nn.Module):
         self.tail = nn.Conv2d(chs, 3, 3, 1, 1)
                 
     def forward(self, x):
-        #x = self.sub_mean(x)
+        x = self.sub_mean(x)
         x = self.head(x)
         c0 = o0 = x
 
@@ -223,32 +220,6 @@ class DRLN(nn.Module):
         out = self.upsample(b_out, scale=self.scale )
 
         out = self.tail(out)
-        #f_out = self.add_mean(out)
+        f_out = self.add_mean(out)
 
-        return out#f_out
-
-    def load_state_dict(self, state_dict, strict=False):
-        own_state = self.state_dict()
-        for name, param in state_dict.items():
-            if name in own_state:
-                if isinstance(param, nn.Parameter):
-                    param = param.data
-                try:
-                    own_state[name].copy_(param)
-                except Exception:
-                    if name.find('tail') >= 0 or name.find('upsample') >= 0:
-                        print('Replace pre-trained upsampler to new one...')
-                    else:
-                        raise RuntimeError('While copying the parameter named {}, '
-                                           'whose dimensions in the model are {} and '
-                                           'whose dimensions in the checkpoint are {}.'
-                                           .format(name, own_state[name].size(), param.size()))
-            elif strict:
-                if name.find('tail') == -1:
-                    raise KeyError('unexpected key "{}" in state_dict'
-                                   .format(name))
-
-        if strict:
-            missing = set(own_state.keys()) - set(state_dict.keys())
-            if len(missing) > 0:
-                raise KeyError('missing keys in state_dict: "{}"'.format(missing))
+        return f_out

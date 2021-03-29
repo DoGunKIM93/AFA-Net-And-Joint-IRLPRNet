@@ -54,8 +54,14 @@ Medical-x8:
     weight: DeFiAN_Medical_x8.pth
     valueRangeType: 0~1
 
-General-PSNR-Advanced:
+General-PSNR-Advanced-DeFiAN:
     model: DeFiAN
-    param: 64, 20, 10, 4, 0
-    weight: DeFiAN_L_x4_air.pth
+    param: 64, 20, 10, 4, 1
+    weight: DeFiAN_L_x4.pth
     valueRangeType: 0~1
+
+General-PSNR-Advanced-DRLN:
+    model: DRLN
+    param: 4
+    weight: DRLN_BIX4.pth
+    valueRangeType: 0~255
