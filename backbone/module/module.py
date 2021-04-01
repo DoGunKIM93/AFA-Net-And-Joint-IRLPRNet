@@ -1016,3 +1016,27 @@ def SqrtmLayer3d(var, iterN):
 def TriuvecLayer(var):
     return Triuvec.apply(var)
 
+
+######################################################################################################################################################################## 
+
+# Image pre-processing
+
+######################################################################################################################################################################## 
+
+def multiplePadding(x, multipleSize, mode = 'reflect'):
+    """
+    padding mode
+    'constant', # value – fill value for 'constant' padding. Default: 0 
+    'reflect', 
+    'replicate', 
+    'circular'
+    """
+
+    _, cH, cW = list(x.size())[-3:]
+
+    H,W = ((cH + multipleSize) // multipleSize) * multipleSize, ((cW + multipleSize) // multipleSize) * multipleSize
+    padh = H-cH if cH%multipleSize!=0 else 0
+    padw = W-cW if cW%multipleSize!=0 else 0
+    x = F.pad(x, (0, padw, 0, padh), mode)
+
+    return x

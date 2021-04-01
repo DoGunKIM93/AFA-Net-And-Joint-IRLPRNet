@@ -2,6 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+#from this project
+import backbone.module.module as module
+
+
 def conv(in_channels, out_channels, kernel_size, bias=False, stride = 1):
     return nn.Conv2d(
         in_channels, out_channels, kernel_size,
@@ -225,7 +229,7 @@ class MPRNet(nn.Module):
     def __init__(self, in_c=3, out_c=3, n_feat=96, scale_unetfeats=48, scale_orsnetfeats=32, num_cab=8, kernel_size=3, reduction=4, bias=False):
         super(MPRNet, self).__init__()
 
-        scale_orsnetfeats = 64
+        scale_orsnetfeats = 32
         
         act=nn.PReLU()
         self.shallow_feat1 = nn.Sequential(conv(3, n_feat, kernel_size, bias=bias), CAB(n_feat,kernel_size, reduction, bias=bias, act=act))
@@ -248,9 +252,16 @@ class MPRNet(nn.Module):
         self.concat23  = conv(n_feat*2, n_feat+scale_orsnetfeats, kernel_size, bias=bias)
         self.tail     = conv(n_feat+scale_orsnetfeats, 3, kernel_size, bias=bias)
 
-        self.conv_feature = nn.Conv2d(160, 64, kernel_size=1, bias=bias)
+        #self.conv_feature = nn.Conv2d(160, 32, kernel_size=1, bias=bias) # for feature fusion
 
     def forward(self, x3_img):
+
+        ori_H = x3_img.size(2)
+        ori_W = x3_img.size(3)
+
+        # padding for x8 model dependencies
+        x3_img = module.multiplePadding(x3_img, 8, 'reflect')
+
         # Original-resolution Image for Stage 3
         H = x3_img.size(2)
         W = x3_img.size(3)
@@ -334,4 +345,11 @@ class MPRNet(nn.Module):
 
         stage3_img = self.tail(x3_cat)
 
-        return [stage3_img+x3_img, stage2_img, stage1_img, self.conv_feature(x3_cat)]
+        # restore from x8 padding images to original image size
+        stage1_img = stage1_img[:, :, :ori_H, :ori_W]
+        stage2_img = stage2_img[:, :, :ori_H, :ori_W]
+        stage3_img = stage3_img[:, :, :ori_H, :ori_W]
+        x3_img = x3_img[:, :, :ori_H, :ori_W]
+        x3_cat = F.interpolate(x3_cat, (ori_H, ori_W))
+
+        return [stage3_img+x3_img, stage2_img, stage1_img]#, self.conv_feature(x3_cat)]
