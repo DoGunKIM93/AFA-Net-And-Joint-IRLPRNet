@@ -1,67 +1,119 @@
 #################################################################################
 #                            *** inference.yaml ***                             #
 #################################################################################
-version : 1.01.201230
+version : 1.10.210402
 
 
-General-Perceptual:
-    model: SPSR_Generator
-    param: 4
-    weight: SPSR-baseline-netG.pth
-    valueRangeType: 0~1
+#################################################################################
+#                                     GENERAL                                   #
+#################################################################################
+general:
+    #maxMemoryCachingSizeGB: 64
+    #maxVRAMCachingSizeGB: 8 # will be devide by # of GPU
+    GPUNum: 0 # comma-separated
 
-General-Perceptual-Robust:
-    model: SPSR_Generator
-    param: 4
-    weight: SPSR-Robust-netG-General.pth
-    valueRangeType: 0~1
 
-General-PSNR:
-    model: EDVR
-    param: 128, 1, 1, 5, 40
-    weight: EDVR_SISR_general.pth 
-    valueRangeType: 0~1
+#################################################################################
+#                                       DATA                                    #
+#################################################################################
+data:
+    path: 
+        datasetPath: /home/jovyan/data-vol-1/dataset/
+        pretrainedPath: /home/jovyan/data-vol-1/dataset/pretrained/
+        
 
-Satellite-Perceptual:
-    model: SPSR_Generator
-    param: 4
-    weight: SPSR-netG-DOTA.pth
+#################################################################################
+#                                       MODEL                                   #
+#################################################################################
+model:
+    General-SR-Perceptual:
+        name: SPSR_Generator
+        param: 4
+        weight: SPSR-baseline-netG.pth
+        valueRangeType: 0~1
+        augmentation:
+            - toTensor()
+            
+    General-SR-Perceptual-Robust:
+        name: SPSR_Generator
+        param: 4
+        weight: SPSR-Robust-netG-General.pth
+        valueRangeType: 0~1
+        augmentation:
+            - toTensor()
 
-Satellite-PSNR:
-    model: EDVR
-    param: 128, 1, 1, 5, 40
-    weight: EDVR-DOTA.pth
-    
-Medical-Perceptual:
-    model: SPSR_Generator
-    param: 4
-    weight: SPSR-netG-CXR8.pth
+    General-SR-PSNR:
+        name: EDVR
+        param: 128, 1, 1, 5, 40
+        weight: EDVR_SISR_general.pth 
+        valueRangeType: 0~1
+        augmentation:
+            - toTensor()
 
-Medical-PSNR:
-    model: EDVR
-    param: 128, 1, 1, 5, 40
-    weight: EDVR-CXR8.pth
+    Satellite-SR-Perceptual:
+        name: SPSR_Generator
+        param: 4
+        weight: SPSR-netG-DOTA.pth
+        augmentation:
+            - toTensor()
 
-Medical-x4:
-    model: DeFiAN
-    param: 64, 20, 10, 4
-    weight: DeFiAN_Medical_x4.pth
-    valueRangeType: 0~1
+    Satellite-SR-PSNR:
+        name: EDVR
+        param: 128, 1, 1, 5, 40
+        weight: EDVR-DOTA.pth
+        augmentation:
+            - toTensor()
 
-Medical-x8:
-    model: DeFiAN
-    param: 64, 20, 10, 8
-    weight: DeFiAN_Medical_x8.pth
-    valueRangeType: 0~1
+    Medical-SR-Perceptual:
+        name: SPSR_Generator
+        param: 4
+        weight: SPSR-netG-CXR8.pth
+        augmentation:
+            - toTensor()
 
-General-PSNR-Advanced-DeFiAN:
-    model: DeFiAN
-    param: 64, 20, 10, 4, 1
-    weight: DeFiAN_L_x4.pth
-    valueRangeType: 0~1
+    Medical-SR-PSNR:
+        name: EDVR
+        param: 128, 1, 1, 5, 40
+        weight: EDVR-CXR8.pth
+        augmentation:
+            - toTensor()
+            
+    Medical-SR-x4:
+        name: DeFiAN
+        param: 64, 20, 10, 4
+        weight: DeFiAN_Medical_x4.pth
+        valueRangeType: 0~1
+        augmentation:
+            - toTensor()
 
-General-PSNR-Advanced-DRLN:
-    model: DRLN
-    param: 4
-    weight: DRLN_BIX4.pth
-    valueRangeType: 0~255
+    Medical-SR-x8:
+        name: DeFiAN
+        param: 64, 20, 10, 8
+        weight: DeFiAN_Medical_x8.pth
+        valueRangeType: 0~1
+        augmentation:
+            - toTensor()
+
+    General-SR-PSNR-Advanced-DeFiAN:
+        name: DeFiAN
+        param: 32, 10, 5, 4, 1
+        weight: DeFiAN_S_x4.pth
+        valueRangeType: 0~1
+        augmentation:
+            - toTensor()
+
+    General-SR-PSNR-Advanced-DRLN:
+        name: DRLN
+        param: 4
+        weight: DRLN_BIX4.pth
+        valueRangeType: 0~255
+        augmentation:
+            - toTensor()
+
+    General-Deblur-Advanced:
+        name: MPRNet
+        param:
+        weight: MPRNet_pretrained.pth
+        valueRangeType: 0~1
+        augmentation:
+            - toTensor()
