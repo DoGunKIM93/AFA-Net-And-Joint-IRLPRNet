@@ -1,7 +1,6 @@
 '''
 edit.py
 '''
-editversion = "1.20.201230"
 
 
 #FROM Python LIBRARY
@@ -28,7 +27,6 @@ from torchvision.utils import save_image
 from IQA_pytorch import MS_SSIM, SSIM, GMSD, LPIPSvgg, DISTS
 
 
-
 #from this project
 import backbone.vision as vision
 import model
@@ -40,6 +38,7 @@ from backbone.utils import loadModels, saveModels, backproagateAndWeightUpdate
 from backbone.config import Config
 from backbone.module.SPSR.loss import GANLoss, GradientPenaltyLoss
 from backbone.structure import Epoch
+from dataLoader import DataLoader
 
 
 #from backbone.PULSE.stylegan import G_synthesis,G_mapping
@@ -51,8 +50,8 @@ from backbone.structure import Epoch
 ################ V E R S I O N ################
 # VERSION START (DO NOT EDIT THIS COMMENT, for tools/codeArchiver.py)
 
-version = 'ESPCN'
-subversion = '1'
+version = '54-gomtang'
+subversion = '0-test'
 
 # VERSION END (DO NOT EDIT THIS COMMENT, for tools/codeArchiver.py)
 ###############################################
@@ -61,7 +60,6 @@ subversion = '1'
 #################################################
 ###############  EDIT THIS AREA  ################
 #################################################
-
 
 
 #################################################################################
@@ -84,14 +82,14 @@ class ModelList(structure.ModelListBase):
         # modelList.(모델 인스턴스 이름)_optimizer
         ##############################################################
 
-
-        self.NET = predefined.ESPCN(4)
-        self.NET_optimizer = torch.optim.Adam(self.NET.parameters(), lr=0.0001)
-        #self.NET_pretrained = "ESPCN-General-201007.pth"
+        self.NET = predefined.DeFiAN(64, 20, 20, 4)
+        self.NET_optimizer = torch.optim.Adam(self.NET.parameters(), lr=0.0003)
+        self.NET_pretrained = "DeFiAN_L_x4.pth"
         
-
         self.initApexAMP() #TODO: migration to Pytorch Native AMP
         self.initDataparallel()
+
+
 
 
 
@@ -100,33 +98,29 @@ class ModelList(structure.ModelListBase):
 #################################################################################
 
 def trainStep(epoch, modelList, dataDict):
-
     #define loss function
     mse_criterion = nn.MSELoss()
 
     #train mode
     modelList.NET.train()
 
-    #define input data and label
-    LRImages = dataDict['LR']
-    HRImages = dataDict['HR']
-    
-    #inference
-    SRImages = modelList.NET(LRImages)
+    #SR
+    SRImages = modelList.NET(dataDict['LR'])
 
     #calculate loss and backpropagation
-    loss = mse_criterion(SRImages, HRImages)
-    backproagateAndWeightUpdate(modelList, loss)
+    loss = mse_criterion(SRImages, dataDict['GT'])
+    backproagateAndWeightUpdate(modelList, loss, modelNames='NET')
 
     #return values
-    lossDict = {'MSE': loss}
-    SRImagesDict = {'SR' : SRImages}
+    lossDict = {'mse': loss}
+    resultImagesDict = {'SR': SRImages}
     
-    return lossDict, SRImagesDict
+    return lossDict, resultImagesDict
      
 
 
 def validationStep(epoch, modelList, dataDict):
+
 
     #define loss function
     mse_criterion = nn.MSELoss()
@@ -134,42 +128,97 @@ def validationStep(epoch, modelList, dataDict):
     #eval mode
     modelList.NET.eval()
 
-    #no grad for validation
     with torch.no_grad():
-        #define input data and label
-        LRImages = dataDict['LR']
-        HRImages = dataDict['HR']
-        
-        #inference
-        SRImages = modelList.NET(LRImages)
+        #SR
+        SRImages = modelList.NET(dataDict['LR'])
 
-        #calculate loss
-        loss = mse_criterion(SRImages, HRImages)
+        #calculate loss and backpropagation
+        loss = mse_criterion(SRImages, dataDict['GT'])
 
         #return values
-        lossDict = {'MSE': loss}
-        SRImagesDict = {'SR' : SRImages}
+        lossDict = {'mse': loss}
+        resultImagesDict = {'SR': SRImages}
     
-    return lossDict, SRImagesDict
+    return lossDict, resultImagesDict
 
 def inferenceStep(epoch, modelList, dataDict):
 
     #eval mode
     modelList.NET.eval()
 
-    #no grad for inference
     with torch.no_grad():
-
-        #define input data
-        LRImages = dataDict['LR']
-
-        #inference
-        SRImages = modelList.NET(LRImages)
-
+        #SR
+        SRImages = modelList.NET(dataDict['LR'])
         #return values
-        SRImagesDict = {'SR': SRImages} 
-        
-    return {}, SRImagesDict
+        resultImagesDict = {'SR': SRImages}
+    
+    return {}, resultImagesDict
+
+
+
+
+
+
+#################################################################################
+#                                     EPOCH                                     #
+#################################################################################
+
+modelList = ModelList()
+
+trainEpoch = Epoch( 
+                    dataLoader = DataLoader('train'),
+                    modelList = modelList,
+                    step = trainStep,
+                    researchVersion = version,
+                    researchSubVersion = subversion,
+                    writer = utils.initTensorboardWriter(version, subversion),
+                    scoreMetricDict = { 'PSNR': {
+                                        'function' : utils.calculateImagePSNR, 
+                                        'argDataNames' : ['SR', 'GT'], 
+                                        'additionalArgs' : ['$RANGE'],},
+                                    }, 
+                    resultSaveData = ['LR', 'SR', 'GT'] ,
+                    resultSaveFileName = 'train',
+                    isNoResultArchiving = Config.param.save.remainOnlyLastSavedResult,
+                    earlyStopIteration = Config.param.train.step.earlyStopStep,
+                    name = 'TRAIN'
+                    )
+
+
+validationEpoch = Epoch( 
+                    dataLoader = DataLoader('validation'),
+                    modelList = modelList,
+                    step = validationStep,
+                    researchVersion = version,
+                    researchSubVersion = subversion,
+                    writer = utils.initTensorboardWriter(version, subversion),
+                    scoreMetricDict = { 'PSNR': {
+                                        'function' : utils.calculateImagePSNR, 
+                                        'argDataNames' : ['SR', 'GT'], 
+                                        'additionalArgs' : ['$RANGE'],},
+                                    }, 
+                    resultSaveData = ['LR', 'SR', 'GT'] ,
+                    resultSaveFileName = 'validation',
+                    isNoResultArchiving = Config.param.save.remainOnlyLastSavedResult,
+                    earlyStopIteration = Config.param.train.step.earlyStopStep,
+                    name = 'VALIDATION'
+                    )
+
+
+inferenceEpoch = Epoch( 
+                    dataLoader = DataLoader('inference'),
+                    modelList = modelList,
+                    step = inferenceStep,
+                    researchVersion = version,
+                    researchSubVersion = subversion,
+                    writer = utils.initTensorboardWriter(version, subversion),
+                    scoreMetricDict = {}, 
+                    resultSaveData = ['LR', 'SR'] ,
+                    resultSaveFileName = 'inference',
+                    isNoResultArchiving = Config.param.save.remainOnlyLastSavedResult,
+                    earlyStopIteration = Config.param.train.step.earlyStopStep,
+                    name = 'INFERENCE'
+                    )
 
 
 
