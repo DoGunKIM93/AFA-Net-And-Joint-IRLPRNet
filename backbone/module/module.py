@@ -1,7 +1,6 @@
 '''
 module.py
 '''
-version = '1.20.201230'
 
 #from Python
 import time

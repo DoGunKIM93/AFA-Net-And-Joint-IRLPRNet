@@ -1,7 +1,6 @@
 '''
 preprocessing.py
 '''
-version = '1.03.200820'
 
 
 #FROM Python LIBRARY
