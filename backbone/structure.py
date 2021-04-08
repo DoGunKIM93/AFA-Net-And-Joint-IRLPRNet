@@ -1,7 +1,6 @@
 """
 structure.py
 """
-version = "1.19.210206"
 
 import torch.nn as nn
 import torch
@@ -60,7 +59,7 @@ class Epoch:
         self.multipleResultSave = multipleResultSave
 
         # make folder if folder not exists
-        if resultSaveFileName.find("/") is not -1:
+        if resultSaveFileName.find("/") != -1:
             folderList = resultSaveFileName.split("/")[:-1]
             folderPath = "./data/" + self.researchVersion + "/result/" + self.researchSubVersion + "/"
             for folder in folderList:
@@ -111,8 +110,8 @@ class Epoch:
         PARAM_BATCH_SIZE = Config.paramDict["data"]["dataLoader"][DATALOADER_NAME]["batchSize"]
         MAX_EPOCH = Config.param.train.step.maxEpoch
 
-        VALUE_RANGE_TYPE = Config.paramDict["data"]["dataLoader"][DATALOADER_NAME]["valueRangeType"]
-        COLOR_MODE = Config.paramDict["data"]["datasetComponent"][DATASET_COMPONENT_NAME_LIST[0]]["colorMode"]
+        RANGE = Config.paramDict["data"]["dataLoader"][DATALOADER_NAME]["range"]
+        TYPE = Config.paramDict["data"]["dataLoader"][DATALOADER_NAME]["type"]
         SEQUENCE_LENGTH = (
             Config.paramDict["data"]["dataLoader"][DATALOADER_NAME]["sequenceLength"]
             if "sequenceLength" in Config.paramDict["data"]["dataLoader"][DATALOADER_NAME]
@@ -133,6 +132,7 @@ class Epoch:
         #       in-Batch Instructions
         ####################################
         for i, dataDict in enumerate(self.dataLoader):
+            #print(f"RUN PHASE 3")
             if i == self.earlyStopIteration:
                 break
 
@@ -142,7 +142,7 @@ class Epoch:
             #####         Instruction Step
             ####################################
             lossDict, resultDict = self.step(currentEpoch, self.modelList, dataDict)
-
+            #print(f"RUN PHASE 4")
             for key in dataDict:
                 assert (
                     key not in resultDict.keys()
@@ -154,7 +154,7 @@ class Epoch:
             ####################################
             if do_calculateScore is not False:
 
-                if do_calculateScore is "DETAIL":
+                if do_calculateScore == "DETAIL":
                     print(f"CASE {i} :: ", end="")
 
                 for scoreMetricName in self.scoreMetricDict:
@@ -164,16 +164,18 @@ class Epoch:
                     scoreFuncAdditionalArgs = self.scoreMetricDict[scoreMetricName]["additionalArgs"]
 
                     for ss, sfaarg in enumerate(scoreFuncAdditionalArgs):
-                        if sfaarg == "$VALUE_RANGE_TYPE":
-                            scoreFuncAdditionalArgs[ss] = VALUE_RANGE_TYPE
-                        elif sfaarg == "$COLOR_MODE":
-                            scoreFuncAdditionalArgs[ss] = COLOR_MODE
+                        if sfaarg == "$TYPE":
+                            scoreFuncAdditionalArgs[ss] = TYPE
+                        elif sfaarg == "$RANGE":
+                            scoreFuncAdditionalArgs[ss] = RANGE
                         elif sfaarg == "$SEQUENCE_LENGTH":
                             scoreFuncAdditionalArgs[ss] = SEQUENCE_LENGTH
+                        elif sfaarg.startswith('$'):
+                            raise ValueError
 
                     score = scoreFunc(*scoreFuncArgs, *scoreFuncAdditionalArgs)
 
-                    if do_calculateScore is "DETAIL":
+                    if do_calculateScore == "DETAIL":
                         print(f"{scoreMetricName}: {score} ", end="")
 
                     if scoreMetricName in AvgScoreDict:
@@ -181,21 +183,11 @@ class Epoch:
                     else:
                         AvgScoreDict.update({scoreMetricName: score})
 
-                if do_calculateScore is "DETAIL":
+                if do_calculateScore == "DETAIL":
                     print("")
 
                 globalScoreCount += 1
 
-            """
-            if self.isPSNR is True:
-                inp = resultDict[self.PSNRDataNamePair[0]]
-                tar = resultDict[self.PSNRDataNamePair[1]]
-
-                if len(inp.size()) == 5:
-                    tar = tar[:,Config.param.data.dataLoader.train.sequenceLength//2,:,:,:]
-                    
-                PSNR += utils.calculateImagePSNR(inp, tar, VALUE_RANGE_TYPE, COLOR_MODE)
-            """
 
             ####################################
             #####             LOSS
@@ -211,7 +203,7 @@ class Epoch:
             ####################################
             #####            save Rst. (EVERY)
             ####################################W
-            if do_resultSave is "EVERY":
+            if do_resultSave == "EVERY":
 
                 # Save sampled images
                 if self.isNoResultArchiving:
@@ -255,7 +247,7 @@ class Epoch:
             ####################################
             #####        Printing & Logging
             ####################################
-            if do_calculateScore is not "DETAIL":
+            if do_calculateScore != "DETAIL":
 
                 # calc Time per Batch
                 oldTimePerBatch = timePerBatch
@@ -410,8 +402,7 @@ class Epoch:
                     resultDict,
                     savePath,
                     saveDataDictKeys=self.resultSaveData,
-                    colorMode=COLOR_MODE,
-                    valueRangeType=VALUE_RANGE_TYPE,
+                    valueRange=RANGE,
                     interpolation="nearest",
                 )
 
@@ -466,7 +457,7 @@ class ModelListBase:
         ]
 
         for mdlStr in mdlStrLst:
-            setattr(self, mdlStr, nn.DataParallel(getattr(self, mdlStr)))
+            setattr(self, mdlStr, nn.DataParallel(getattr(self, mdlStr)).cuda())
 
     def initApexAMP(self):
         if Config.param.train.method.mixedPrecision is True:
