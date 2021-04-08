@@ -1,7 +1,6 @@
 """
 utils.py
 """
-version = "1.40.210120"
 
 
 # From Python
@@ -11,6 +10,7 @@ import numpy as np
 import os
 import subprocess
 import psutil
+import datetime
 
 try:
     import apex.amp as amp
@@ -45,17 +45,17 @@ from backbone.torchvision_injected import functional as vF
 
 
 # 텐서보드 관련 초기화
-def initTensorboard(ver, subversion):
-    for proc in psutil.process_iter():
-        # check whether the process name matches
-        if proc.name() == "tensorboard":
-            proc.kill()
-
+def initTensorboardWriter(ver, subversion):
     logdir = f"./data/{ ver }/log"
-    subprocess.Popen(["tensorboard", "--logdir=" + logdir, "--port=6006"])
+    #subprocess.Popen(["tensorboard", "--logdir=" + logdir, "--port=6006"])
     writer = SummaryWriter(f"{ logdir }/{ subversion }/")
 
     return writer
+
+def initTensorboardProcess(ver):
+    logdir = f"./data/{ ver }/"
+    subprocess.Popen(["tensorboard", "--logdir=" + logdir])
+            
 
 
 def logValues(writer, valueTuple, iter):
@@ -75,7 +75,7 @@ def logImages(writer, imageTuple, iter):
 ########################################################################################################################################################################
 
 
-def addCaptionToImageTensor(imageTensor, caption, valueRangeType="-1~1", DEFAULT_TEXT_SIZE=24):
+def addCaptionToImageTensor(imageTensor, caption, valueRange="0~1", DEFAULT_TEXT_SIZE=24):
 
     assert imageTensor.dim() == 4
 
@@ -87,10 +87,15 @@ def addCaptionToImageTensor(imageTensor, caption, valueRangeType="-1~1", DEFAULT
     PAD_TOP = int(DEFAULT_TEXT_SIZE * 0.25)
     PAD_BOTTOM = int(DEFAULT_TEXT_SIZE * 0.5)
 
+    '''
     if valueRangeType == "-1~1":
         imageTensor = imageTensor.clamp(-1, 1)
     elif valueRangeType == "0~1":
         imageTensor = imageTensor.clamp(0, 1)
+    '''
+    imageTensor = imageTensor.clamp(*[float(x) for x in valueRange.replace(' ','').split('~')])
+
+    imageTensor = denorm(imageTensor.cpu(), valueRange)
 
     ToPILImageFunc = ToPILImage()
     pilImageList = list([ToPILImageFunc(x).convert("RGB") for x in (imageTensor)])
@@ -129,8 +134,7 @@ def saveImageTensorToFile(
     dataDict,
     fileName,
     saveDataDictKeys=None,
-    colorMode="color",
-    valueRangeType="-1~1",
+    valueRange="0~1",
     interpolation="bicubic",
     caption=True,
 ):
@@ -152,7 +156,7 @@ def saveImageTensorToFile(
         rstElem = dataDict[name]
 
         # denorm
-        rstElem = denorm(rstElem.cpu(), valueRangeType)
+        rstElem = denorm(rstElem.cpu(), valueRange)
 
         # resize to MAX_SIZE both image and imageSequence Tensors
         if dim == 4:
@@ -183,7 +187,7 @@ def saveImageTensorToFile(
             rstElem = F.pad(rstElem, (0, 0, 0, MAX_HEIGHT - rstElem.size(-2)), "constant", 0)
 
         if caption is True:
-            rstElem = addCaptionToImageTensor(rstElem, caption=name, valueRangeType=valueRangeType)
+            rstElem = addCaptionToImageTensor(rstElem, caption=name, valueRange='0~1')
         rstDict[name] = rstElem
 
     assert len(rstDict) != 0, "utils.py :: There is no save data...Make sure saveDataDictKeys in dataDict.keys()"
@@ -215,11 +219,11 @@ def loadModels(modelList, version, subversion, loadModelNum):
         if 'DO_NOT_FORCE_CUDA' in dir(modelObj) and modelObj.DO_NOT_FORCE_CUDA is True:
             modelObj.cpu()
         else:
-            modelObj.cuda()
+            modelObj#.cuda()
 
         checkpoint = None
         if (
-            loadModelNum is not "None" or len([attr for attr in vars(modelList) if attr == (mdlStr + "_pretrained")]) > 0
+            loadModelNum != "None" or len([attr for attr in vars(modelList) if attr == (mdlStr + "_pretrained")]) > 0
         ):  # 로드 할거야
 
             isPretrainedLoad = False
@@ -429,15 +433,21 @@ def to_var(x):
     return Variable(x)
 
 
-def denorm(x, valueRangeType):
-    out = x
-    if valueRangeType == "-1~1":
-        out = (x + 1) / 2
-    elif valueRangeType == "0~255":
-        out = out / 255
-        out = out.type(torch.Tensor)
+def denorm(tnsr_or_nparray, valueRange):
+    '''
+    make tensor to 0~1 Float32 Tensor
+    '''
+    if isinstance(tnsr_or_nparray, torch.Tensor):
+        rangeMin, rangeMax = [float(x) if type(tnsr_or_nparray).is_floating_point is True else int(x) for x in valueRange.replace(' ','').split('~')]
+        out = tnsr_or_nparray.to(torch.float32)
+        out = (out - rangeMin) / (rangeMax - rangeMin)
+        out.clamp(0, 1)
+    else:
+        rangeMin, rangeMax = [float(x) for x in valueRange.replace(' ','').split('~')]
+        out = tnsr_or_nparray
+        out = (out - rangeMin) / (rangeMax - rangeMin)
 
-    return out.clamp(0, 1)
+    return out
 
 
 def pSigmoid(input, c1):
@@ -502,8 +512,13 @@ def calculateImageRecoverPercentage(inp, outp, gt, lossFunction='MSE'):
 
 
 # TODO: BATCH
-def calculateImagePSNR(a, b, valueRangeType, colorMode, colorSpace = 'YCbCr'):
+def calculateImagePSNR(a, b, valueRange, colorMode='color', colorSpace = 'YCbCr'):
     assert colorSpace in ['YCbCr', 'RGB'], 'calculateImagePSNR must be one of "YCbCr", "RGB"'
+
+    if a.size(-3) == 1:
+        colorMode = 'grayScale'
+    elif a.size(-3) == 3:
+        colorMode = 'color'
 
     pred = a.cpu().data[0].numpy().astype(np.float32)
     gt = b.cpu().data[0].numpy().astype(np.float32)
@@ -511,9 +526,14 @@ def calculateImagePSNR(a, b, valueRangeType, colorMode, colorSpace = 'YCbCr'):
     np.nan_to_num(pred, copy=False)
     np.nan_to_num(gt, copy=False)
 
+    '''
     if valueRangeType == "-1~1":
         pred = (pred + 1) / 2
         gt = (gt + 1) / 2
+    '''
+
+    pred = denorm(pred, valueRange)
+    gt = denorm(gt, valueRange)
 
     if colorSpace == "YCbCr":
         if colorMode == "grayscale":
@@ -550,29 +570,35 @@ def calculateImagePSNR(a, b, valueRangeType, colorMode, colorSpace = 'YCbCr'):
 def initFolderAndFiles(ver, subversion):
 
     subDirList = ["model", "log", "result", "checkpoint"]
+
     list(
         os.makedirs(f"./data/{ver}/{x}/{subversion}")
         for x in subDirList
         if not os.path.exists(f"./data/{ver}/{x}/{subversion}")
     )
 
-    subDirUnderModelList = ["backbone"]
-    list(
-        os.makedirs(f"./data/{ver}/model/{subversion}/{x}")
-        for x in subDirUnderModelList
-        if not os.path.exists(f"./data/{ver}/model/{subversion}/{x}")
-    )
+    EXT_LIST = ['.py','.yaml','.cu','.cpp','txt']
+    EXCEPT_PATH = ['./data/']
 
-    list(
-        copyfile(f"./{x}", f"./data/{ver}/model/{subversion}/{x}")
-        for x in os.listdir(".")
-        if x.endswith(".py") or x.endswith(".yaml")
-    )
-    list(
-        copyfile(f"./backbone/{x}", f"./data/{ver}/model/{subversion}/backbone/{x}")
-        for x in os.listdir("./backbone")
-        if x.endswith(".py")
-    )
+    fileList = []
+    folderList = set()
+    # r=root, d=directories, f = files
+    for r, d, f in os.walk("."):
+        for file in f:
+            if file.lower().endswith(tuple(EXT_LIST)) and not r.startswith(tuple(EXCEPT_PATH)):
+                folderList.add(r)
+                fileList.append(os.path.join(r, file))
+
+    folderList = sorted(list(folderList))
+
+    TIME_STR = str(datetime.datetime.today()).replace(' ','_').replace(':','-').replace('.','_')
+    BACKUP_PATH = f'./data/{ver}/model/{subversion}/' + TIME_STR
+
+    os.mkdir(BACKUP_PATH)
+    [os.makedirs(BACKUP_PATH + x[1:], exist_ok=True) for x in folderList]
+
+    [copyfile(x, BACKUP_PATH + x[1:]) for x in fileList]
+
 
 
 def initArgParser():
@@ -580,7 +606,6 @@ def initArgParser():
 
     parser.add_argument("--inferenceTest", "-it", action="store_true", help="Model Inference")
     parser.add_argument("--load", "-l", nargs="?", default="None", const="-1", help="load 여부")
-    parser.add_argument("--nosave", "-n", action="store_true", help="epoch마다 validation 과정에 생기는 이미지를 가장 최근 이미지만 저장")
     parser.add_argument("--debug", "-d", action="store_true", help="VS코드 디버그 모드")
     parser.add_argument("--tag", "-t", default="None", help="Tag")
 
