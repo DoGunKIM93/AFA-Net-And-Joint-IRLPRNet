@@ -1,222 +1,229 @@
 #################################################################################
 #                          *** datasetConfig.yaml ***                           #
 #################################################################################
-version : 1.05.200806
 
-DIV2K_SR:
+
+#################################################################################
+#                                  *** SISR ***                                 #
+#################################################################################
+
+#
+# for SISR
+#
+
+# DIV2K
+DIV2K_SR :
     origin: superResolution/SISR/DIV2K
-    dataType: 
-        LR: Image-Float #  dataName: dataType(InputType)-tensorType(OutputType)  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
-    labelType:
-        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
-    availableMode: 
-        - train
-        - validation #train, validation, test
+    dataType: Image
     classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+        - mode
         - scaleMethod
         - scaleFactor
-    preprocessings: # Must be list
-        - Pass()
-
-DIV2K_SR_V:
-    origin: superResolution/SISR/DIV2K
-    dataType: 
-        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
-    labelType:
-        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
-    availableMode: 
-        - train
-    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
-        - class
+    special:
+        GT: '*/GT'
     preprocessings: # Must be list
         - Pass()
 
 
+# 291
 291_SR:
     origin: superResolution/SISR/291
-    dataType: 
-        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
-    labelType:
-        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
-    availableMode: 
-        - train
-        - validation #train, validation, test
+    dataType: Image
     classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+        - mode
         - class
+    special:
+        GT: '*/GT'
     preprocessings: # Must be list
         - Pass()
 
-
-REDS_SR:
-    origin: superResolution/MISR/REDS
-    dataType: 
-        LR: ImageSequence-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
-    labelType:
-        HR: ImageSequence-Float # (Text/Image/ImageSequence)-(Float/Int)
-    availableMode: 
-        - train
-        - validation #train, validation, test
-        - test
-    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
-        - degradationMethod
+# Flickr2K
+Flickr2K_SR:
+    origin: superResolution/SISR/Flickr2K
+    dataType: Image
+    classes: 
+        - mode
+        - scaleMethod
         - scaleFactor
-    preprocessings: # Must be list
-        - Pass()
-
-REDS_NTIRE:
-    origin: superResolution/MISR/REDS_NTIRE
-    dataType: 
-        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
-    labelType:
-        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
-    availableMode: 
-        - validation #train, validation, test
-    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
-        - degradationMethod
-        - scaleFactor
-    preprocessings: # Must be list
-        - Pass()
-
-REDS_Reduced:
-    origin: superResolution/MISR/REDS_Reduced
-    dataType: 
-        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
-    labelType:
-        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
-    availableMode: 
-        - train #train, validation, test
-    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
-        - degradationMethod
-        - scaleFactor
-    preprocessings: # Must be list
-        - Pass()
-
-VID4_SR:
-    origin: superResolution/MISR/Vid4
-    dataType: 
-        LR: ImageSequence-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
-    labelType:
-        HR: ImageSequence-Float # (Text/Image/ImageSequence)-(Float/Int)
-    availableMode: 
-        - test
-    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
-        - degradationMethod
-        - scaleFactor
-    preprocessings: # Must be list
+    special:
+        GT: '*/GT'
+    preprocessings:
         - Pass()
 
 
-FFHQ_FACE_SR_V:
+#
+# SISR Mode MISR Dataset
+#
+
+
+#
+# General or Domain dataset, modified for SISR
+#
+
+# OST
+OST_SR:
+    origin: generalImageDataset/OST
+    dataType: Image
+    classes: 
+        - mode
+        - class
+        - imageKind
+    special:
+        GT: '*/GT'
+    preprocessings:
+        - Pass()
+
+# FFHQ FACE dataset
+FFHQ_Face_SR:
     origin: domainDataset/face/FFHQ/Face
-    dataType: 
-        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
-    labelType:
-        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
-    availableMode:
-        - train
-        - test
-    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+    dataType: Image
+    classes:
+        - mode
         - class
+    special:
+        GT: '*/GT'
     preprocessings: # Must be list
         - Pass()
 
+FFHQ_General_SR:
+    origin: domainDataset/face/FFHQ/General
+    dataType: Image
+    classes: 
+        - mode
+        - class
+    special:
+        GT: '*/GT'
+    preprocessings: # Must be list
+        - Pass()
+
+# imagenet
+imagenet_SR:
+    origin: generalImageDataset/imagenet/ILSVRC/Data/CLS-LOC
+    dataType: Image
+    classes: 
+        - mode
+        - class
+        - seq
+    special:
+        GT: '*/GT'
+    preprocessings: # Must be list
+        - Pass()
+
+# Satellite Datasets
+Satellite_DOTA_SR:
+    origin: domainDataset/satellite/DOTA
+    dataType: Image
+    classes: 
+        - mode
+        - class
+    special:
+        GT: '*/GT'
+    preprocessings: # Must be list
+        - Pass()
+
+Satellite_xView_Building_SR:
+    origin: domainDataset/satellite/xView_Building
+    dataType: Image
+    classes: 
+        - mode
+        - class
+    special:
+        GT: '*/GT'
+    preprocessings: # Must be list
+        - Pass()
+
+#Medical Datasets
+Medical_CXR8_SR:
+    origin: domainDataset/medical/CXR8
+    dataType: Image
+    classes:
+        - mode
+        - class
+    special:
+        GT: '*/GT'
+    preprocessings: # Must be list
+        - Pass()
+
+#Wild Tesxt Scene
+RRC_MIXED_WILD_SCENE_SR:
+    origin: domainDataset/text/RRC_MIXED_WILD_SCENE
+    dataType: Image
+    classes: 
+        - mode
+        - class
+    special:
+        GT: '*/GT'
+    preprocessings: # Must be list
+        - Pass()
+
+#Documents
+RRC_MIXED_DOCUMENT_SR:
+    origin: domainDataset/text/RRC_MIXED_DOCUMENT
+    dataType: Image
+    classes: 
+        - mode
+        - class
+    special:
+        GT: '*/GT'
+    preprocessings: # Must be list
+        - Pass()
+#
+# Benchmarks
+#
 
 Set5_SR:
     origin: superResolution/SISR/benchmark/Set5
-    dataType: 
-        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
-    labelType:
-        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
-    availableMode:
-        - test
-    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+    dataType: Image
+    classes: 
+        - mode
         - scaleMethod
         - scaleFactor
-    preprocessings: # Must be list
-        - Pass()
-
-Set5_SR_V:
-    origin: superResolution/SISR/benchmark/Set5
-    dataType: 
-        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
-    labelType:
-        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
-    availableMode:
-        - test
-    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
-        - class
+    special:
+        GT: '*/GT'
     preprocessings: # Must be list
         - Pass()
 
 Set14_SR:
     origin: superResolution/SISR/benchmark/Set14
-    dataType: 
-        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
-    labelType:
-        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
-    availableMode:
-        - test
-    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+    dataType: Image
+    classes: 
+        - mode
         - scaleMethod
         - scaleFactor
+    special:
+        GT: '*/GT'
     preprocessings: # Must be list
         - Pass()
 
-Blending_SR:
-    origin: superResolution/SISR/benchmark/Blending
-    dataType: 
-        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
-    labelType:
-        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
-    availableMode:
-        - test
-    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
-        - scaleMethod
+
+#################################################################################
+#                                  *** MISR ***                                 #
+#################################################################################
+
+
+REDS_SR:
+    origin: superResolution/MISR/REDS
+    dataType: ImageSequence
+    classes: 
+        - mode
+        - degradationMethod
         - scaleFactor
+    special:
+        GT: '*/GT'
     preprocessings: # Must be list
         - Pass()
 
-Satellite_DOTA_SR_V:
-    origin: domainDataset/satellite/DOTA
-    dataType: 
-        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
-    labelType:
-        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
-    availableMode: 
-        - train
-        - validation
-        - test
-    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
-        - class
+VID4_SR:
+    origin: superResolution/MISR/Vid4
+    dataType: ImageSequence
+    classes: 
+        - mode
+        - degradationMethod
+        - scaleFactor
+    special:
+        GT: '*/GT'
     preprocessings: # Must be list
         - Pass()
 
-Satellite_xView_Building_SR_V:
-    origin: domainDataset/satellite/xView_Building
-    dataType: 
-        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
-    labelType:
-        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
-    availableMode: 
-        - train
-        - validation
-        - test
-    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
-        - class
-    preprocessings: # Must be list
-        - Pass()
 
-Medical_CXR8_V:
-    origin: domainDataset/medical/CXR8
-    dataType: 
-        LR: Image-Float #  dataName: dataType-tensorType  (Text/Image/ImageSequence)-(Float/Int)    ->     Text->1D, Image->2D, ImageSequence->3D
-    labelType:
-        HR: Image-Float # (Text/Image/ImageSequence)-(Float/Int)
-    availableMode: 
-        - train
-        - validation
-        - test
-    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
-        - class
-    preprocessings: # Must be list
-        - Pass()
+
