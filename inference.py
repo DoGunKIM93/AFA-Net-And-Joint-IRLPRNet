@@ -1,7 +1,6 @@
 """
 inference.py
 """
-version = "1.10.210402"
 
 
 # READ YAML

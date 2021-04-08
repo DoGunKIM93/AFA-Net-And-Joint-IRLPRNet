@@ -1,7 +1,6 @@
 #################################################################################
 #                            *** inference.yaml ***                             #
 #################################################################################
-version : 1.10.210402
 
 
 #################################################################################
@@ -114,6 +113,14 @@ model:
         name: MPRNet
         param:
         weight: MPRNet_pretrained.pth
+        valueRangeType: 0~1
+        augmentation:
+            - toTensor()
+            
+    General-PSNR-GOMTANG-DeFiAN:
+        model: DeFiAN
+        param: 64, 20, 20, 4, 0
+        weight: DeFiAN-GOMTANG.pth
         valueRangeType: 0~1
         augmentation:
             - toTensor()
