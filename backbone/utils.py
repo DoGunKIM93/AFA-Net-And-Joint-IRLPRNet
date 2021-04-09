@@ -457,7 +457,7 @@ def pSigmoid(input, c1):
 
 def backproagateAndWeightUpdate(modelList, loss, modelNames=None, gradientClipping=False):
 
-    assert gradientClipping is False or str(gradientClipping).isdigit() or isinstance(gradientClipping, List), "utils.py :: gradientClipping argument must be 'False' or Number, or its list."
+    assert gradientClipping is False or str(gradientClipping).replace('.','').isdigit() or isinstance(gradientClipping, List), "utils.py :: gradientClipping argument must be 'False' or Number, or its list."
 
     modelObjs = []
     optimizers = []
