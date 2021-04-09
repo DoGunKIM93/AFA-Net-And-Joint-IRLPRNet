@@ -11,6 +11,7 @@ import os
 import subprocess
 import psutil
 import datetime
+from typing import Union, List
 
 try:
     import apex.amp as amp
@@ -454,7 +455,9 @@ def pSigmoid(input, c1):
     return 1 / (1 + torch.exp(-1 * c1 * input))
 
 
-def backproagateAndWeightUpdate(modelList, loss, modelNames=None):
+def backproagateAndWeightUpdate(modelList, loss, modelNames=None, gradientClipping=False):
+
+    assert gradientClipping is False or str(gradientClipping).isdigit() or isinstance(gradientClipping, List), "utils.py :: gradientClipping argument must be 'False' or Number, or its list."
 
     modelObjs = []
     optimizers = []
@@ -483,6 +486,14 @@ def backproagateAndWeightUpdate(modelList, loss, modelNames=None):
         with amp.scale_loss(loss, optimizers) as scaled_loss:
             scaled_loss.backward()
 
+    # grad Clipping
+    if isinstance(gradientClipping, List) is False:
+        gradientClipping = [gradientClipping] * len(modelObjs)
+    assert len(gradientClipping) == len(modelObjs), "utils.py :: If gradientClipping argument fed as a list, the length if gradientClipping list must be same length of the model list."
+    for modelObj, gCElem in zip(modelObjs, gradientClipping):
+        if gCElem is not False:
+            nn.utils.clip_grad_norm_(modelObj.parameters(), gCElem)
+    
     # weight update
     for optimizer in optimizers:
         optimizer.step()
