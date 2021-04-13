@@ -2,10 +2,12 @@
 
 Image Sequence (file) to MP4 Video
 
-Usage ::: imageSequenceToVideo.py -i [imageSequence Folder Path (relative)] -o [output video path] -f [fps]
+Usage ::: imageSequenceToVideo.py -i [imageSequence Folder Path (relative)] -o [output video path] -e [video file extension] -c [video codec] -f [fps]
+Ex) 
+1. python imageSequenceToVideo.py -i ./Test/100.5M_배_IR/ -o /home/jovyan/data-vol-1/dgk/git/2021/sr-research-framework/tools/Test/ -e avi -c MJPG -f 30
+2. python imageSequenceToVideo.py -i ./Test/ -o ./Test/ -e mp4 -c mp4v -f 30
 
-
-::: by JIN :::
+::: by JIN & DGK :::
 
 '''
 
@@ -15,73 +17,93 @@ import numpy as np
 import os
 import argparse
 import re
+from typing import List, Dict, Tuple, Union, Optional
 
 from os.path import isfile, join
+from tools.commonConvert import tryint, FORMAT_DICT
 
 
-def tryint(s):
-    try:
-        return int(s)
-    except:
-        return s
+def makeImageSequenceFileList(inputPath: str) -> List[str]:
 
-
-parser = argparse.ArgumentParser()
-
-parser.add_argument('--inputPath', '-i', help="입력할 영상 시퀀스 파일들이 있는 폴더 (상대경로)")
-parser.add_argument('--outputPath', '-o', help="출력할 비디오 파일 이름 (상대경로)")
-parser.add_argument('--fps', '-f', help="fps")
-
-args = parser.parse_args()
-
-
-pathInList = [x if x.endswith('/') else x + '/' for x in args.inputPath.split(' ')]
-pathOut = args.outputPath
-
-#secPerFrame = float(int(args.secPerFrame.split('/')[0]) / int(args.secPerFrame.split('/')[1]))
-fps = int(args.fps)
-
-frame_array = []
-
-files = []
-
-for pathIn in pathInList:
-    tmp = [pathIn + f for f in os.listdir(pathIn) if isfile(join(pathIn, f))]
-    tmp.sort(key=lambda s: [ tryint(c) for c in re.split('([0-9]+)', s) ])
-    files.append(tmp)#for sorting the file names properly
-
-
-for i in range(len(files[0])):
+    files = []
+    # for support single folder & multiple folder
+    pathInList = [inputPath if isfile(os.path.join(inputPath, filename)) else os.path.join(inputPath, filename)+'/' for filename in os.listdir(inputPath)]
+    pathInSet = set(pathInList)
+    pathInList = list(pathInSet)
     
-    filenameList = []
-    for j in range(len(files)):
-        filenameList.append(files[j][i])
+    for pathIn in pathInList:
+        tmp = [pathIn + f for f in os.listdir(pathIn) if isfile(join(pathIn, f))]
+        tmp.sort(key=lambda s: [ tryint(c) for c in re.split('([0-9]+)', s) ])
+        files.append(tmp)#for sorting the file names properly
 
-    for j, filename in enumerate(filenameList):
-        if j == 0:
-            img = cv2.imread(filename)
-        else:
-            img = cv2.hconcat([img, cv2.imread(filename)])
+    return files
 
-    #reading each files
-    height, width, layers = img.shape
-    size = (width,height)
-    #inserting the frames into an image array
-    frame_array.append(img)
+def imagesToVideo(fileList: list, pathOut: str, extension: str, codec: str, fps: int) -> List[str]:
+    
+    assert extension in FORMAT_DICT['Video'], f"inference.py :: outputType '{args.extension}' is not supported. Supported types: 'avi', 'mp4', 'mkv', 'wmv', 'mpg', 'mpeg'"
+    assert codec in [
+        "mp4v",
+        "MJPG",
+        "DIVX",
+        "XVID",
+        "X264"
+    ], f"inference.py :: outputType '{args.extension}' is not supported. Supported types: 'mp4v', 'MJPG', 'DIVX', 'XVID', 'X264'"
+
+    videoPathList = []
+
+    for k in range(len(fileList)):
+        frame_array = []
+        videoFilePath = ''
+        
+        for i in range(len(fileList[k])):            
+            filenameList = []
+            filenameList.append(fileList[k][i])
+
+            for j, filename in enumerate(filenameList):
+                if j == 0:
+                    img = cv2.imread(filename)
+                else:
+                    img = cv2.hconcat([img, cv2.imread(filename)])
+
+            #reading each files
+            height, width, layers = img.shape
+            size = (width,height)
+            #inserting the frames into an image array
+            frame_array.append(img)
+
+            print(f'processing Images... {(i+1)/len(fileList[k])*100:.1f}%')
+            videoFolderPath = pathOut + fileList[k][0].split('/')[-2]
+            videoFilePath = videoFolderPath + '.' + extension
+
+        out = cv2.VideoWriter(videoFilePath, cv2.VideoWriter_fourcc(*codec), fps=fps, frameSize=size)
+        
+        for i in range(len(frame_array)):
+            # writing to a image array
+            out.write(frame_array[i])
+
+            print(f'making Video... {(i+1)/len(frame_array)*100:.1f}%')
+
+        out.release()
+        videoPathList.append(os.getcwd() + videoFilePath[1:]) if videoFilePath[0] == '.' else videoPathList.append(videoFilePath)
+        
+        print(f':::\nTotal Frame: {len(frame_array)}\nFPS: {fps:.1f}\nVideo length: {len(frame_array) * 1/fps:.1f} seconds\nSize(H X W): {height} X {width}')
+    
+    return videoPathList
 
 
-    print(f'processing Images... {(i+1)/len(files[0])*100:.1f}%')
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
 
-out = cv2.VideoWriter(pathOut,cv2.VideoWriter_fourcc(*"mp4v"), fps=fps, frameSize=size)
+    parser.add_argument('--inputPath', '-i', type=str, help="입력할 영상 시퀀스 파일들이 있는 폴더 (상대경로)")
+    parser.add_argument('--outputPath', '-o', type=str, help="출력할 비디오 파일 경로 (상대경로)")
+    parser.add_argument('--extension', '-e', type=str, default="mp4", help="동영상 확장자")
+    parser.add_argument('--codec', '-c', type=str, default="mp4v", help="동영상 코덱")
+    parser.add_argument('--fps', '-f', type=int, default=30, help="fps")
 
-print(len(frame_array))
+    args = parser.parse_args()
 
-for i in range(len(frame_array)):
-    # writing to a image array
-    out.write(frame_array[i])
 
-    print(f'making Video... {(i+1)/len(frame_array)*100:.1f}%')
-
-out.release()
-
-print(f'FINISHED!\n:::\nTotal Frame: {len(frame_array)}\nFPS: {fps:.1f}\nVideo length: {len(frame_array) * 1/fps:.1f} seconds\nSize(H X W): {height} X {width}')
+    files = makeImageSequenceFileList(args.inputPath)
+    videoPathList = imagesToVideo(files, args.outputPath, args.extension, args.codec, int(args.fps))
+    print(f'Video directory path list: {videoPathList}')
+    print("FINISHED!")

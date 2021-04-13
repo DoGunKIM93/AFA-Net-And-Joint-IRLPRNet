@@ -50,6 +50,322 @@ from backbone.module.module import SecondOrderChannalAttentionBlock, NonLocalBlo
 
 
 
+###############################################################################################################################################
+#Deblur + Super Resolution
+## feature extractor network에서 추출한 feature 추가
+## Deblurring Module에 1/2 정도의 DMPHN 추가
+## FPN와 같이 Spatial 영역에 대한 정보 추가
+## Edge filter 추가 (Gradient 등)
+## Frequency Domain feature 추가
+
+class _ResBLockDB(nn.Module):
+    def __init__(self, inchannel, outchannel, stride=1):
+        super(_ResBLockDB, self).__init__()
+        self.layers = nn.Sequential(
+            nn.Conv2d(inchannel, outchannel, 3, stride, 1, bias=True),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(outchannel, outchannel, 3, stride, 1, bias=True)
+        )
+        for i in self.modules():
+            if isinstance(i, nn.Conv2d):
+                j = i.kernel_size[0] * i.kernel_size[1] * i.out_channels
+                i.weight.data.normal_(0, math.sqrt(2 / j))
+                if i.bias is not None:
+                    i.bias.data.zero_()
+
+    def forward(self, x):
+        out = self.layers(x)
+        residual = x
+        out = torch.add(residual, out)
+        return out
+
+class _ResBlockSR(nn.Module):
+    def __init__(self, inchannel, outchannel, stride=1):
+        super(_ResBlockSR, self).__init__()
+        self.layers = nn.Sequential(
+            nn.Conv2d(inchannel, outchannel, 3, stride, 1, bias=True),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(outchannel, outchannel, 3, stride, 1, bias=True)
+        )
+        for i in self.modules():
+            if isinstance(i, nn.Conv2d):
+                j = i.kernel_size[0] * i.kernel_size[1] * i.out_channels
+                i.weight.data.normal_(0, math.sqrt(2 / j))
+                if i.bias is not None:
+                    i.bias.data.zero_()
+
+    def forward(self, x):
+        out = self.layers(x)
+        residual = x
+        out = torch.add(residual, out)
+        return out
+
+class _DeblurringMoudle(nn.Module):
+    def __init__(self):
+        super(_DeblurringMoudle, self).__init__()
+        self.conv1     = nn.Conv2d(3, 64, (7, 7), 1, padding=3)
+        self.relu      = nn.ReLU(inplace=True) #nn.LeakyReLU(0.2, inplace=True)
+        #self.resBlock1 = self._makelayers(64, 64, 6)
+        self.RDB1 = RDB(nChannels=64, nDenselayer=6, growthRate = 32)
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(64, 128, (3, 3), 2, 1),
+            nn.ReLU(inplace=True)
+        )
+        #self.resBlock2 = self._makelayers(128, 128, 6)
+        self.RDB2 = RDB(nChannels=128, nDenselayer=6, growthRate = 64)
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(128, 256, (3, 3), 2, 1),
+            nn.ReLU(inplace=True)
+        )
+        #self.resBlock3 = self._makelayers(256, 256, 6)
+        self.RDB3 = RDB(nChannels=256, nDenselayer=6, growthRate = 128)
+        self.deconv1 = nn.Sequential(
+            nn.ConvTranspose2d(256, 128, (4, 4), 2, padding=1),
+            nn.ReLU(inplace=True)
+        )
+        self.deconv2 = nn.Sequential(
+            nn.ConvTranspose2d(128, 64, (4, 4), 2, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 64, (7, 7), 1, padding=3)
+        )
+        self.convout = nn.Sequential(
+            nn.Conv2d(64, 64, (3, 3), 1, 1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 3, (3, 3), 1, 1)
+        )
+        for i in self.modules():
+            if isinstance(i, nn.Conv2d):
+                j = i.kernel_size[0] * i.kernel_size[1] * i.out_channels
+                i.weight.data.normal_(0, math.sqrt(2 / j))
+                if i.bias is not None:
+                    i.bias.data.zero_()
+
+    def _makelayers(self, inchannel, outchannel, block_num, stride=1):
+        layers = []
+        for i in range(0, block_num):
+            layers.append(_ResBLockDB(inchannel, outchannel))
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        con1   = self.relu(self.conv1(x))
+        #res1   = self.resBlock1(con1)
+        res1   = self.RDB1(con1)
+        res1   = torch.add(res1, con1)
+        con2   = self.conv2(res1)
+        #res2   = self.resBlock2(con2)
+        res2   = self.RDB2(con2)
+        res2   = torch.add(res2, con2)
+        con3   = self.conv3(res2)
+        #res3   = self.resBlock3(con3)
+        res3   = self.RDB3(con3)
+        res3   = torch.add(res3, con3)
+        decon1 = self.deconv1(res3)
+        deblur_feature = self.deconv2(decon1)
+        deblur_out = self.convout(torch.add(deblur_feature, con1))
+        return F.sigmoid(deblur_feature), F.sigmoid(deblur_out)
+
+class _SRMoudle(nn.Module):
+    def __init__(self):
+        super(_SRMoudle, self).__init__()
+        self.conv1 = nn.Conv2d(3, 64, (7, 7), 1, padding=3)
+        self.relu = nn.ReLU(inplace=True)#nn.LeakyReLU(0.2, inplace=True)
+        #self.resBlock = self._makelayers(64, 64, 8, 1)
+        self.RDB = RDB(nChannels=64, nDenselayer=8, growthRate = 32)
+        self.conv2 = nn.Conv2d(64, 64, (3, 3), 1, 1)
+
+        for i in self.modules():
+            if isinstance(i, nn.Conv2d):
+                j = i.kernel_size[0] * i.kernel_size[1] * i.out_channels
+                i.weight.data.normal_(0, math.sqrt(2 / j))
+                if i.bias is not None:
+                    i.bias.data.zero_()
+
+    def _makelayers(self, inchannel, outchannel, block_num, stride=1):
+        layers = []
+        for i in range(0, block_num):
+            layers.append(_ResBlockSR(inchannel, outchannel))
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        con1 = self.relu(self.conv1(x))
+        #res1 = self.resBlock(con1)
+        res1 = self.RDB(con1)
+        con2 = self.conv2(res1)
+        sr_feature = torch.add(con2, con1)
+        return F.sigmoid(sr_feature)
+
+
+class _GateMoudle(nn.Module):
+    def __init__(self):
+        super(_GateMoudle, self).__init__()
+
+        self.conv1 = nn.Conv2d(131,  64, (3, 3), 1, 1)
+        self.relu = nn.ReLU(inplace=True)#nn.LeakyReLU(0.2, inplace=True)
+        self.conv2 = nn.Conv2d(64, 64, (1, 1), 1, padding=0)
+
+        for i in self.modules():
+            if isinstance(i, nn.Conv2d):
+                j = i.kernel_size[0] * i.kernel_size[1] * i.out_channels
+                i.weight.data.normal_(0, math.sqrt(2 / j))
+                if i.bias is not None:
+                    i.bias.data.zero_()
+
+    def forward(self, x):
+        con1 = self.relu(self.conv1(x))
+        scoremap = self.conv2(con1)
+        return F.sigmoid(scoremap)
+
+
+class _ReconstructMoudle(nn.Module):
+    def __init__(self):
+        super(_ReconstructMoudle, self).__init__()
+        #self.resBlock = self._makelayers(64, 64, 8)
+        self.RDB = RDB(nChannels=64, nDenselayer=8, growthRate = 32)
+        self.conv1 = nn.Conv2d(64, 256, (3, 3), 1, 1)
+        self.pixelShuffle1 = nn.PixelShuffle(2)
+        self.relu1 = nn.ReLU(inplace=True)#nn.LeakyReLU(0.1, inplace=True)
+        self.conv2 = nn.Conv2d(64, 256, (3, 3), 1, 1)
+        self.pixelShuffle2 = nn.PixelShuffle(2)
+        self.relu2 = nn.ReLU(inplace=True)#nn.LeakyReLU(0.2, inplace=True)
+        self.conv3 = nn.Conv2d(64, 64, (3, 3), 1, 1)
+        self.relu3 = nn.ReLU(inplace=True)#nn.LeakyReLU(0.2, inplace=True)
+        self.conv4 = nn.Conv2d(64, 3, (3, 3), 1, 1)
+
+        for i in self.modules():
+            if isinstance(i, nn.Conv2d):
+                j = i.kernel_size[0] * i.kernel_size[1] * i.out_channels
+                i.weight.data.normal_(0, math.sqrt(2 / j))
+                if i.bias is not None:
+                    i.bias.data.zero_()
+
+    def _makelayers(self, inchannel, outchannel, block_num, stride=1):
+        layers = []
+        for i in range(0, block_num):
+            layers.append(_ResBLockDB(inchannel, outchannel))
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        #res1 = self.resBlock(x)
+        res1 = self.RDB(x)
+        con1 = self.conv1(res1)
+        pixelshuffle1 = self.relu1(self.pixelShuffle1(con1))
+        con2 = self.conv2(pixelshuffle1)
+        pixelshuffle2 = self.relu2(self.pixelShuffle2(con2))
+        con3 = self.relu3(self.conv3(pixelshuffle2))
+        sr_deblur = self.conv4(con3)
+        return F.sigmoid(sr_deblur)
+
+
+class GFN(nn.Module):
+    def __init__(self):
+        super(GFN, self).__init__()
+        self.deblurMoudle      = self._make_net(_DeblurringMoudle)
+        self.srMoudle          = self._make_net(_SRMoudle)
+        self.geteMoudle        = self._make_net(_GateMoudle)
+        self.reconstructMoudle = self._make_net(_ReconstructMoudle)
+
+    def forward(self, x, gated, isTest):
+        if isTest == True:
+            origin_size = x.size()
+            input_size  = (math.ceil(origin_size[2]/4)*4, math.ceil(origin_size[3]/4)*4)
+            out_size    = (origin_size[2]*4, origin_size[3]*4)
+            x           = nn.functional.upsample(x, size=input_size, mode='bilinear')
+
+        H = x.size(2)
+        #W = x.size(3)
+        H_2 = int(H/2)
+        #W_2 = int(W/2)
+
+        x_left = x[:, :, 0 : H_2, :] 
+        x_right = x[:, :, H_2 : H, :]
+        #x_upper = x[:, :, :, 0 : W_2]
+        #x_down = x[:, :, :, W_2 : W]
+
+        deblur_featureL, deblur_outL = self.deblurMoudle(x_left)
+        deblur_featureR, deblur_outR = self.deblurMoudle(x_right)
+
+        #deblur_featureU, _ = self.deblurMoudle(x_upper)
+        #deblur_featureD, _ = self.deblurMoudle(x_down)
+
+        deblur_featureLR = torch.cat((deblur_featureL, deblur_featureR), 2)
+        #deblur_featureUD = torch.cat((deblur_featureU, deblur_featureD), 2)
+        deblur_outLR = torch.cat((deblur_outL, deblur_outR), 2)
+
+        #print(deblur_outLR.shape)
+        
+        deblur_feature, deblur_out = self.deblurMoudle(x)
+        #print(deblur_out.shape)
+
+        deblur_feature2 = deblur_feature + deblur_featureLR# + deblur_featureUD
+        deblur_out2 = deblur_out + deblur_outLR
+        #print(deblur_feature2.shape)
+        
+        sr_feature = self.srMoudle(x)
+        print(deblur_feature2.shape)
+        print(x.shape)
+        print(sr_feature.shape)
+
+        if gated == True:
+            scoremap = self.geteMoudle(torch.cat((deblur_feature2, x, sr_feature), 1))
+        else:
+            scoremap = torch.cuda.FloatTensor().resize_(sr_feature.shape).zero_()+1
+        print(scoremap.shape)
+        repair_feature = torch.mul(scoremap, deblur_feature2)
+        print(repair_feature.shape)
+        fusion_feature = torch.add(sr_feature, repair_feature)
+        print(fusion_feature.shape)
+        recon_out = self.reconstructMoudle(fusion_feature)
+        print(recon_out.shape)
+        
+        if isTest == True:
+            recon_out = nn.functional.upsample(recon_out, size=out_size, mode='bilinear')
+
+        return deblur_out2, recon_out
+
+    def _make_net(self, net):
+        nets = []
+        nets.append(net())
+        return nn.Sequential(*nets)
+
+###############################################################################################################################################
+
+
+
+
+class GFN_MPRNetDeFiAN(nn.Module):
+    def __init__(self):
+        super(GFN_MPRNetDeFiAN, self).__init__()
+        self.geteMoudle        = self._make_net(_GateMoudle)
+        self.reconstructMoudle = self._make_net(_ReconstructMoudle)
+
+    def forward(self, x, deblur_feature, deblur_out, sr_feature, gated, isTest):
+        if isTest == True:
+            origin_size = x.size()
+            input_size  = (math.ceil(origin_size[2]/4)*4, math.ceil(origin_size[3]/4)*4)
+            out_size    = (origin_size[2]*4, origin_size[3]*4)
+            x           = nn.functional.upsample(x, size=input_size, mode='bilinear')
+ 
+        if gated == True:
+            scoremap = self.geteMoudle(torch.cat((deblur_feature, x, sr_feature), 1)) # 64 3 64
+        else:
+            scoremap = torch.cuda.FloatTensor().resize_(sr_feature.shape).zero_()+1
+
+        #print(scoremap.shape)
+        repair_feature = torch.mul(scoremap, deblur_feature)
+        fusion_feature = torch.add(sr_feature, repair_feature)
+        
+        recon_out = self.reconstructMoudle(fusion_feature)
+        
+        if isTest == True:
+            recon_out = nn.functional.upsample(recon_out, size=out_size, mode='bilinear')
+
+        return deblur_out, recon_out
+
+    def _make_net(self, net):
+        nets = []
+        nets.append(net())
+        return nn.Sequential(*nets)
+
 
 
 class IronBoy(nn.Module):
@@ -765,6 +1081,51 @@ class tSeNseR(nn.Module):
         return x
 
 
+class tSeNseR_Shuffle(nn.Module):
+    def __init__(self, CW=2048, colorMode="color"):
+        super(tSeNseR_Shuffle, self).__init__()
+
+        self.CW = CW
+
+        self.decoder1 = self.decoder(CW, CW // 2, normLayer = None)  # 2->4 / normLayer = None
+        self.decoder2 = self.decoder(CW // 2, CW // 4, normLayer = None)  # 4->8
+        self.decoder3 = self.decoder(CW // 4, CW // 8, normLayer = None)  # 8->16
+        self.decoder4 = self.decoder(CW // 8, CW // 16, normLayer = None)  # 16->32
+        ## 2048 1024 512 256
+        self.decoderHR = self.decoder(CW // 16, 3, normLayer = None)
+        
+        self.relu2 = nn.LeakyReLU(0.2, inplace=True)
+        self.conv3 = nn.Conv2d(30, 3, (3, 3), 1, 1)
+        
+    def decoder(self, inCh, outCh, normLayer=nn.BatchNorm2d, act=nn.ReLU):  # C // 2 , HW X 2
+        mList = []
+        mList.append(nn.PixelShuffle(2))
+
+        if normLayer is not None:
+            mList.append(normLayer(outCh))
+        
+        if act is not None:
+            mList.append(act())
+        return nn.Sequential(*mList)
+
+    def forward(self, f1, f2, f3, f4, LR=None):
+
+        decoded_f4 = self.decoder1(f4)
+
+        decoded_f3 = self.decoder2(torch.cat((decoded_f4, f3), 1))
+
+        decoded_f2 = self.decoder3(torch.cat((decoded_f3, f2), 1))
+
+        decoded_f1 = self.decoder4(torch.cat((decoded_f2, f1), 1))
+        
+        decoded_HR = self.decoderHR(decoded_f1)
+        #decoded_feature = torch.cat((decoded_f1, decoded_f2), 1)
+        decoded_relu = self.relu2(decoded_HR)
+        decoded = self.conv3(decoded_relu)
+        
+        #decoded = F.tanh(self.decoderHR(decoded_f1)) + LR if LR is not None else F.sigmoid(self.decoderHR(decoded_f1))
+#RuntimeError: Given groups=1, weight of size [64, 128, 3, 3], expected input[40, 120, 64, 64] to have 128 channels, but got 120 channels instead
+        return decoded
 
 class tSeNseR_OLD(nn.Module):
     def __init__(self, CW=2048, colorMode="color"):
@@ -772,18 +1133,20 @@ class tSeNseR_OLD(nn.Module):
 
         self.CW = CW
 
-        self.decoder1 = self.decoder(CW, CW // 2)  # 2->4
+        self.decoder1 = self.decoder(CW, CW // 2)  # 2->4 / normLayer = None
         self.decoder2 = self.decoder(CW // 2, CW // 4)  # 4->8
         self.decoder3 = self.decoder(CW // 4, CW // 8)  # 8->16
         self.decoder4 = self.decoder(CW // 8, CW // 16)  # 16->32
 
         self.decoderHR = self.decoder(CW // 16, 3 if colorMode == "color" else 1, act=None)
-
+        
     def decoder(self, inCh, outCh, normLayer=nn.BatchNorm2d, act=nn.ReLU):  # C // 2 , HW X 2
         mList = []
         mList.append(nn.ConvTranspose2d(inCh, outCh, 4, 2, 1))
+
         if normLayer is not None:
             mList.append(normLayer(outCh))
+        
         if act is not None:
             mList.append(act())
         return nn.Sequential(*mList)
@@ -801,6 +1164,72 @@ class tSeNseR_OLD(nn.Module):
         decoded = F.tanh(self.decoderHR(decoded_f1)) + LR if LR is not None else F.sigmoid(self.decoderHR(decoded_f1))
 
         return decoded
+
+
+
+class make_dense(nn.Module):
+    def __init__(self, nChannels, growthRate, kernel_size=3):
+        super(make_dense, self).__init__()
+        self.conv = nn.Conv2d(nChannels, growthRate, kernel_size=kernel_size, padding=(kernel_size-1)//2, bias=False)
+    def forward(self, x):
+        out = F.relu(self.conv(x))
+        out = torch.cat((x, out), 1)
+        return out
+
+# Residual dense block (RDB) architecture
+class RDB(nn.Module):
+  def __init__(self, nChannels, nDenselayer=6, growthRate=32):
+    super(RDB, self).__init__()
+    nChannels_ = nChannels
+    modules = []
+    for i in range(nDenselayer):    
+        modules.append(make_dense(nChannels_, growthRate))
+        nChannels_ += growthRate 
+    self.dense_layers = nn.Sequential(*modules)    
+    self.conv_1x1 = nn.Conv2d(nChannels_, nChannels, kernel_size=1, padding=0, bias=False)
+  def forward(self, x):
+    #print("in RDB x : ", x.shape)
+    out = self.dense_layers(x)
+    #print("in RDB dense_layers(x) : ", out.shape)
+    out = self.conv_1x1(out)
+    #print("in RDB conv_1x1(x) : ", out.shape)
+    out = out + x
+    #print("in RDB out + x : ", out.shape)
+    return out
+
+class DeNIQuA_ResDense(nn.Module):
+    def __init__(self, featureExtractor, CW=64, Blocks=9, inFeature=1, outCW=3, featureCW=1280):
+        super(DeNIQuA_ResDense, self).__init__()
+
+        self.featureExtractor = featureExtractor
+
+        self.CW = CW
+
+        self.inFeature = inFeature
+
+        self.oxo_in = nn.Conv2d(featureCW * inFeature, CW, 1, 1, 0)
+        
+        self.rdb = RDB(nChannels=CW, nDenselayer=6, growthRate =CW)
+
+        self.oxo_out = nn.Conv2d(CW, outCW, 1, 1, 0)
+
+    def forward(self, xList):
+
+        assert self.inFeature == len(xList)
+
+        if self.featureExtractor is not None:
+            rstList = []
+            for i in range(self.inFeature):
+                rstList.append(self.featureExtractor(xList[i]))
+            x = torch.cat(rstList, 1)
+        else:
+            x = torch.cat(xList, 1)
+
+        x = self.oxo_in(x)
+        x = self.rdb(x)
+        x = self.oxo_out(x)
+
+        return F.sigmoid(x)
 
 
 class DeNIQuA_Res(nn.Module):
