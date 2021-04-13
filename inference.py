@@ -41,9 +41,10 @@ from torchvision.utils import save_image
 from backbone.config import Config
 from torch.nn import DataParallel
 
+from dataLoader.datasetComponent import EXT_DICT
 from tools.videoToImageSequence import makeVideoFileList, videoToImages
 from tools.imageSequenceToVideo import makeImageSequenceFileList, imagesToVideo
-from tools.commonConvert import FORMAT_DICT
+
 
 # Read Augmentations from backbone.augmentation automatically
 AUGMENTATION_DICT = dict(
@@ -58,11 +59,11 @@ def _generateFileList(path: str, type: str) -> List[str]:
     formatList = []
 
     if type == 'All' : 
-        formatList = FORMAT_DICT['ImageSequence'] + FORMAT_DICT['Video']
+        formatList = EXT_DICT['ImageSequence'] + EXT_DICT['Video']
     elif type == 'ImageSequence':
-        formatList = FORMAT_DICT['ImageSequence']
+        formatList = EXT_DICT['ImageSequence']
     elif type == 'Video':
-        formatList = FORMAT_DICT['Video']
+        formatList = EXT_DICT['Video']
 
     fileList = [
         os.path.join(path, f)
@@ -272,14 +273,14 @@ def inferenceSingle(inp, inferencePresetName, model=None, outputType=None, outpu
                 {"Result": x}, 
                 f'{outputPath.split(".")[0]}-{i}.{outputPath.split(".")[1]}', 
                 caption=False, 
-                valueRangeType=model_valueRangeType
+                valueRange=model_valueRangeType
             )
             for i, x in enumerate(out)
         ] if isinstance(out, tuple) or isinstance(out, list) else utils.saveImageTensorToFile(
             {"Result": out}, 
             outputPath, 
             caption=False, 
-            valueRangeType=model_valueRangeType
+            valueRange=model_valueRangeType
         )
 
         if originalSave == True:
@@ -288,7 +289,7 @@ def inferenceSingle(inp, inferencePresetName, model=None, outputType=None, outpu
                 {"Result": inp},
                 f'{outputPath.split(".")[0]}-original.{outputPath.split(".")[1]}',
                 caption=False,
-                valueRangeType=model_valueRangeType
+                valueRange=model_valueRangeType
             )
         print("Saved.")
 
@@ -325,7 +326,7 @@ if __name__ == "__main__":
         timePerBatch = time.perf_counter()  # 1 inference 당 시간   
 
         # folders : images
-        if fileList[0].split(".")[-1].lower() in FORMAT_DICT['Image']:
+        if fileList[0].split(".")[-1].lower() in EXT_DICT['Image']:
 
             for i, imageFile in enumerate(fileList):
                 print(f"[{i}/{len(fileList)}] processing {imageFile} to {args.outputPath}/{imageFile.split('/')[-1]}")
@@ -340,7 +341,8 @@ if __name__ == "__main__":
             _calRuntime(timePerBatch, len(fileList))
 
         # folder : videos
-        elif fileList[0].split(".")[-1].lower() in FORMAT_DICT['Video']:
+        elif fileList[0].split(".")[-1].lower() in EXT_DICT['Video']:
+            
             videofiles = makeVideoFileList(args.inputPath)
             ImageSqeuencePathList = videoToImages(videofiles, args.outputPath)
 
@@ -377,10 +379,10 @@ if __name__ == "__main__":
     # input : file
     else:
         # file : image
-        if args.inputPath.split(".")[-1].lower() in FORMAT_DICT['Image']:
+        if args.inputPath.split(".")[-1].lower() in EXT_DICT['Image']:
             inferenceSingle(args.inputPath, args.inferencePresetName, model=model, outputType="FILE", outputPath=args.outputPath)
         # file : video
-        elif args.inputPath.split(".")[-1].lower() in FORMAT_DICT['Video']:
+        elif args.inputPath.split(".")[-1].lower() in EXT_DICT['Video']:
             imageSquenceResultFolder = args.outputPath + "/" + os.path.splitext(args.inputPath)[0].split('/')[-1] + "_results/"
             if os.path.exists(imageSquenceResultFolder) is False:
                 os.makedirs(imageSquenceResultFolder)
