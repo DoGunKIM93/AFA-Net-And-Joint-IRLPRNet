@@ -18,10 +18,20 @@ import os
 import argparse
 import re
 from typing import List, Dict, Tuple, Union, Optional
-
 from os.path import isfile, join
-from tools.commonConvert import tryint, FORMAT_DICT
 
+EXT_DICT = {
+            "Text" :             ['txt'],
+            "Image" :            ['png','jpg','jpeg','gif','bmp'],
+            "ImageSequence" :    ['png','jpg','jpeg','gif','bmp'],
+            "Video" :            ['avi','mp4','mkv','wmv','mpg','mpeg'], 
+            }
+
+def tryint(s):
+    try:
+        return int(s)
+    except:
+        return s
 
 def makeImageSequenceFileList(inputPath: str) -> List[str]:
 
@@ -40,7 +50,7 @@ def makeImageSequenceFileList(inputPath: str) -> List[str]:
 
 def imagesToVideo(fileList: list, pathOut: str, extension: str, codec: str, fps: int) -> List[str]:
     
-    assert extension in FORMAT_DICT['Video'], f"inference.py :: outputType '{args.extension}' is not supported. Supported types: 'avi', 'mp4', 'mkv', 'wmv', 'mpg', 'mpeg'"
+    assert extension in EXT_DICT['Video'], f"inference.py :: outputType '{args.extension}' is not supported. Supported types: 'avi', 'mp4', 'mkv', 'wmv', 'mpg', 'mpeg'"
     assert codec in [
         "mp4v",
         "MJPG",
@@ -54,11 +64,15 @@ def imagesToVideo(fileList: list, pathOut: str, extension: str, codec: str, fps:
     for k in range(len(fileList)):
         frame_array = []
         videoFilePath = ''
+        size = ()
         
         for i in range(len(fileList[k])):            
             filenameList = []
-            filenameList.append(fileList[k][i])
+            
+            if fileList[k][i] not in EXT_DICT["ImageSequence"]:
+                pass
 
+            filenameList.append(fileList[k][i])
             for j, filename in enumerate(filenameList):
                 if j == 0:
                     img = cv2.imread(filename)
@@ -72,11 +86,12 @@ def imagesToVideo(fileList: list, pathOut: str, extension: str, codec: str, fps:
             frame_array.append(img)
 
             print(f'processing Images... {(i+1)/len(fileList[k])*100:.1f}%')
-            videoFolderPath = pathOut + fileList[k][0].split('/')[-2]
-            videoFilePath = videoFolderPath + '.' + extension
-
-        out = cv2.VideoWriter(videoFilePath, cv2.VideoWriter_fourcc(*codec), fps=fps, frameSize=size)
+                     
+        videoFolderPath = pathOut + fileList[k][0].split('/')[-2]
+        videoFilePath = videoFolderPath + '.' + extension
         
+        out = cv2.VideoWriter(videoFilePath, cv2.VideoWriter_fourcc(*codec), fps=fps, frameSize=size)
+
         for i in range(len(frame_array)):
             # writing to a image array
             out.write(frame_array[i])
