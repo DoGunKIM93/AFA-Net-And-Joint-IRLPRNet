@@ -29,7 +29,7 @@ METADATA_DICT_KEYS = ['height', 'width', 'channel']
 EXT_DICT = {"Text" :             ['txt'],
             "Image" :            ['png','jpg','jpeg','gif','bmp'],
             "ImageSequence" :    ['png','jpg','jpeg','gif','bmp'],
-            "Video" :            ['avi','mp4','mpg','mpeg'], 
+            "Video" :            ['avi','mp4','mkv','wmv','mpg','mpeg'], 
             }
 
 IS_ITERABLE_DICT = {"Text" :             False,
