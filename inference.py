@@ -271,7 +271,7 @@ def inferenceSingle(inp, inferencePresetName, model=None, outputType=None, outpu
         [
             utils.saveImageTensorToFile(
                 {"Result": x}, 
-                f'{outputPath.split(".")[0]}-{i}.{outputPath.split(".")[1]}', 
+                f'{outputPath.split(".")[0]}-{i}{os.path.splitext(outputPath)[-1]}', 
                 caption=False, 
                 valueRange=model_valueRangeType
             )
@@ -287,7 +287,7 @@ def inferenceSingle(inp, inferencePresetName, model=None, outputType=None, outpu
             # original save
             utils.saveImageTensorToFile(
                 {"Result": inp},
-                f'{outputPath.split(".")[0]}-original.{outputPath.split(".")[1]}',
+                f'{outputPath.split(".")[0]}-original{os.path.splitext(outputPath)[-1]}',
                 caption=False,
                 valueRange=model_valueRangeType
             )
