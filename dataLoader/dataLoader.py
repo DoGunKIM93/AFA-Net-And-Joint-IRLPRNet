@@ -1,14 +1,5 @@
 # FROM Python LIBRARY
-import os
-import random
-import math
 import numpy as np
-import yaml
-import inspect
-import itertools
-import glob
-import time
-import multiprocessing
 import random
 
 from PIL import Image
