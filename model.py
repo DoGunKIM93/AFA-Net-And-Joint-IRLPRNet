@@ -50,7 +50,12 @@ from backbone.module.module import SecondOrderChannalAttentionBlock, NonLocalBlo
 
 
 
-
+class empty(nn.Module):
+    def __init__(self):
+        super(empty, self).__init__()        
+    
+    def forward(self, x):
+        return x
 
 class IronBoy(nn.Module):
     def __init__(self, CW=16, numBlocks=9): #scale=(2,3,4)
