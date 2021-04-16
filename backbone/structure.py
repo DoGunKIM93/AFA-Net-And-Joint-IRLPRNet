@@ -65,7 +65,7 @@ class Epoch:
             for folder in folderList:
                 folderPath += folder + "/"
                 if os.path.isdir(folderPath) is False:
-                    os.mkdir(folderPath)
+                    os.makedirs(folderPath)
 
         self.isNoResultArchiving = isNoResultArchiving
         self.earlyStopIteration = earlyStopIteration
@@ -218,8 +218,7 @@ class Epoch:
                         resultDict,
                         savePath,
                         saveDataDictKeys=self.resultSaveData,
-                        colorMode=COLOR_MODE,
-                        valueRangeType=VALUE_RANGE_TYPE,
+                        valueRange=RANGE,
                         interpolation="nearest",
                     )
 
@@ -235,8 +234,7 @@ class Epoch:
                             resultDict,
                             savePath_t,
                             saveDataDictKeys=[rsdKey],
-                            colorMode=COLOR_MODE,
-                            valueRangeType=VALUE_RANGE_TYPE,
+                            valueRange=RANGE,
                             interpolation="nearest",
                             caption=False,
                         )
@@ -418,8 +416,7 @@ class Epoch:
                         resultDict,
                         savePath_t,
                         saveDataDictKeys=[rsdKey],
-                        colorMode=COLOR_MODE,
-                        valueRangeType=VALUE_RANGE_TYPE,
+                        valueRange=RANGE,
                         interpolation="nearest",
                         caption=False,
                     )
