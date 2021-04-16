@@ -291,11 +291,11 @@ class SPSRNet(nn.Module):
 
     def forward(self, x, mode='forward'):
         assert mode in ['encode', 'decode', 'forward']
-        if mode is 'encode':
+        if mode == 'encode':
             return self._encode(x)
-        elif mode is 'decode':
+        elif mode == 'decode':
             return self._decode(x)
-        elif mode is 'forward':
+        elif mode == 'forward':
             return self._forward(x)
 
 
