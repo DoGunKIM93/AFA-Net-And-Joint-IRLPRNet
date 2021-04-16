@@ -6,15 +6,14 @@ data_loader.py
 # FROM Python LIBRARY
 import os
 import random
-import math
 import numpy as np
-import yaml
 import inspect
 import itertools
 import glob
 import time
 import multiprocessing
 import random
+import re
 
 from PIL import Image
 from PIL import PngImagePlugin
@@ -1376,6 +1375,22 @@ class _SingleProcessDataLoaderIterWithDataAugmentation(_SingleProcessDataLoaderI
 
 def _applyAugmentationFunctionFunc(tnsr, augmentationFuncStr: str):
 
+    def _typing(_x):
+        #None
+        if _x.lower() == 'none':
+            _value = None
+        #String
+        elif (_x[1:] if _x[0] == "-" else _x).replace(".", "", 1).isdigit() is False:
+            _value = str(_x)
+        else:
+            #int
+            if _x.find(".") == -1:
+                _value = int(_x)
+            #float
+            else: 
+                _value = float(_x)
+        return _value
+
     assert (
         augmentationFuncStr.split("(")[0] in AUGMENTATION_DICT.keys()
     ), "data_loader.py :: invalid Augmentation Function!! check param.yaml."
@@ -1399,17 +1414,42 @@ def _applyAugmentationFunctionFunc(tnsr, augmentationFuncStr: str):
 
         for eachAugmentationFuncStr in augmentationFuncStrList:
             augFunc = AUGMENTATION_DICT[eachAugmentationFuncStr.split("(")[0]]
+            argStr = STRING.split("(")[1][:-1]
             args = []
-            for x in list(filter(lambda y: y != "", eachAugmentationFuncStr.split("(")[1][:-1].replace(" ", "").split(","))):
-                if x.lower() is 'none':
-                    args.append(None)
-                elif (x[1:] if x[0] == "-" else x).replace(".", "", 1).isdigit() is False:
-                    args.append(str(x))
+            kwargs = {}
+
+            #Extract lists
+            listsInArgStr = []
+
+            listsInArgStr = [x[1:-1] for x in re.findall('(\[(?:\[??[^\[]*?\]))', argStr)]
+            listsInArgStr = [] if listsInArgStr is None else list(listsInArgStr)
+
+            for _i, _listStr in enumerate(listsInArgStr):
+                argStr = argStr.replace(f"[{_listStr}]", f"!@#$%LIST@{_i}%$#@!", 1)
+
+            for x in list(filter(lambda y: y != "", argStr.replace(" ", "").split(","))):
+
+                if x.find("=") == -1:
+                    isKwargs = False
+                    _x = x
                 else:
-                    if x.find(".") == -1:
-                        args.append(int(x))
-                    else: 
-                        args.append(float(x))
-            tnsr = augFunc(tnsr, *args)
+                    isKwargs = True
+                    _key = str(x.replace(' ','').split('=')[0])
+                    _x = str(x.replace(' ','').split('=')[1])
+
+                #list
+                if _x.startswith('!@#$%') and _x.endswith('%$#@!'):
+                    _x = listsInArgStr[int(_x[5:-5].split("@")[1])]
+                    _value = [_typing(_y) for _y in list(filter(lambda y: y != "", _x.replace(" ", "").split(",")))]
+                else:
+                    _value = _typing(_x)
+
+                if isKwargs is False:
+                    args.append(_value)
+                else:
+                    kwargs[_key] = _value
+
+
+            tnsr = augFunc(tnsr, *args, **kwargs)
 
     return tnsr
