@@ -11,6 +11,6 @@ old code
 *.pyx
 *.py.backup
 .ipynb*
-lp
+infTest
 *test.py
 baby.png
