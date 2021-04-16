@@ -25,10 +25,10 @@ parser.add_argument('-cache_dir', type=str, default='cache', help='cache directo
 args = parser.parse_args()
 
 cache_dir = Path(args.cache_dir)
-cache_dir.mkdir(parents=True, exist_ok=True)
+cache_dir.makedirs(parents=True, exist_ok=True)
 
 output_dir = Path(args.output_dir)
-output_dir.mkdir(parents=True,exist_ok=True)
+output_dir.makedirs(parents=True,exist_ok=True)
 
 print("Downloading Shape Predictor")
 f=open_url("https://drive.google.com/uc?id=1huhv8PYpNNKbGCLOaYUjOgR1pY5pmbJx", cache_dir=cache_dir, return_path=True)
