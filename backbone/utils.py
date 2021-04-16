@@ -505,13 +505,16 @@ def backproagateAndWeightUpdate(modelList, loss, modelNames=None, gradientClippi
 
 ########################################################################################################################################################################
 
-def calculateImageRecoverPercentage(inp, outp, gt, lossFunction='MSE'):
+def calculateImageRecoverPercentage(inp, outp, gt, lossFunction='MSE', interpolate='bicubic'):
     LOSSFUNC_DICT = {'MSE': nn.MSELoss,
                      'L1': nn.L1Loss}
     assert lossFunction in LOSSFUNC_DICT.keys()
 
     with torch.no_grad():
         criterion = LOSSFUNC_DICT[lossFunction]()
+
+        if inp.size() != outp.size():
+            inp = F.interpolate(inp, outp.size()[-2:], mode=interpolate)
 
         inpLoss = criterion(inp, gt)
         outpLoss = criterion(outp, gt)
@@ -605,7 +608,7 @@ def initFolderAndFiles(ver, subversion):
     TIME_STR = str(datetime.datetime.today()).replace(' ','_').replace(':','-').replace('.','_')
     BACKUP_PATH = f'./data/{ver}/model/{subversion}/' + TIME_STR
 
-    os.mkdir(BACKUP_PATH)
+    os.makedirs(BACKUP_PATH)
     [os.makedirs(BACKUP_PATH + x[1:], exist_ok=True) for x in folderList]
 
     [copyfile(x, BACKUP_PATH + x[1:]) for x in fileList]
