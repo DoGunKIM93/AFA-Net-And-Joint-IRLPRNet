@@ -12,6 +12,11 @@ from backbone.predefined.DRLN import DRLN
 from backbone.predefined.DMPHN import DMPHN_Decoder, DMPHN_Encoder
 from backbone.predefined.MPRNet import MPRNet
 
+##### LOW LIGHT ENHANCEMENT #####
+import backbone.predefined.ZeroDCE as ZeroDCE
+
+##### JPEG ARTIFACT REMOVE #####
+
 ##### FACE RECOG #####
 from backbone.predefined.RetinaFace import RetinaFace
 
@@ -31,6 +36,7 @@ __all__ = [ 'ESPCN',
             'DeFiAN',
             'DMPHN_Decoder', 'DMPHN_Encoder',
             'DRLN',
-            'MPRNet'
+            'MPRNet',
+            'ZeroDCE',
 ]
 
