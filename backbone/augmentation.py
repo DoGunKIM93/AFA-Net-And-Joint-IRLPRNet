@@ -96,21 +96,65 @@ def sizeMatch(xList: list, interpolation='bicubic', labelIndex=-1):
     return [_resize(x, h, w, interpolation) if i != labelIndex else x for i, x in enumerate(xList)]
 
 
-def resize(xList: list, outputLabelHeight, outputLabelWidth, interpolation='bicubic', labelIndex=-1):
+def resize(xList: list, outputLabelHeight, outputLabelWidth, interpolation='bicubic', labelIndex=-1, applyIndices=None):
     """
     resize data with same ratio
     """
+
     if labelIndex < 0: labelIndex = len(xList) + labelIndex
+
+    if applyIndices is None:
+        applyIndices = range((len(xList)))
+    applyIndices = [x if x >= 0 else len(xList) + x for x in applyIndices]
 
     _, cH, cW = _getSize(xList[labelIndex])
 
     rst = []
     for i, x in enumerate(xList):
 
-        if x is not None:
+        if i not in applyIndices:
+            rst.append(x)
+        elif x is not None:
             _, h, w = _getSize(x)
             ratioH = h / cH
             ratioW = w / cW
+
+            rst.append(_resize(x, int(outputLabelHeight * ratioH), int(outputLabelWidth * ratioW), interpolation))
+        else:
+            rst.append(None)
+
+    return rst
+
+
+
+def randomResize(xList: list, outputLabelHeightMin, outputLabelWidthMin, outputLabelHeightMax, outputLabelWidthMax, interpolation='bicubic', fixedRatio=True, labelIndex=-1, applyIndices=None):
+    """
+    random resize data with same ratio
+    """
+    if labelIndex < 0: labelIndex = len(xList) + labelIndex
+
+    if applyIndices is None:
+        applyIndices = range((len(xList)))
+    applyIndices = [x if x >= 0 else len(xList) + x for x in applyIndices]
+
+    _, cH, cW = _getSize(xList[labelIndex])
+
+    rst = []
+    for i, x in enumerate(xList):
+
+        if i not in applyIndices:
+            rst.append(x)
+        elif x is not None:
+            _, h, w = _getSize(x)
+            ratioH = h / cH
+            ratioW = w / cW
+
+            outputLabelHeight = random.randint(outputLabelHeightMin, outputLabelHeightMax)
+            if fixedRatio in [1, True]:
+                _r = outputLabelHeight / h
+                outputLabelWidth = _r * w
+            else:
+                outputLabelWidth = random.randint(outputLabelWidthMin, outputLabelWidthMax)
 
             rst.append(_resize(x, int(outputLabelHeight * ratioH), int(outputLabelWidth * ratioW), interpolation))
         else:
@@ -188,6 +232,28 @@ def virtualScaling(xList: list, scale: int, interpolation='bicubic', labelIndex=
             rst.append(x)
         elif x is not None:
             rst.append(_resize(x, h // scale, w // scale, interpolation))
+        else:
+            rst.append(None)
+
+    return rst
+
+def virtualResizing(xList: list, outputHeight: int, outputWidth: int, interpolation='bicubic', labelIndex=-1):
+    """
+    make virturally downscaled image
+
+    recommended input : [ GT, GT ]
+    """
+    if labelIndex < 0: labelIndex = len(xList) + labelIndex
+
+    _, h, w = _getSize(xList[labelIndex])
+
+    rst = []
+    for i, x in enumerate(xList):
+
+        if i is labelIndex:
+            rst.append(x)
+        elif x is not None:
+            rst.append(_resize(x, outputHeight, outputWidth, interpolation))
         else:
             rst.append(None)
 
@@ -287,18 +353,18 @@ def randomCropWithRandomSize(
     outputLabelHeightMax,
     outputLabelWidthMax,
     multipleOf=1,
-    fixedRatio=1,
+    fixedRatio=True,
     labelIndex=-1,
 ):
     '''
     Crop at random location, random size
     '''
-    if fixedRatio == 1:
+    if fixedRatio in [1, True]:
         assert outputLabelHeightMax / outputLabelHeightMin == outputLabelWidthMax / outputLabelWidthMin
 
     outputLabelHeight = random.randint(outputLabelHeightMin, outputLabelHeightMax) // multipleOf * multipleOf
 
-    if fixedRatio == 1:
+    if fixedRatio in [1, True]:
         outputLabelWidth = outputLabelHeight * outputLabelWidthMax / outputLabelHeightMax
     else:
         outputLabelWidth = random.randint(outputLabelWidthMin, outputLabelWidthMax)
