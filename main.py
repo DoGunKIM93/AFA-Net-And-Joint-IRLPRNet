@@ -86,6 +86,8 @@ print(f"All model loaded. Last Epoch: {startEpoch}")#", Loss: {lastLoss.item():.
 print("")
 print("")
 print("Init Epoch...")
+
+
 #Define Epochs
 if args.inferenceTest == False:
     trainEpoch = edit.trainEpoch

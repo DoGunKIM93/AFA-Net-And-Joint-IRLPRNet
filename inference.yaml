@@ -99,6 +99,7 @@ model:
         weight: DeFiAN_S_x4.pth
         valueRangeType: 0~1
         augmentation:
+            - toRGB()
             - toTensor()
 
     General-SR-PSNR-Advanced-DRLN:
@@ -107,6 +108,7 @@ model:
         weight: DRLN_BIX4.pth
         valueRangeType: 0~255
         augmentation:
+            - toRGB()
             - toTensor()
 
     General-Deblur-Advanced:
@@ -115,6 +117,7 @@ model:
         weight: MPRNet_pretrained.pth
         valueRangeType: 0~1
         augmentation:
+            - toRGB()
             - toTensor()
             
     General-PSNR-GOMTANG-DeFiAN:
@@ -123,4 +126,5 @@ model:
         weight: DeFiAN-GOMTANG.pth
         valueRangeType: 0~1
         augmentation:
+            - toRGB()
             - toTensor()

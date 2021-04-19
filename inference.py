@@ -190,7 +190,7 @@ def _modelInference(inp, model):
 
 def _convertTensorTo(inp, outputType):
     if outputType == "TENSOR":
-        pass
+        out = inp
     elif outputType == "PIL":
         out = torchvision.transforms.ToPILImage()(out)
     return out
@@ -252,7 +252,8 @@ def inferenceSingle(inp, inferencePresetName, model=None, outputType=None, outpu
         inp = _applyAugmentationFunction([inp], augmentationFuc)
         inp = inp[0]
     
-    inp = inp.unsqueeze(0).cuda()
+    if outputType == "FILE":
+        inp = inp.unsqueeze(0).cuda()
     inp = inp * 2 - 1 if model_valueRangeType == "-1~1" else torch.round(inp * 255) if model_valueRangeType == "0~255" else inp
 
     # load Model
@@ -344,7 +345,7 @@ if __name__ == "__main__":
         elif fileList[0].split(".")[-1].lower() in EXT_DICT['Video']:
             
             videofiles = makeVideoFileList(args.inputPath)
-            ImageSqeuencePathList = videoToImages(videofiles, args.outputPath)
+            ImageSqeuencePathList, _ = videoToImages(videofiles, args.outputPath)
 
             for i, ImageSqeuencePath in enumerate(ImageSqeuencePathList):
                 imageSquenceResultFolder = args.outputPath + "/" + ImageSqeuencePath.split('/')[-2] + "_results/"
@@ -388,7 +389,7 @@ if __name__ == "__main__":
                 os.makedirs(imageSquenceResultFolder)
 
             videofiles = makeVideoFileList(args.inputPath)
-            ImageSqeuencePathList = videoToImages(videofiles, args.outputPath)
+            ImageSqeuencePathList, _ = videoToImages(videofiles, args.outputPath)
             imageFileLst = _generateFileList(ImageSqeuencePathList[0], "ImageSequence")
             imageFileLst.sort()
 

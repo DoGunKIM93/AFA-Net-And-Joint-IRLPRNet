@@ -48,6 +48,8 @@ def makeImageSequenceFileList(inputPath: str) -> List[str]:
 
     return files
 
+# imageSequence read 말고 imageSequence binaries로 받았을 때(or tensors / PILs)  video binary로 return
+# return도 input type에 맞게 수정(image files path -> video file save and path, image tensors list -> video tensor)
 def imagesToVideo(fileList: list, pathOut: str, extension: str, codec: str, fps: int) -> List[str]:
     
     assert extension in EXT_DICT['Video'], f"inference.py :: outputType '{args.extension}' is not supported. Supported types: 'avi', 'mp4', 'mkv', 'wmv', 'mpg', 'mpeg'"
@@ -60,7 +62,7 @@ def imagesToVideo(fileList: list, pathOut: str, extension: str, codec: str, fps:
     ], f"inference.py :: outputType '{args.extension}' is not supported. Supported types: 'mp4v', 'MJPG', 'DIVX', 'XVID', 'X264'"
 
     videoPathList = []
-
+    # tensor list
     for k in range(len(fileList)):
         frame_array = []
         videoFilePath = ''
