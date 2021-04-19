@@ -1,214 +1,412 @@
-'''
+"""
+inference.py
 
-Video to Image Sequence 
-
-Usage ::: videoToImageSequence.py -i [Video Folder(File) Path] -o [output image sequence path]
+Usage ::: inference.py -n [inference model name] -i [input image(s)/video(s) Folder Path] -o [output image/video File Path / images/videos Folder Path] -f [fps]
 Ex) 
-1. python videoToImageSequence.py -i /home/jovyan/dataset_military/dataset/100.5M_배_IR.mp4 -o /home/jovyan/data-vol-1/dgk/git/2021/sr-research-framework/tools/Test
-2. python videoToImageSequence.py -i /home/jovyan/dataset_military/dataset/ -o ./Test
 
-::: by DGK :::
+1. single video
+python inference.py -n General-SR-PSNR-Advanced-DeFiAN -i /home/jovyan/dataset_military/dataset/100.5M_ㅂㅐ_IR.mp4 -o /home/jovyan/data-vol-1/dgk/git/2021/sr-research-framework/singleVideoTest
 
-'''
+2. single image
+python inference.py -n General-SR-PSNR-Advanced-DeFiAN -i /home/jovyan/data-vol-1/dgk/git/2021/sr-research-framework/testIN/test2.png -o /home/jovyan/data-vol-1/dgk/git/2021/sr-research-framework/testOUT/test2_result.png
 
-import cv2
-import numpy as np
+3. multi videos
+python inference.py -n General-SR-PSNR-Advanced-DeFiAN -i /home/jovyan/data-vol-1/dgk/git/2021/sr-research-framework/videos/ -o /home/jovyan/data-vol-1/dgk/git/2021/sr-research-framework/multiVideoTest
+
+4. multi images
+python inference.py -n General-SR-PSNR-Advanced-DeFiAN -i /home/jovyan/data-vol-1/dgk/git/2021/sr-research-framework/testIN/ -o /home/jovyan/data-vol-1/dgk/git/2021/sr-research-framework/testOUT
+
+"""
+
+
+# READ YAML
+# CONSTRUCT MODEL
+# PASS DATA
+
 import os
 import argparse
-import re
+import inspect
+import numpy as np
+import torch
+import torchvision.transforms
+import backbone.augmentation as augmentation
+import backbone.predefined
+import backbone.utils as utils
+import time
+
 from typing import List, Dict, Tuple, Union, Optional
+from collections.abc import Iterable
+from PIL import Image
+from torchvision.utils import save_image
+from backbone.config import Config
+from torch.nn import DataParallel
 
-from os.path import isfile, join, splitext
+from tools.videoToImageSequence import makeVideoFileList, videoToImages
+from tools.imageSequenceToVideo import makeImageSequenceFileList, imagesToVideo
+from tools.commonConvert import FORMAT_DICT
 
-def tryint(s):
-    try:
-        return int(s)
-    except:
-        return s
+# Read Augmentations from backbone.augmentation automatically
+AUGMENTATION_DICT = dict(
+    x for x in inspect.getmembers(augmentation) if (not x[0].startswith("_")) and (inspect.isfunction(x[1]))
+)
 
-# inputPath to file list
-def makeVideoFileList(inputPath: str) -> List[str]:
+# GPU Setting
+os.environ["CUDA_VISIBLE_DEVICES"] = str(Config.inference.general.GPUNum)
 
-    fileList = []
 
-    if os.path.isfile(inputPath):
-        pathInList = inputPath
-        fileList.append(pathInList)
-    else:
-        pathInList = [x if x.endswith('/') else x + '/' for x in inputPath.split(' ')]
-        
-        for pathIn in pathInList:
-            tmp = [pathIn + f for f in os.listdir(pathIn) if isfile(join(pathIn, f))]
-            tmp.sort(key=lambda s: [ tryint(c) for c in re.split('([0-9]+)', s) ])
-            fileList = tmp #for sorting the file names properly
-    
+def _generateFileList(path: str, type: str) -> List[str]:
+    formatList = []
+
+    if type == 'All' : 
+        formatList = FORMAT_DICT['ImageSequence'] + FORMAT_DICT['Video']
+    elif type == 'ImageSequence':
+        formatList = FORMAT_DICT['ImageSequence']
+    elif type == 'Video':
+        formatList = FORMAT_DICT['Video']
+
+    fileList = [
+        os.path.join(path, f)
+        for f in os.listdir(path)
+        if (
+            os.path.isfile(os.path.join(path, f))
+            and f.split(".")[-1].lower() in formatList
+        )
+    ]
+
     return fileList
 
-# video file read 말고 video binary로 받았을 때(or tensor / PIL) image binaries로 return
-# return도 input type에 맞게 수정(video file path -> image files save and path, video tensor -> image tensors list)
 
-# def _getType(x) -> str:
+def _calRuntime(oldTime: float, numOfFiles=None):
 
-#     TYPEDICT = {
-#         PngImageFile: "PIL",
-#         JpegImageFile: "PIL",
-#         PILImage.Image: "PIL",
-#         BmpImageFile: "PIL",
-#         MpoImageFile: "PIL",
-#         GifImageFile: "PIL",
-#         torch.Tensor: "TENSOR",
-#         type(None): "NONE",
-#     }
+    nowtime = time.perf_counter()
+    fps = 1/(nowtime - oldTime)
 
-#     return TYPEDICT[type(x)]
+    if numOfFiles == None:
+        print(f"Time per inference: {(nowtime - oldTime):.2f} sec                    ")
+        print(f"FPS per inference: {fps:.2f} fps                    ")
+    else:
+        print(f"Time per Batch: {(nowtime - oldTime):.2f} sec, Average time per Batch: {(nowtime - oldTime)/numOfFiles:.2f} sec,")    
+        print(f"FPS per Batch: {fps:.2f} fps                    ")
 
 
-# def _getSize(x) -> List[int]:  # C H W
+def _loadModel(inferencePresetName):
+    # model informations
+    model_name = Config.inferenceDict["model"][inferencePresetName]["name"]
+    model_param = Config.inferenceDict["model"][inferencePresetName]["param"]
+    model_weight = Config.inferenceDict["model"][inferencePresetName]["weight"]
 
-#     if _getType(x) == "PIL":  # PIL Implemenataion
-#         sz = x.size
-#         sz = [len(x.getbands()), sz[1], sz[0]]
+    # import module by string
+    module = getattr(backbone.predefined, model_name)
 
-#     elif _getType(x) == "TENSOR":  # Tensor Implementation
-#         sz = list(x.size())[-3:]
+    # load model network with params
+    paramList = str(model_param).replace(" ", "").split(",")
+    model = module(
+        *list(
+            (x if x.replace(".", "", 1).isdigit() is False else (int(x) if x.find(".") is -1 else float(x)))
+            for x in paramList
+        )
+    )
+    model.cuda()
+    model = DataParallel(model)
 
-#     return sz
+    # load checkpoint weight
+    checkpoint = torch.load(Config.inference.data.path.pretrainedPath + model_weight)
+    # model.load_state_dict(checkpoint['model'],strict=True)
+    while(True):
+        try:
+            mthd = "NORMAL"
+            model.load_state_dict(checkpoint["model"], strict=True)
+            break
+        except:
+            pass
+        try:
+            mthd = "GLOBAL STRUCTURE"
+            model.load_state_dict(checkpoint, strict=True)
+            break
+        except:
+            pass
+        try:
+            mthd = "INNER MODEL"
+            model.module.load_state_dict(checkpoint["model"], strict=True)
+            break
+        except:
+            pass
+        try:
+            mthd = "NORMAL state_dict"
+            model.load_state_dict(checkpoint["state_dict"])
+            break
+        except:
+            pass
+        try:
+            mthd = "INNER MODEL GLOBAL STRUCTURE"
+            model.module.load_state_dict(checkpoint, strict=True)
+            break
+        except:
+            pass
+        try:
+            mthd = "INNER NORMAL state_dict"
+            model.module.load_state_dict(checkpoint["state_dict"])
+            break
+        except:
+            pass
+        try:
+            mthd = "UNSTRICT (WARNING : load weights imperfectly)"
+            model.load_state_dict(checkpoint["model"], strict=False)
+            break
+        except:
+            pass
+        try:
+            mthd = "GLOBAL STRUCTURE UNSTRICT (WARNING : load weights imperfectly)"
+            model.load_state_dict(checkpoint, strict=False)
+            break
+        except:
+            mthd = "FAILED"
+            print("utils.py :: model load failed..... I'm sorry~")
+            break
 
-# x = x.numpy() # CHW
-# x = np.moveaxis(x, 0, -1) #WHC
-# x = np.round(x[:, :, ::-1].copy()*255) #BGR)
+    model.eval()
 
-# encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
-# result, x = cv2.imencode('.jpg', x, encode_param)
-# x = cv2.imdecode(x,1)
+    print(
+        f"{model_name} Loaded with {mthd} mode."
+        if mthd != "FAILED"
+        else f"{model_name} Load Failed."
+    )
 
-# x = x[:, :, ::-1].copy() / 255 #RGB
-# x = np.moveaxis(x, -1, 0) #WHC
-# x = torch.tensor(x)
+    paramSize = 0
+    for parameter in model.parameters():
+        paramSize = paramSize + np.prod(np.array(parameter.size()))
+    print(f"parameter size of {model_name} : {str(paramSize)}")
 
-# # image bytes to tensor
-# def transform_image(image_bytes):
-#     from PIL import Image
-    
-#     my_transforms = transforms.Compose([transforms.ToTensor()])
-#     image = Image.open(io.BytesIO(image_bytes))
-    
-#     return my_transforms(image).unsqueeze(0)[:,0:3:,:,:]
+    return model
 
 
-# # encoded image bytes to tensor
-# def encodedTotensor_request(_encoded_image):
-#     requestImage = base64.b64decode(_encoded_image)
-
-#     with torch.no_grad():
-#         requestImageTensor = transform_image(image_bytes=requestImage)
-    
-#     return requestImageTensor
-    
-# # 아래 것이랑 합치기
-# def videoToImagesOtherType():
-# # video tensor to image sequence tensor
-#     base64_video_path = '/home/jovyan/data-vol-1/dgk/git/2021/sr-research-framework/100.5M_배_IR_after_base64.txt' # 100.5M_배_IR_before_base64.txt
-#     import io
-#     import base64
-#     n_frames = 343
-#     height = 2048
-#     width = 2560
-#     with open(base64_video_path, "rb") as video_encoded:
-#         # data = video_encoded.read()
-#         # print("video_encoded Test : ", data)
-#         # video_decoded = base64.b64decode(data) 
-#         # print("video_decoded", video_decoded)
-
-#         # video_BytesIO = io.BytesIO(video_decoded)
-#         # # print("video_decoded bytes", io.BytesIO(video_decoded))
-#         # frame_array = np.frombuffer(video_BytesIO.getvalue(), dtype="int8")
-#         # print(frame_array.shape)
-        
-#         # for i in range(n_frames):
-#         #     bgr = np.frombuffer(base64.b64decode(video_encoded.read(height*width*3)), dtype=np.uint8) #.reshape((height, width))
-#         #     print(bgr)
-#         #     print(bgr.shape)
-
-#         data = video_encoded.read()
-#         video_decoded = base64.b64decode(data)
-#         video_BytesIO = io.BytesIO(video_decoded)
-#         print(video_BytesIO.getvalue())
-#         # frame_array = np.frombuffer(video_BytesIO.getvalue(), dtype="int8")
-#         # print(frame_array.shape)
-
-#         # for i in range(n_frames):
-#         #     bgr = np.frombuffer(base64.b64decode(video_encoded.read(height*width*3)), dtype=np.uint8) #.reshape((height, width))
-#         #     print(bgr)
-#         #     print(bgr.shape)
+def _modelInference(inp, model):
+    # inference TENSOR with no grad
+    with torch.no_grad():
+        out = model(inp)
+    return out
 
 
-#     return print("test")    
-        
-def videoToImages(fileList: list, pathOut: str):
-    frame_array = []
-    count = 0
-    ImageSqeuencePathList = []
+def _convertTensorTo(inp, outputType):
+    if outputType == "TENSOR":
+        pass
+    elif outputType == "PIL":
+        out = torchvision.transforms.ToPILImage()(out)
+    return out
 
-    for filename in fileList:
-        print("filename : ", filename)
-        subPath = splitext(filename)[0].split('/')[-1]
 
-        try: 
-            # creating a folder named data 
-            if not os.path.exists(pathOut+'/'+subPath): 
-                os.makedirs(pathOut+'/'+subPath)
-                print("pathOut : ", pathOut+'/'+subPath)
-        # if not created then raise error 
-        except OSError: 
-            print ('Error: Creating directory of data') 
-        
-        cam = cv2.VideoCapture(filename)
-        currentframe = 0
+def _applyAugmentationFunction(tnsr, augmentationFuncStr: str):
 
-        while(True): 
-            # reading from frame 
-            ret, frame = cam.read() 
-            # print(frame.shape) HWC
-            # print(frame)
-            if ret: 
-                # if video is still left continue creating images 
-                currentframe_zero = str(currentframe).zfill(8)
-                name = pathOut+'/'+ subPath + '/' + currentframe_zero + '.png'
-                #print ('Creating...' + name) 
-                #inserting the frames into an image array
-                frame_array.append(frame)
-                # writing the extracted images (only english path is ok) 
-                cv2.imwrite(name, frame) 
-                # increasing counter so that it will 
-                # show how many frames are created 
-                currentframe += 1
+    return _applyAugmentationFunctionFunc(tnsr, augmentationFuncStr)
+
+
+def _applyAugmentationFunctionFunc(tnsr, augmentationFuncStr: str):
+
+    assert (
+        augmentationFuncStr.split("(")[0] in AUGMENTATION_DICT.keys()
+    ), "inference.py :: invalid Augmentation Function!! chcek inference.yaml."
+
+    augFunc = AUGMENTATION_DICT[augmentationFuncStr.split("(")[0]]
+    args = []
+    for x in list(filter(lambda y: y != "", augmentationFuncStr.split("(")[1][:-1].replace(" ", "").split(","))):
+        if (x[1:] if x[0] == "-" else x).replace(".", "", 1).isdigit() is False:
+            args.append(str(x))
+        else:
+            if x.find(".") == -1:
+                args.append(int(x))
             else: 
-                break
-        # Release all space and windows once done 
-        cam.release()
-        cv2.destroyAllWindows()          
-        ImageSqeuencePathList.append(os.getcwd() + pathOut[1:]+'/'+subPath+'/') if pathOut[0] == '.' else ImageSqeuencePathList.append(pathOut+'/'+subPath+'/')
+                args.append(float(x))
+    
+    tnsr = augFunc(tnsr, *args)
 
-        #print(f'processing Images... {(count+1)/len(ImageSqeuencePathList)*100:.1f}%')
-        print(f'making Frames... {(count+1)/len(ImageSqeuencePathList)*100:.1f}%')
-        count = count + 1
+    return tnsr
 
-    return ImageSqeuencePathList, frame_array
+
+def inferenceSingle(inp, inferencePresetName, model=None, outputType=None, outputPath=None, originalSave=True):
+    print("Processing Input...")
+
+    # process input
+    if isinstance(inp, str):
+        inp = Image.open(inp)
+        outputType = "FILE" if outputType is None else outputType
+    else:
+        outputType = augmentation._getType([inp]) if outputType is None else outputType
+
+    assert outputType in [
+        None,
+        "FILE",
+        "TENSOR",
+        "PIL",
+    ], f"inference.py :: outputType '{outputType}' is not supported. Supported types: 'FILE', 'TENSOR', 'PIL'"
+    
+    assert outputType != "FILE" or (
+        outputType == "FILE" and outputPath is not None
+    ), "inference.py :: outputPath must be exist if outputType is 'FILE'"
+
+    model_augmentation = Config.inferenceDict["model"][inferencePresetName]["augmentation"]
+    model_valueRangeType = Config.inferenceDict["model"][inferencePresetName]["valueRangeType"]
+    
+    # augmentation for input image
+    for augmentationFuc in model_augmentation:
+        inp = _applyAugmentationFunction([inp], augmentationFuc)
+        inp = inp[0]
+    
+    inp = inp.unsqueeze(0).cuda()
+    inp = inp * 2 - 1 if model_valueRangeType == "-1~1" else torch.round(inp * 255) if model_valueRangeType == "0~255" else inp
+
+    # load Model
+    if model is None:    
+        print("Load Model...")
+        model = _loadModel(inferencePresetName)
+
+    # inference
+    print("Inferencing...")
+    timePerInference = time.perf_counter()  # 1 inference 당 시간    
+    out = _modelInference(inp, model)
+
+    # convert to output
+    if outputType == "FILE":
+        # result save
+        [
+            utils.saveImageTensorToFile(
+                {"Result": x}, 
+                f'{outputPath.split(".")[0]}-{i}.{outputPath.split(".")[1]}', 
+                caption=False, 
+                valueRangeType=model_valueRangeType
+            )
+            for i, x in enumerate(out)
+        ] if isinstance(out, tuple) or isinstance(out, list) else utils.saveImageTensorToFile(
+            {"Result": out}, 
+            outputPath, 
+            caption=False, 
+            valueRangeType=model_valueRangeType
+        )
+
+        if originalSave == True:
+            # original save
+            utils.saveImageTensorToFile(
+                {"Result": inp},
+                f'{outputPath.split(".")[0]}-original.{outputPath.split(".")[1]}',
+                caption=False,
+                valueRangeType=model_valueRangeType
+            )
+        print("Saved.")
+
+        _calRuntime(timePerInference)
+        
+        return
+    else:
+        rst = _convertTensorTo(out, outputType)
+        print("Finished.")
+        return rst
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--inputPath', '-i', type=str, help="입력할 비디오 파일 또는 폴더 (절대/상대경로)")
-    parser.add_argument('--outputPath', '-o', type=str, help="출력할 영상 시퀀스 파일 이름 (절대/상대경로)")
+
+    parser.add_argument("--inferencePresetName", "-n", help="인퍼런스 프리셋 이름")
+    parser.add_argument("--inputPath", "-i", help="입력할 이미지/비디오 파일 경로(단일) or 이미지/비디오 폴더 경로(다중)")
+    parser.add_argument("--outputPath", "-o", help="출력할 이미지/비디오 파일 경로(단일) or 이미지/비디오 폴더 경로(다중)")
+    parser.add_argument("--fps", "-f", default="24", help="fps (video only)")
 
     args = parser.parse_args()
-    
-    files = makeVideoFileList(args.inputPath)
-    ImageSqeuencePathList, _ = videoToImages(files, args.outputPath)
-    # videoToImagesOtherType()
-    
-    # print(f'Image Sqeuence directory path list: {ImageSqeuencePathList}')
-    print("FINISHED!")
 
-    
+    print("Load Model...")
+    model = _loadModel(args.inferencePresetName)
+
+    # input :  folder
+    if os.path.isdir(args.inputPath):
+        if os.path.exists(args.outputPath) is False:
+            os.makedirs(args.outputPath)
+        assert os.path.isdir(args.outputPath), "if inputPath is a dir, outputPath must be a dir"
+
+        fileList = _generateFileList(args.inputPath, "All")
+        fileList.sort()
+        timePerBatch = time.perf_counter()  # 1 inference 당 시간   
+
+        # folders : images
+        if fileList[0].split(".")[-1].lower() in FORMAT_DICT['Image']:
+
+            for i, imageFile in enumerate(fileList):
+                print(f"[{i}/{len(fileList)}] processing {imageFile} to {args.outputPath}/{imageFile.split('/')[-1]}")
+                inferenceSingle(
+                    imageFile,
+                    args.inferencePresetName,
+                    model=model,
+                    outputType="FILE",
+                    outputPath=f"{args.outputPath}/{imageFile.split('/')[-1]}",
+                )
+
+            _calRuntime(timePerBatch, len(fileList))
+
+        # folder : videos
+        elif fileList[0].split(".")[-1].lower() in FORMAT_DICT['Video']:
+            videofiles = makeVideoFileList(args.inputPath)
+            ImageSqeuencePathList = videoToImages(videofiles, args.outputPath)
+
+            for i, ImageSqeuencePath in enumerate(ImageSqeuencePathList):
+                imageSquenceResultFolder = args.outputPath + "/" + ImageSqeuencePath.split('/')[-2] + "_results/"
+
+                if os.path.exists(imageSquenceResultFolder) is False:
+                    os.makedirs(imageSquenceResultFolder)
+
+                imageFileLst = _generateFileList(ImageSqeuencePath, "ImageSequence")
+                imageFileLst.sort()
+                timePerBatch = time.perf_counter()  # 1 inference 당 시간
+
+                for i, imageFile in enumerate(imageFileLst):
+                    print(f"[{i}/{len(imageFileLst)}] processing {imageFile} to {args.outputPath}/{imageFile.split('/')[-1]}")
+                    inferenceSingle(
+                        imageFile,
+                        args.inferencePresetName,
+                        model=model,
+                        outputType="FILE",
+                        outputPath=f"{imageSquenceResultFolder}{imageFile.split('/')[-1]}",
+                        originalSave = False,
+                    )
+
+                _calRuntime(timePerBatch, len(fileList))
+
+                ### video file generation ###
+                files = makeImageSequenceFileList(imageSquenceResultFolder)
+                videoPathList = imagesToVideo(files, imageSquenceResultFolder, "mp4", "mp4v", 30)
+                print(f'Video directory path list: {videoPathList}')
+
+        print("FINISHED!")
+
+    # input : file
+    else:
+        # file : image
+        if args.inputPath.split(".")[-1].lower() in FORMAT_DICT['Image']:
+            inferenceSingle(args.inputPath, args.inferencePresetName, model=model, outputType="FILE", outputPath=args.outputPath)
+        # file : video
+        elif args.inputPath.split(".")[-1].lower() in FORMAT_DICT['Video']:
+            imageSquenceResultFolder = args.outputPath + "/" + os.path.splitext(args.inputPath)[0].split('/')[-1] + "_results/"
+            if os.path.exists(imageSquenceResultFolder) is False:
+                os.makedirs(imageSquenceResultFolder)
+
+            videofiles = makeVideoFileList(args.inputPath)
+            ImageSqeuencePathList = videoToImages(videofiles, args.outputPath)
+            imageFileLst = _generateFileList(ImageSqeuencePathList[0], "ImageSequence")
+            imageFileLst.sort()
+
+            timePerBatch = time.perf_counter()  # 1 inference 당 시간   
+            
+            for i, imageFile in enumerate(imageFileLst):
+                print(f"[{i}/{len(imageFileLst)}] processing {imageFile} to {args.outputPath}/{imageFile.split('/')[-1]}")
+                inferenceSingle(
+                    imageFile,
+                    args.inferencePresetName,
+                    model=model,
+                    outputType="FILE",
+                    outputPath=f"{imageSquenceResultFolder}{imageFile.split('/')[-1]}",
+                    originalSave = False,
+                )
+            
+            _calRuntime(timePerBatch, len(imageFileLst))
+
+            ### video file generation ###
+            files = makeImageSequenceFileList(imageSquenceResultFolder)
+            videoPathList = imagesToVideo(files, imageSquenceResultFolder, "mp4", "mp4v", 30)
+            print(f'Video directory path list: {videoPathList}')
+            print("FINISHED!")

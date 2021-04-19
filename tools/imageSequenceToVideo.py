@@ -4,7 +4,7 @@ Image Sequence (file) to MP4 Video
 
 Usage ::: imageSequenceToVideo.py -i [imageSequence Folder Path (relative)] -o [output video path] -e [video file extension] -c [video codec] -f [fps]
 Ex) 
-1. python imageSequenceToVideo.py -i ./Test/100.5M_배_IR/ -o /home/jovyan/data-vol-1/dgk/git/2021/sr-research-framework/tools/Test/ -e avi -c MJPG -f 30
+1. python imageSequenceToVideo.py -i ./Test/100.5M_ㅂㅐ_IR/ -o /home/jovyan/data-vol-1/dgk/git/2021/sr-research-framework/tools/Test/ -e avi -c MJPG -f 30
 2. python imageSequenceToVideo.py -i ./Test/ -o ./Test/ -e mp4 -c mp4v -f 30
 
 ::: by JIN & DGK :::
@@ -48,8 +48,6 @@ def makeImageSequenceFileList(inputPath: str) -> List[str]:
 
     return files
 
-# imageSequence read 말고 imageSequence binaries로 받았을 때(or tensors / PILs)  video binary로 return
-# return도 input type에 맞게 수정(image files path -> video file save and path, image tensors list -> video tensor)
 def imagesToVideo(fileList: list, pathOut: str, extension: str, codec: str, fps: int) -> List[str]:
     
     assert extension in EXT_DICT['Video'], f"inference.py :: outputType '{args.extension}' is not supported. Supported types: 'avi', 'mp4', 'mkv', 'wmv', 'mpg', 'mpeg'"
@@ -62,7 +60,7 @@ def imagesToVideo(fileList: list, pathOut: str, extension: str, codec: str, fps:
     ], f"inference.py :: outputType '{args.extension}' is not supported. Supported types: 'mp4v', 'MJPG', 'DIVX', 'XVID', 'X264'"
 
     videoPathList = []
-    # tensor list
+
     for k in range(len(fileList)):
         frame_array = []
         videoFilePath = ''
