@@ -38,18 +38,14 @@ from typing import List, Dict, Tuple, Union, Optional
 from collections.abc import Iterable
 from PIL import Image
 from torchvision.utils import save_image
-from backbone.config import Config
 from torch.nn import DataParallel
 
+# from sr-research-framework
+from backbone.config import Config
 from dataLoader.datasetComponent import EXT_DICT
+from dataLoader.dataset import _applyAugmentationFunctionFunc
 from tools.videoToImageSequence import makeVideoFileList, videoToImages
 from tools.imageSequenceToVideo import makeImageSequenceFileList, imagesToVideo
-
-
-# Read Augmentations from backbone.augmentation automatically
-AUGMENTATION_DICT = dict(
-    x for x in inspect.getmembers(augmentation) if (not x[0].startswith("_")) and (inspect.isfunction(x[1]))
-)
 
 # GPU Setting
 os.environ["CUDA_VISIBLE_DEVICES"] = str(Config.inference.general.GPUNum)
@@ -201,28 +197,6 @@ def _applyAugmentationFunction(tnsr, augmentationFuncStr: str):
     return _applyAugmentationFunctionFunc(tnsr, augmentationFuncStr)
 
 
-def _applyAugmentationFunctionFunc(tnsr, augmentationFuncStr: str):
-
-    assert (
-        augmentationFuncStr.split("(")[0] in AUGMENTATION_DICT.keys()
-    ), "inference.py :: invalid Augmentation Function!! chcek inference.yaml."
-
-    augFunc = AUGMENTATION_DICT[augmentationFuncStr.split("(")[0]]
-    args = []
-    for x in list(filter(lambda y: y != "", augmentationFuncStr.split("(")[1][:-1].replace(" ", "").split(","))):
-        if (x[1:] if x[0] == "-" else x).replace(".", "", 1).isdigit() is False:
-            args.append(str(x))
-        else:
-            if x.find(".") == -1:
-                args.append(int(x))
-            else: 
-                args.append(float(x))
-    
-    tnsr = augFunc(tnsr, *args)
-
-    return tnsr
-
-
 def inferenceSingle(inp, inferencePresetName, model=None, outputType=None, outputPath=None, originalSave=True):
     print("Processing Input...")
 
@@ -244,12 +218,13 @@ def inferenceSingle(inp, inferencePresetName, model=None, outputType=None, outpu
         outputType == "FILE" and outputPath is not None
     ), "inference.py :: outputPath must be exist if outputType is 'FILE'"
 
-    model_augmentation = Config.inferenceDict["model"][inferencePresetName]["augmentation"]
+    model_preProcessing = Config.inferenceDict["model"][inferencePresetName]["pre-processing"]
+    model_postProcessing = Config.inferenceDict["model"][inferencePresetName]["post-processing"]
     model_valueRangeType = Config.inferenceDict["model"][inferencePresetName]["valueRangeType"]
     
-    # augmentation for input image
-    for augmentationFuc in model_augmentation:
-        inp = _applyAugmentationFunction([inp], augmentationFuc)
+    # pre-processing for input image
+    for preProcessingFuc in model_preProcessing:
+        inp = _applyAugmentationFunction([inp], preProcessingFuc)
         inp = inp[0]
     
     if outputType == "FILE":
@@ -265,6 +240,12 @@ def inferenceSingle(inp, inferencePresetName, model=None, outputType=None, outpu
     print("Inferencing...")
     timePerInference = time.perf_counter()  # 1 inference 당 시간    
     out = _modelInference(inp, model)
+
+    # post-processing for output image
+    if model_postProcessing is not None:
+        for postProcessingFuc in model_postProcessing:
+            out = _applyAugmentationFunction([out], postProcessingFuc)
+            out = out[0]
 
     # convert to output
     if outputType == "FILE":
@@ -397,6 +378,7 @@ if __name__ == "__main__":
             
             for i, imageFile in enumerate(imageFileLst):
                 print(f"[{i}/{len(imageFileLst)}] processing {imageFile} to {args.outputPath}/{imageFile.split('/')[-1]}")
+                
                 inferenceSingle(
                     imageFile,
                     args.inferencePresetName,
