@@ -167,6 +167,17 @@ RRC_MIXED_DOCUMENT_SR:
         GT: '*/GT'
     preprocessings: # Must be list
         - Pass()
+
+OCR_KOREAN_DOCUMENT_SR:
+    origin: domainDataset/text/OCR_KOREAN_DOCUMENT
+    dataType: Image
+    classes: 
+        - mode
+        - class
+    special:
+        GT: '*/GT'
+    preprocessings: # Must be list
+        - Pass()
 #
 # Benchmarks
 #
@@ -194,6 +205,37 @@ Set14_SR:
         GT: '*/GT'
     preprocessings: # Must be list
         - Pass()
+
+
+#
+# LPR
+#
+
+# LBLP
+LBLP_SR :
+    origin: domainDataset/LPR/LBLP
+    dataType: Image
+    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
+        - mode
+        - scaleMethod
+        - scaleFactor
+    special:
+        GT: '*/GT'
+    preprocessings: # Must be list
+        - Pass()
+
+HIPASS_LL :
+    origin: domainDataset/LPR/Hi-pass
+    dataType: ImageSequence
+    classes:
+        - mode
+        - class
+    special:
+        GT: '*/GT'
+    preprocessings: # Must be list
+        - Pass()
+
+
 
 
 #################################################################################
