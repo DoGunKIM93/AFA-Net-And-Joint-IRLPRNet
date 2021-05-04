@@ -89,17 +89,17 @@ def _calRuntime(oldTime: float, numOfFiles=None):
 def _loadModel(inferencePresetName):
     # model informations
     model_name = Config.inferenceDict["model"][inferencePresetName]["name"]
-    model_param = Config.inferenceDict["model"][inferencePresetName]["param"]
-    model_weight = Config.inferenceDict["model"][inferencePresetName]["weight"]
+    model_param = Config.inferenceDict["model"][inferencePresetName]["param"] if 'param' in Config.inferenceDict["model"][inferencePresetName].keys() else ""
+    model_weight = Config.inferenceDict["model"][inferencePresetName]["weight"] if 'weight' in Config.inferenceDict["model"][inferencePresetName].keys() else None
 
     # import module by string
     module = getattr(backbone.predefined, model_name)
 
     # load model network with params
-    paramList = str(model_param).replace(" ", "").split(",")
+    paramList = [] if str(model_param).replace(" ", "") == '' else str(model_param).replace(" ", "").split(",")
     model = module(
         *list(
-            (x if x.replace(".", "", 1).isdigit() is False else (int(x) if x.find(".") is -1 else float(x)))
+            (x if x.replace(".", "", 1).isdigit() is False else (int(x) if x.find(".") == -1 else float(x)))
             for x in paramList
         )
     )
@@ -107,67 +107,70 @@ def _loadModel(inferencePresetName):
     model = DataParallel(model)
 
     # load checkpoint weight
-    checkpoint = torch.load(Config.inference.data.path.pretrainedPath + model_weight)
-    # model.load_state_dict(checkpoint['model'],strict=True)
-    while(True):
-        try:
-            mthd = "NORMAL"
-            model.load_state_dict(checkpoint["model"], strict=True)
-            break
-        except:
-            pass
-        try:
-            mthd = "GLOBAL STRUCTURE"
-            model.load_state_dict(checkpoint, strict=True)
-            break
-        except:
-            pass
-        try:
-            mthd = "INNER MODEL"
-            model.module.load_state_dict(checkpoint["model"], strict=True)
-            break
-        except:
-            pass
-        try:
-            mthd = "NORMAL state_dict"
-            model.load_state_dict(checkpoint["state_dict"])
-            break
-        except:
-            pass
-        try:
-            mthd = "INNER MODEL GLOBAL STRUCTURE"
-            model.module.load_state_dict(checkpoint, strict=True)
-            break
-        except:
-            pass
-        try:
-            mthd = "INNER NORMAL state_dict"
-            model.module.load_state_dict(checkpoint["state_dict"])
-            break
-        except:
-            pass
-        try:
-            mthd = "UNSTRICT (WARNING : load weights imperfectly)"
-            model.load_state_dict(checkpoint["model"], strict=False)
-            break
-        except:
-            pass
-        try:
-            mthd = "GLOBAL STRUCTURE UNSTRICT (WARNING : load weights imperfectly)"
-            model.load_state_dict(checkpoint, strict=False)
-            break
-        except:
-            mthd = "FAILED"
-            print("utils.py :: model load failed..... I'm sorry~")
-            break
+    if model_weight is not None:
+        checkpoint = torch.load(Config.inference.data.path.pretrainedPath + model_weight)
+        # model.load_state_dict(checkpoint['model'],strict=True)
+        while(True):
+            try:
+                mthd = "NORMAL"
+                model.load_state_dict(checkpoint["model"], strict=True)
+                break
+            except:
+                pass
+            try:
+                mthd = "GLOBAL STRUCTURE"
+                model.load_state_dict(checkpoint, strict=True)
+                break
+            except:
+                pass
+            try:
+                mthd = "INNER MODEL"
+                model.module.load_state_dict(checkpoint["model"], strict=True)
+                break
+            except:
+                pass
+            try:
+                mthd = "NORMAL state_dict"
+                model.load_state_dict(checkpoint["state_dict"])
+                break
+            except:
+                pass
+            try:
+                mthd = "INNER MODEL GLOBAL STRUCTURE"
+                model.module.load_state_dict(checkpoint, strict=True)
+                break
+            except:
+                pass
+            try:
+                mthd = "INNER NORMAL state_dict"
+                model.module.load_state_dict(checkpoint["state_dict"])
+                break
+            except:
+                pass
+            try:
+                mthd = "UNSTRICT (WARNING : load weights imperfectly)"
+                model.load_state_dict(checkpoint["model"], strict=False)
+                break
+            except:
+                pass
+            try:
+                mthd = "GLOBAL STRUCTURE UNSTRICT (WARNING : load weights imperfectly)"
+                model.load_state_dict(checkpoint, strict=False)
+                break
+            except:
+                mthd = "FAILED"
+                print("utils.py :: model load failed..... I'm sorry~")
+                break
+
+                
+        print(
+            f"{model_name} Loaded with {mthd} mode."
+            if mthd != "FAILED"
+            else f"{model_name} Load Failed."
+        )
 
     model.eval()
 
-    print(
-        f"{model_name} Loaded with {mthd} mode."
-        if mthd != "FAILED"
-        else f"{model_name} Load Failed."
-    )
 
     paramSize = 0
     for parameter in model.parameters():
@@ -291,6 +294,7 @@ if __name__ == "__main__":
     parser.add_argument("--inputPath", "-i", help="입력할 이미지/비디오 파일 경로(단일) or 이미지/비디오 폴더 경로(다중)")
     parser.add_argument("--outputPath", "-o", help="출력할 이미지/비디오 파일 경로(단일) or 이미지/비디오 폴더 경로(다중)")
     parser.add_argument("--fps", "-f", default="24", help="fps (video only)")
+    parser.add_argument("--saveOriginal", "-so", action='store_true', help="Save Original Input")
 
     args = parser.parse_args()
 
@@ -318,6 +322,7 @@ if __name__ == "__main__":
                     model=model,
                     outputType="FILE",
                     outputPath=f"{args.outputPath}/{imageFile.split('/')[-1]}",
+                    originalSave=args.saveOriginal,
                 )
 
             _calRuntime(timePerBatch, len(fileList))
