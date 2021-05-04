@@ -9,7 +9,7 @@
 general:
     #maxMemoryCachingSizeGB: 64
     #maxVRAMCachingSizeGB: 8 # will be devide by # of GPU
-    GPUNum: 0 # comma-separated
+    GPUNum: 1 # comma-separated
 
 
 #################################################################################
@@ -47,6 +47,15 @@ model:
         name: EDVR
         param: 128, 1, 1, 5, 40
         weight: EDVR_SISR_general.pth 
+        valueRangeType: 0~1
+        pre-processing:
+            - toTensor()
+        post-processing:
+
+    Face-SR:
+        name: ESPCN
+        param: 4
+        weight: ESPCN-Face.pth
         valueRangeType: 0~1
         pre-processing:
             - toTensor()
@@ -109,15 +118,32 @@ model:
         valueRangeType: 0~1
         pre-processing:
             - toRGB()
-            - JPEGCompress(0.1, 0.7):1.0
-            - resize(128,128, random)
-            - randomResize(16, 16, 32, 32, random, labelIndex=0, applyIndices=[0]) -> resize(32, 32, random, labelIndex=0, applyIndices=[0]):0.5
+            #- JPEGCompress(0.1, 0.7):1.0
+            #- resize(128,128, random)
+            #- randomResize(16, 16, 32, 32, random, labelIndex=0, applyIndices=[0]) -> resize(32, 32, random, labelIndex=0, applyIndices=[0]):0.5
 
-            - horizontalFlip():1.0
+            #- horizontalFlip():1.0
             - toTensor()
         post-processing:
+            #- toTensor()
+            #- horizontalFlip() -> verticalFlip():1.0
+
+    General-SR-PSNR-Advanced-DeFiAN-L:
+        name: DeFiAN
+        param: 64, 20, 10, 4, 1
+        weight: DeFiAN_L_x4.pth
+        valueRangeType: 0~1
+        pre-processing:
+            - toRGB()
+            #- JPEGCompress(0.1, 0.7):1.0
+            #- resize(128,128, random)
+            #- randomResize(16, 16, 32, 32, random, labelIndex=0, applyIndices=[0]) -> resize(32, 32, random, labelIndex=0, applyIndices=[0]):0.5
+
+            #- horizontalFlip():1.0
             - toTensor()
-            - horizontalFlip() -> verticalFlip():1.0
+        post-processing:
+            #- toTensor()
+            #- horizontalFlip() -> verticalFlip():1.0
 
     General-SR-PSNR-Advanced-DRLN:
         name: DRLN
@@ -139,7 +165,7 @@ model:
             - toTensor()
         post-processing:
             
-    General-SR-PSNR-GOMTANG-DeFiAN:
+    General-PSNR-GOMTANG:
         name: DeFiAN
         param: 64, 20, 20, 4, 0
         weight: DeFiAN-GOMTANG.pth
@@ -149,3 +175,26 @@ model:
             - toTensor()
         post-processing:
             
+    PASS:
+        name: Empty
+        valueRangeType: 0~1
+        pre-processing:
+            - toRGB()
+            - resize(scaleFactor=0.25)
+            #- JPEGCompress(0.9, 0.9, None)
+            #- resize(scaleFactor=4)
+            - toTensor()
+        post-processing:
+
+    JPEG:
+        name: DeFiAN
+        param: 32, 10, 5, 1, 0
+        weight: DeFiAN-JPEG.pth
+        valueRangeType: 0~1
+        pre-processing:
+            - toRGB()
+            - toTensor()
+        post-processing:
+           
+
+#for folder in ../Pytorch_Retinaface/data/widerface/val/images_small_unjpeg/*; do python inference.py -n General-SR-PSNR-Advanced-DeFiAN -i $folder -o ../Pytorch_Retinaface/data/widerface/val/images_sr_unjpeg/$(basename $folder); done
