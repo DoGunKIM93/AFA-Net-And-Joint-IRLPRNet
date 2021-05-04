@@ -5,7 +5,6 @@ import time
 import multiprocessing
 import random
 import re
-import os
 
 from PIL import Image
 from PIL import PngImagePlugin
@@ -105,7 +104,6 @@ class Dataset(torchDataset):
             if isMultiProc is True:
                 cache = {}
                 for filePath, preProc in zippedLists:
-                    filePath = os.path.join(Config.param.data.path.datasetPath, filePath)
                     cache.update({filePath: self._readImage(filePath, preProc)})
                     self.cache_cnt.value += 1
                     print(f"ETA : {(self.cache_MX_LEN - self.cache_cnt.value) / self.cache_cnt.value * (time.perf_counter() - self.cache_startTime):.0f} sec [{self.cache_cnt.value} / {self.cache_MX_LEN}]       ", end='\r')
@@ -113,13 +111,12 @@ class Dataset(torchDataset):
                 cache = {}
                 cnt = 0
                 for filePath, preProc in zippedLists:
-                    filePath = os.path.join(Config.param.data.path.datasetPath, filePath)
                     cache.update({filePath: self._readImage(filePath, preProc)})
                     cnt += 1
                     print(f"ETA : {(self.cache_MX_LEN - cnt) / cnt * (time.perf_counter() - self.cache_startTime):.0f} sec [{cnt} / {self.cache_MX_LEN}]       ", end='\r')
             return cache
         
-        # datasetComponentType = self.datasetComponentObjectList[0].datasetConfig.dataType["dataType"]
+        datasetComponentType = self.datasetComponentObjectList[0].datasetConfig.dataType["dataType"]
 
         t = time.perf_counter()
 
@@ -132,16 +129,16 @@ class Dataset(torchDataset):
         for dCO in self.datasetComponentObjectList:
             print(f"Caching Dataset '{dCO.datasetConfig.name}' ... ")
             preProc = dCO.preprocessingList
-            for i, dfTuple in enumerate(dCO.dataFileList):
-                for dfElem in dfTuple:
+            for i, dfDict in enumerate(dCO.dataFileList):
+                for dfDictKey in dfDict.keys():
 
-                    #assert datasetComponentType in ['Image', 'ImageSequence']
-                    #if datasetComponentType == 'Image':
-                    filePath = dfElem
-                    fileListDict.update({filePath:preProc})
-                    # elif datasetComponentType == 'ImageSequence':
-                    #     for filePath in dfDict[dfDictKey]:
-                    #         fileListDict.update({filePath:preProc})
+                    assert datasetComponentType in ['Image', 'ImageSequence']
+                    if datasetComponentType == 'Image':
+                        filePath = dfDict[dfDictKey]
+                        fileListDict.update({filePath:preProc})
+                    elif datasetComponentType == 'ImageSequence':
+                        for filePath in dfDict[dfDictKey]:
+                            fileListDict.update({filePath:preProc})
                         
                     cnt += 1
                     print(f"Make list... {cnt}   ", end='\r')
@@ -160,7 +157,7 @@ class Dataset(torchDataset):
 
 
         if MULTIPROC == 0:
-            self.cache = _cachingFunc(zip(fileList,preProcList), isMultiProc=False)
+            self.cache = self._cachingFunc(zip(fileList,preProcList), isMultiProc=False)
         else:
             CHNK_SIZE = MX_LEN // MULTIPROC
             cacheeList = []
@@ -172,7 +169,7 @@ class Dataset(torchDataset):
             with multiprocessing.Manager() as manager:
                 self.cache_cnt = manager.Value(int, 0)
                 pool = multiprocessing.Pool(processes=MULTIPROC + 1)
-                [self.cache.update(x) for x in pool.map(_cachingFunc, cacheeList)]
+                [self.cache.update(x) for x in pool.map(self._cachingFunc, cacheeList)]
                 pool.close()
                 pool.join()
 
@@ -958,8 +955,6 @@ def _applyAugmentationFunctionFunc(tnsr, augmentationFuncStr: str):
     assert (
         augmentationFuncStr.split("(")[0] in AUGMENTATION_DICT.keys()
     ), "dataLoader/dataset.py :: invalid Augmentation Function!! check param.yaml."
-
-    
 
     # is it randomized augmentation?
     if (augmentationFuncStr.rfind(':') >= 0  
