@@ -221,7 +221,7 @@ class ResNet(nn.Module):
         self.avd = avd
         self.avd_first = avd_first
 
-        assert mode in ["classifier", "feature_extractor"]
+        assert mode in ["classifier", "feature_extractor", "discriminator"]
         self.mode = mode
 
         super(ResNet, self).__init__()
@@ -273,7 +273,7 @@ class ResNet(nn.Module):
                 block, 512, layers[3], stride=2, norm_layer=norm_layer, dropblock_prob=dropblock_prob
             )
 
-        if self.mode == "classifier":
+        if self.mode in ["classifier", "discriminator"]:
             self.avgpool = GlobalAvgPool2d()
             self.drop = nn.Dropout(final_drop) if final_drop > 0.0 else None
             self.fc = nn.Linear(512 * block.expansion, num_classes)
@@ -388,7 +388,7 @@ class ResNet(nn.Module):
             return f1, f2, f3, f4
 
         elif self.mode == "classifier":
-            x = self.avgpool(x)
+            x = self.avgpool(f4)
             # x = x.view(x.size(0), -1)
             x = torch.flatten(x, 1)
             if self.drop:
@@ -396,3 +396,13 @@ class ResNet(nn.Module):
             x = self.fc(x)
 
             return x
+        
+        elif self.mode == "discriminator":
+            x = self.avgpool(f4)
+            # x = x.view(x.size(0), -1)
+            x = torch.flatten(x, 1)
+            if self.drop:
+                x = self.drop(x)
+            x = self.fc(x)
+
+            return f1, f2, f3, f4, x
