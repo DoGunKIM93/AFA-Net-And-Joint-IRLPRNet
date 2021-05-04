@@ -55,7 +55,7 @@ def initTensorboardWriter(ver, subversion):
 
 def initTensorboardProcess(ver):
     logdir = f"./data/{ ver }/"
-    subprocess.Popen(["tensorboard", "--logdir=" + logdir])
+    #subprocess.Popen(["tensorboard", "--logdir=" + logdir])
             
 
 
@@ -455,7 +455,7 @@ def pSigmoid(input, c1):
     return 1 / (1 + torch.exp(-1 * c1 * input))
 
 
-def backproagateAndWeightUpdate(modelList, loss, modelNames=None, gradientClipping=False):
+def backproagateAndWeightUpdate(modelList, loss, modelNames=None, gradientClipping=False, retainGraph=False):
 
     assert gradientClipping is False or str(gradientClipping).replace('.','').isdigit() or isinstance(gradientClipping, List), "utils.py :: gradientClipping argument must be 'False' or Number, or its list."
 
@@ -481,10 +481,10 @@ def backproagateAndWeightUpdate(modelList, loss, modelNames=None, gradientClippi
 
     # backprop and calculate weight diff
     if Config.param.train.method.mixedPrecision == False:
-        loss.backward()
+        loss.backward(retain_graph=retainGraph)
     else:
         with amp.scale_loss(loss, optimizers) as scaled_loss:
-            scaled_loss.backward()
+            scaled_loss.backward(retain_graph=retainGraph)
 
     # grad Clipping
     if isinstance(gradientClipping, List) is False:
