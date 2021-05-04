@@ -19,6 +19,7 @@ from PIL.JpegImagePlugin import JpegImageFile
 from PIL.BmpImagePlugin import BmpImageFile
 from PIL.MpoImagePlugin import MpoImageFile
 from PIL.GifImagePlugin import GifImageFile
+from PIL.TiffImagePlugin import TiffImageFile
 from typing import List, Dict, Tuple, Union, Optional
 
 # FROM PyTorch
@@ -78,6 +79,9 @@ def toTensor(xList: list):
 def toRGB(xList: list):
     return [_toRGB(x) for x in xList]
 
+def toGrayscale(xList: list):
+    return [_toGrayscale(x) for x in xList]
+
 
 
 
@@ -96,10 +100,14 @@ def sizeMatch(xList: list, interpolation='bicubic', labelIndex=-1):
     return [_resize(x, h, w, interpolation) if i != labelIndex else x for i, x in enumerate(xList)]
 
 
-def resize(xList: list, outputLabelHeight, outputLabelWidth, interpolation='bicubic', labelIndex=-1, applyIndices=None):
+def resize(xList: list, outputLabelHeight=None, outputLabelWidth=None, interpolation='bicubic', labelIndex=-1, applyIndices=None, scaleFactor=None):
     """
     resize data with same ratio
     """
+
+    assert (outputLabelHeight is not None and outputLabelWidth is not None) or scaleFactor is not None
+    assert not (outputLabelHeight is not None and outputLabelWidth is not None and scaleFactor is not None)
+
 
     if labelIndex < 0: labelIndex = len(xList) + labelIndex
 
@@ -108,6 +116,11 @@ def resize(xList: list, outputLabelHeight, outputLabelWidth, interpolation='bicu
     applyIndices = [x if x >= 0 else len(xList) + x for x in applyIndices]
 
     _, cH, cW = _getSize(xList[labelIndex])
+
+    if scaleFactor is not None:
+        outputLabelHeight = int(cH * scaleFactor)
+        outputLabelWidth = int(cW * scaleFactor)
+
 
     rst = []
     for i, x in enumerate(xList):
@@ -521,7 +534,7 @@ def JPEGCompress(xList: list, strengthMin, strengthMax, labelIndex=-1):
     strength = random.uniform(strengthMin, strengthMax)
     quality = round((1 - strength) * 100)
 
-    if labelIndex < 0: labelIndex = len(xList) + labelIndex
+    if labelIndex is not None and labelIndex < 0: labelIndex = len(xList) + labelIndex
 
     rst = []
     for i, x in enumerate(xList):
@@ -698,6 +711,7 @@ def _getType(x) -> str:
         BmpImageFile: "PIL",
         MpoImageFile: "PIL",
         GifImageFile: "PIL",
+        TiffImageFile: "PIL",
         torch.Tensor: "TENSOR",
         type(None): "NONE",
     }
@@ -955,6 +969,35 @@ def _toRGB(x):
             x = x[0:3,:,:]
         
     return x 
+
+def _toGrayscale(x):
+
+    if _getType(x) in ["PIL"]:  # PIL Implemenataion
+        c, _, _ = _getSize(x)
+        assert c in [1,3,4]
+
+        if c == 1:
+            pass
+        elif c == 3:
+            x = x.convert(mode="L")
+        elif c == 4:
+            x = x.convert(mode="L")
+        
+    elif _getType(x) in ["TENSOR"]:  # Tensor Implemenataion
+        c, _, _ = _getSize(x)
+        assert c in [1,3,4]
+
+        #ITU-R 601-2 luma transform
+        if c == 1:
+            pass
+        elif c == 3:
+            x = x[0:1, :, :] * 0.299 + x[1:2, :, :] * 0.587 + x[2:3, :, :] * 0.114
+        elif c == 4:
+            x = x[0:3,:,:]
+            x = x[0:1, :, :] * 0.299 + x[1:2, :, :] * 0.587 + x[2:3, :, :] * 0.114
+        
+    return x 
+
 
 def _applyImgAug(x, imgAugAugmenter):
 
