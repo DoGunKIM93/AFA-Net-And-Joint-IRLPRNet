@@ -40,6 +40,5 @@ class Config():
 def readConfigs():
     Config.readParam("param.yaml")
     Config.readDatasetConfig("datasetConfig.yaml")
-    Config.readInference("inference.yaml")
 
 readConfigs()

@@ -1,12 +1,11 @@
 '''
 main.py
 '''
-mainversion = "3.11.210407"
-
-
+mainversion = "1.2.210604"
 
 import inspect
 import os
+
 #FROM Python LIBRARY
 import time
 import warnings
@@ -17,7 +16,6 @@ import torch
 import torch.nn.functional as F
 from torchvision.utils import save_image
 
-# GPU 지정
 from backbone.config import Config
 os.environ["CUDA_VISIBLE_DEVICES"] = str(Config.param.general.GPUNum)
 
@@ -45,35 +43,12 @@ utils.initFolderAndFiles(edit.version, edit.subversion)
 utils.initTensorboardProcess(edit.version)
 
 
-
-
-
-
-
-#버전 체크
 ############################################
 ############################################
-print("")
-print("")
-print("                    ░█████╗░██╗██████╗░                  ")
-print("                    ██╔══██╗██║██╔══██╗                  ")
-print("                    ███████║██║██████╔╝                  ")
-print("                    ██╔══██║██║██╔══██╗                  ")
-print("                    ██║░░██║██║██║░░██║                  ")
-print("                    ╚═╝░░╚═╝╚═╝╚═╝░░╚═╝                  ")
-print("         ")
-print("              █▀█ █▀▀ █▀ █▀▀ ▄▀█ █▀█ █▀▀ █░█             ")
-print("              █▀▄ ██▄ ▄█ ██▄ █▀█ █▀▄ █▄▄ █▀█             ")
-print("         ")
-print("          █▀▀ █▀█ ▄▀█ █▀▄▀█ █▀▀ █░█░█ █▀█ █▀█ █▄▀        ")
-print("          █▀░ █▀▄ █▀█ █░▀░█ ██▄ ▀▄▀▄▀ █▄█ █▀▄ █░█        ")
-print("         ")
 print("          Version : " + edit.version)
 print("          sub Version : " + edit.subversion)
 ############################################
 ############################################
-
-
 
 
 print("")

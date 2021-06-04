@@ -10,334 +10,12 @@
 #################################################################################
 data:
     path: 
-        datasetPath: /home/jovyan/data-vol-1/dataset/
-        pretrainedPath: /home/jovyan/data-vol-1/dataset/pretrained/
+        datasetPath: /home/dxlab/jupyter/dogun/License Plate Recognition/dataset/forFramework/
+        pretrainedPath: /home/dxlab/jupyter/dogun/License Plate Recognition/dataset/forFramework/pretrained/
     
 
 
     datasetComponent:
-
-        DIV2K_SR_virtual:
-            dataConfig: DIV2K_SR
-            out:
-                LR:
-                    type: Image
-                    classParameter:
-                        mode:
-                            - train
-                            - validation
-                        scaleMethod:
-                            - GT
-                GT: 
-                    type: Image
-                    classParameter:
-                        mode:
-                            - train
-                            - validation
-                        scaleMethod:
-                            - GT
-                        
-
-
-        291_SR_virtual:
-            dataConfig: 291_SR
-            out:
-                LR:
-                    type: Image
-                    classParameter:
-                        mode:
-                            - train
-                        scaleMethod:
-                            - GT
-                GT: 
-                    type: Image
-                    classParameter:
-                        mode:
-                            - train
-                        scaleMethod:
-                            - GT
-
-
-
-        Flickr2K_SR_virtual:
-            dataConfig: Flickr2K_SR
-            out:
-                LR:
-                    type: Image
-                    classParameter:
-                        mode:
-                            - train
-                            - validation
-                        scaleMethod:
-                            - GT
-                GT: 
-                    type: Image
-                    classParameter:
-                        mode:
-                            - train
-                            - validation
-                        scaleMethod:
-                            - GT
-
-
-        OST_SR_virtual:
-            dataConfig: OST_SR
-            out:
-                LR:
-                    type: Image
-                    classParameter:
-                        mode:
-                            - train
-                        class: 
-                            - GT
-                        imageKind:
-                            - animal
-                            - building
-                            - grass
-                            - mountain
-                            - plant
-                            - sky
-                            - water
-                GT: 
-                    type: Image
-                    classParameter:
-                        mode:
-                            - train
-                        class: 
-                            - GT
-                        imageKind:
-                            - animal
-                            - building
-                            - grass
-                            - mountain
-                            - plant
-                            - sky
-                            - water
-
-
-        imagenet_SR_virtual:
-            dataConfig: imagenet_SR
-            out:
-                LR:
-                    type: Image
-                    classParameter:
-                        - mode:
-                            - validation
-                            - test
-                          class:
-                            - GT
-                          seq:
-                            - seq0
-                        - mode:
-                            - train
-                          class:
-                            - GT
-                GT: 
-                    type: Image
-                    classParameter:
-                        - mode:
-                            - validation
-                            - test
-                          class:
-                            - GT
-                          seq:
-                            - seq0
-                        - mode:
-                            - train
-                          class:
-                            - GT
-
-        FFHQ_General_SR_virtual:
-            dataConfig: FFHQ_General_SR
-            out:
-                LR:
-                    type: Image
-                    classParameter:
-                        mode:
-                            - train
-                        class:
-                            - GT
-                GT: 
-                    type: Image
-                    classParameter:
-                        mode:
-                            - train
-                        class:
-                            - GT
-        
-        FFHQ_Face_SR_virtual:
-            dataConfig: FFHQ_Face_SR
-            out:
-                LR:
-                    type: Image
-                    classParameter:
-                        mode:
-                            - train
-                            - test
-                        class:
-                            - GT
-                GT: 
-                    type: Image
-                    classParameter:
-                        mode:
-                            - train
-                            - test
-                        class:
-                            - GT
-
-
-        Set5_SR_test:
-            dataConfig: Set5_SR
-            out:
-                LR:
-                    type: Image
-                    classParameter:
-                        mode:
-                            - test
-                        scaleMethod:
-                            - bicubic
-                        scaleFactor:
-                            - 4
-                GT: 
-                    type: Image
-                    classParameter:
-                        mode:
-                            - test
-                        scaleMethod:
-                            - GT
-
-
-        Set14_SR_test:
-            dataConfig: Set14_SR
-            out:
-                LR:
-                    type: Image
-                    classParameter:
-                        mode:
-                            - test
-                        scaleMethod:
-                            - bicubic
-                        scaleFactor:
-                            - 4
-                GT: 
-                    type: Image
-                    classParameter:
-                        mode:
-                            - test
-                        scaleMethod:
-                            - GT
-
-
-
-        Satellite_DOTA_SR_virtual:
-            dataConfig: Satellite_DOTA_SR
-            out:
-                LR:
-                    type: Image
-                    classParameter:
-                        mode:
-                            - train
-                            - validation
-                            - test
-                        class:
-                            - GT
-                GT: 
-                    type: Image
-                    classParameter:
-                        mode:
-                            - train
-                            - validation
-                            - test
-                        class:
-                            - GT
-
-        Satellite_xView_Building_SR_virtual:
-            dataConfig: Satellite_xView_Building_SR
-            out:
-                LR:
-                    type: Image
-                    classParameter:
-                        mode:
-                            - train
-                            - validation
-                            - test
-                        class:
-                            - GT
-                GT: 
-                    type: Image
-                    classParameter:
-                        mode:
-                            - train
-                            - validation
-                            - test
-                        class:
-                            - GT
-
-
-
-        RRC_MIXED_DOCUMENT_SR_virtual:
-            dataConfig: RRC_MIXED_DOCUMENT_SR
-            out:
-                LR:
-                    type: Image
-                    classParameter:
-                        mode:
-                            - train
-                        class:
-                            - GT
-                GT: 
-                    type: Image
-                    classParameter:
-                        mode:
-                            - train
-                        class:
-                            - GT
-
-        RRC_MIXED_WILD_SCENE_SR_virtual:
-            dataConfig: RRC_MIXED_WILD_SCENE_SR
-            out:
-                LR:
-                    type: Image
-                    classParameter:
-                        mode:
-                            - train
-                        class:
-                            - GT
-                GT: 
-                    type: Image
-                    classParameter:
-                        mode:
-                            - train
-                        class:
-                            - GT
-
-
-
-
-        CXR8_SR_virtual:
-            dataConfig: Medical_CXR8_SR
-            out:
-                LR:
-                    type: Image
-                    classParameter:
-                        mode:
-                            - train
-                            - validation
-                            - test
-                        class:
-                            - GT
-                GT: 
-                    type: Image
-                    classParameter:
-                        mode:
-                            - train
-                            - validation
-                            - test
-                        class:
-                            - GT
-
-
-
 
         LBLP_LLE_virtual:
             dataConfig: LBLP_SR
@@ -357,135 +35,120 @@ data:
                         scaleMethod:
                             - GT
 
-        HIPASS_LLE_virtual:
-            dataConfig: HIPASS_LL
+
+        LP_Unified_virtual:
+            dataConfig: LP_Unified_V
             out:
-                LL:
+                LR:
                     type: Image
                     classParameter:
                         mode:
-                            - LL
-                        class:
+                            - train
+                            - validation
+                        scaleMethod:
                             - GT
                 GT:
                     type: Image
                     classParameter:
                         mode:
-                            - LL
-                        class:
+                            - train
+                            - validation
+                        scaleMethod:
                             - GT
-                        
+
+        LP_China_virtual:
+            dataConfig: LP_China_V
+            out:
+                LR:
+                    type: Image
+                    classParameter:
+                        mode:
+                            - train
+                            - validation
+                        scaleMethod:
+                            - GT
+                GT:
+                    type: Image
+                    classParameter:
+                        mode:
+                            - train
+                            - validation
+                        scaleMethod:
+                            - GT
+
+        New_Lp_256_Blur_HR_test:
+            dataConfig: New_Lp_256_Blur_HR
+            out:
+                LR:
+                    type: Image
+                    classParameter:
+                        mode:
+                            - test
+                        scaleMethod:
+                            - bicubic
+                        scaleFactor:
+                            - 4
+                GT: 
+                    type: Image
+                    classParameter:
+                        mode:
+                            - test
+                        scaleMethod:
+                            - GT
+
+        New_Lp_256_Blur_HR_train_virtual:
+            dataConfig: New_Lp_256_Blur_HR_V
+            out:
+                LR:
+                    type: Image
+                    classParameter:
+                        mode:
+                            - train
+                        scaleMethod:
+                            - GT
+                GT: 
+                    type: Image
+                    classParameter:
+                        mode:
+                            - train
+                        scaleMethod:
+                            - GT
+
 
 
     dataLoader:
 
         train:
             datasetComponent: # Must be list
-                - DIV2K_SR_virtual
-                - Flickr2K_SR_virtual
-                - OST_SR_virtual
-                - imagenet_SR_virtual
-                - FFHQ_General_SR_virtual
-                # Face
-                - FFHQ_Face_SR_virtual
-                # Satellite
-                - Satellite_DOTA_SR_virtual
-                - Satellite_xView_Building_SR_virtual
-                # Document
-                - RRC_MIXED_DOCUMENT_SR_virtual
-                # Wild Text Scene
-                - RRC_MIXED_WILD_SCENE_SR_virtual
-
-            batchSize: 64
-            type: float
-            range: 0~1
-            isEval: False
-            caching: False
-            #sequenceLength: 0
-
-            outOrder: 
-                - LR
-                - GT
-            filter:
-                channel: 1~3
-                height: 256~
-                width: 256~
-            augmentation:    
-                - randomCropWithRandomSize(128,128,256,256)
-                - toRGB()
-                - JPEGCompress(0.1, 0.7):0.2
-                - resize(128,128, random)
-
-                - virtualScaling(4, random)
-
-                - randomResize(16, 16, 32, 32, random, labelIndex=0, applyIndices=[0]) -> resize(32, 32, random, labelIndex=0, applyIndices=[0]):0.5
-                - JPEGCompress(0.1, 0.9):0.4
-                - gaussianNoise(0, 0.3):0.3
-
-                - adjustHue(-0.15, 0.15, None):0.2
-                - adjustGamma(0.65, 1.75, 0.65, 1.75, None):0.2
-                - adjustContrast(0.65, 1.75, None):0.2
-                - adjustBrightness(0.65, 1.75, None):0.2
-                - adjustSaturation(0.65, 1.75, None):0.2
-
-                - horizontalFlip():0.5
-                - verticalFlip():0.5
-                - random90Rotate()
-
-                - toTensor()
-
-
-        train_LL:
-            datasetComponent: # Must be list
-                - LBLP_LLE_virtual
-
+                - LP_Unified_virtual
+                - LP_China_virtual
+                - New_Lp_256_Blur_HR_train_virtual
             batchSize: 24
             type: float
             range: 0~1
             isEval: False
             caching: False
             #sequenceLength: 0
-
             outOrder: 
-                - LL
+                - LR
                 - GT
             filter:
                 channel: 1~3
-                height: 512~
-                width: 512~
-            augmentation: # Must be list of dict   /   toTensor() Must be here     
-                - randomCrop(512,512)
+                height: 24~
+                width: 24~
+            augmentation:    
                 - toRGB()
-
-                - adjustGamma(0.3, 3.0, 0.8, 1.2):0.8
-                - adjustHue(-0.2, 0.2):0.4
-                - adjustContrast(0.5, 2.0):0.25
-
-                - adjustBrightness(0.01, 0.4):0.8
-
-                - adjustHue(-0.2, 0.2):0.4
-                - adjustGamma(0.3, 3.0, 0.8, 1.2):0.8
-                - adjustContrast(0.5, 2.0):0.25
-
-                - horizontalFlip():0.5
-                - verticalFlip():0.5
-                - random90Rotate()
-
+                - motionBlur(15, 25, 0, 180, -1, 1)
+                - resize(64,160)
+                - virtualScaling(4)
                 - toTensor()
-
-                
-
-
-
-
-
-
 
 
         validation:
             datasetComponent: # Must be list
-                - Set5_SR_test
-
+                #- LP_Unified_valid_virtual
+                #- LP_China_valid_virtual
+                - New_Lp_256_Blur_HR_test
             batchSize: 1
             type: float
             range: 0~1
@@ -496,15 +159,13 @@ data:
                 - GT
 
             augmentation: # Must be list of dict   /   toTensor() Must be here    
-                - toRGB() 
+                - resize(64,160)
                 - toTensor()
-
 
 
         inference:
             datasetComponent: # Must be list
-                - Set5_SR_test
-
+                - New_Lp_256_Blur_HR_test #_virtual
             batchSize: 1
             type: float
             range: 0~1
@@ -512,14 +173,15 @@ data:
             caching: False
             
             outOrder: 
+                - LR
                 - GT
             filter:
                 channel: 1~3
-                height: 256~
-                width: 256~
+                height: 24~
+                width: 24~
             augmentation: # Must be list of dict   /   toTensor() Must be here     
-                
-                - toTensor()
+                - resize(64,160)
+                - toTensor() 
 
 
 
@@ -531,9 +193,9 @@ train:
 
     step:
         maxEpoch: 180000
-        validationStep: 1
-        archiveStep: 5
-        earlyStopStep: 100
+        validationStep: 20
+        archiveStep: 20
+        earlyStopStep: -1
 
     method:
         mixedPrecision: False

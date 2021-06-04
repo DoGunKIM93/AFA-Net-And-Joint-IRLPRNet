@@ -3,209 +3,6 @@
 #################################################################################
 
 
-#################################################################################
-#                                  *** SISR ***                                 #
-#################################################################################
-
-#
-# for SISR
-#
-
-# DIV2K
-DIV2K_SR :
-    origin: superResolution/SISR/DIV2K
-    dataType: Image
-    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
-        - mode
-        - scaleMethod
-        - scaleFactor
-    special:
-        GT: '*/GT'
-    preprocessings: # Must be list
-        - Pass()
-
-
-# 291
-291_SR:
-    origin: superResolution/SISR/291
-    dataType: Image
-    classes: # Folder structure must be ... MAINPATH - Train/Valid/Test - Class[0](GT is Here) - ... - Class[N] - Scene
-        - mode
-        - class
-    special:
-        GT: '*/GT'
-    preprocessings: # Must be list
-        - Pass()
-
-# Flickr2K
-Flickr2K_SR:
-    origin: superResolution/SISR/Flickr2K
-    dataType: Image
-    classes: 
-        - mode
-        - scaleMethod
-        - scaleFactor
-    special:
-        GT: '*/GT'
-    preprocessings:
-        - Pass()
-
-
-#
-# SISR Mode MISR Dataset
-#
-
-
-#
-# General or Domain dataset, modified for SISR
-#
-
-# OST
-OST_SR:
-    origin: generalImageDataset/OST
-    dataType: Image
-    classes: 
-        - mode
-        - class
-        - imageKind
-    special:
-        GT: '*/GT'
-    preprocessings:
-        - Pass()
-
-# FFHQ FACE dataset
-FFHQ_Face_SR:
-    origin: domainDataset/face/FFHQ/Face
-    dataType: Image
-    classes:
-        - mode
-        - class
-    special:
-        GT: '*/GT'
-    preprocessings: # Must be list
-        - Pass()
-
-FFHQ_General_SR:
-    origin: domainDataset/face/FFHQ/General
-    dataType: Image
-    classes: 
-        - mode
-        - class
-    special:
-        GT: '*/GT'
-    preprocessings: # Must be list
-        - Pass()
-
-# imagenet
-imagenet_SR:
-    origin: generalImageDataset/imagenet/ILSVRC/Data/CLS-LOC
-    dataType: Image
-    classes: 
-        - mode
-        - class
-        - seq
-    special:
-        GT: '*/GT'
-    preprocessings: # Must be list
-        - Pass()
-
-# Satellite Datasets
-Satellite_DOTA_SR:
-    origin: domainDataset/satellite/DOTA
-    dataType: Image
-    classes: 
-        - mode
-        - class
-    special:
-        GT: '*/GT'
-    preprocessings: # Must be list
-        - Pass()
-
-Satellite_xView_Building_SR:
-    origin: domainDataset/satellite/xView_Building
-    dataType: Image
-    classes: 
-        - mode
-        - class
-    special:
-        GT: '*/GT'
-    preprocessings: # Must be list
-        - Pass()
-
-#Medical Datasets
-Medical_CXR8_SR:
-    origin: domainDataset/medical/CXR8
-    dataType: Image
-    classes:
-        - mode
-        - class
-    special:
-        GT: '*/GT'
-    preprocessings: # Must be list
-        - Pass()
-
-#Wild Tesxt Scene
-RRC_MIXED_WILD_SCENE_SR:
-    origin: domainDataset/text/RRC_MIXED_WILD_SCENE
-    dataType: Image
-    classes: 
-        - mode
-        - class
-    special:
-        GT: '*/GT'
-    preprocessings: # Must be list
-        - Pass()
-
-#Documents
-RRC_MIXED_DOCUMENT_SR:
-    origin: domainDataset/text/RRC_MIXED_DOCUMENT
-    dataType: Image
-    classes: 
-        - mode
-        - class
-    special:
-        GT: '*/GT'
-    preprocessings: # Must be list
-        - Pass()
-
-OCR_KOREAN_DOCUMENT_SR:
-    origin: domainDataset/text/OCR_KOREAN_DOCUMENT
-    dataType: Image
-    classes: 
-        - mode
-        - class
-    special:
-        GT: '*/GT'
-    preprocessings: # Must be list
-        - Pass()
-#
-# Benchmarks
-#
-
-Set5_SR:
-    origin: superResolution/SISR/benchmark/Set5
-    dataType: Image
-    classes: 
-        - mode
-        - scaleMethod
-        - scaleFactor
-    special:
-        GT: '*/GT'
-    preprocessings: # Must be list
-        - Pass()
-
-Set14_SR:
-    origin: superResolution/SISR/benchmark/Set14
-    dataType: Image
-    classes: 
-        - mode
-        - scaleMethod
-        - scaleFactor
-    special:
-        GT: '*/GT'
-    preprocessings: # Must be list
-        - Pass()
-
 
 #
 # LPR
@@ -224,48 +21,52 @@ LBLP_SR :
     preprocessings: # Must be list
         - Pass()
 
-HIPASS_LL :
-    origin: domainDataset/LPR/Hi-pass
-    dataType: ImageSequence
-    classes:
+
+
+# AFA
+LP_Unified_V:
+    origin: NEW_LP_Other_datasets/Unified
+    dataType: Image
+    classes: 
         - mode
-        - class
+        - scaleMethod
     special:
         GT: '*/GT'
     preprocessings: # Must be list
         - Pass()
 
-
-
-
-#################################################################################
-#                                  *** MISR ***                                 #
-#################################################################################
-
-
-REDS_SR:
-    origin: superResolution/MISR/REDS
-    dataType: ImageSequence
+LP_China_V:
+    origin: NEW_LP_Other_datasets/CCPD_OTHERS
+    dataType: Image
     classes: 
         - mode
-        - degradationMethod
+        - scaleMethod
+    special:
+        GT: '*/GT'
+    preprocessings: # Must be list
+        - Pass()
+
+New_Lp_256_Blur_HR_V: ## GT는 HR Deblur, 학습 데이터는 x4Lr + blur
+    origin: New_Lp_256_Blur_HR
+    dataType: Image
+    classes: 
+        - mode
+        - scaleMethod
+    special:
+        GT: '*/GT'
+    preprocessings: # Must be list
+        - Pass()
+
+New_Lp_256_Blur_HR: ## GT는 HR Deblur, 학습 데이터는 x4Lr + blur
+    origin: New_Lp_256_Blur_HR
+    dataType: Image
+    classes: 
+        - mode
+        - scaleMethod
         - scaleFactor
     special:
         GT: '*/GT'
     preprocessings: # Must be list
         - Pass()
-
-VID4_SR:
-    origin: superResolution/MISR/Vid4
-    dataType: ImageSequence
-    classes: 
-        - mode
-        - degradationMethod
-        - scaleFactor
-    special:
-        GT: '*/GT'
-    preprocessings: # Must be list
-        - Pass()
-
 
 
