@@ -10,6 +10,7 @@ Although a number of license plate recognition systems have become significantly
 
 ## 
 ![initial](https://user-images.githubusercontent.com/16958744/131770038-dfc5f5a7-9edf-46f3-a0e0-25e356f7d048.PNG)
+![initial](https://user-images.githubusercontent.com/16958744/131770166-e6a8f02d-65f1-4212-9e37-af0015772954.PNG)
 
 ## PREREQUISITES
 Prerequisites for AFA-Net.
