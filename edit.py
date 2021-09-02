@@ -46,7 +46,7 @@ from warmup_scheduler import GradualWarmupScheduler
 # VERSION START (DO NOT EDIT THIS COMMENT, for tools/codeArchiver.py)
 
 version = '1-BMVC'
-subversion = '1-AFA-Net2'
+subversion = '1-AFA-Net3'
 
 # VERSION END (DO NOT EDIT THIS COMMENT, for tools/codeArchiver.py)
 ###############################################
