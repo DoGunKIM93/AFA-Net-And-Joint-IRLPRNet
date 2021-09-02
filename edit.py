@@ -174,7 +174,8 @@ def trainStep(epoch, modelList, dataDict):
     lossBlend_MSE = mse_criterion(blendedImages, HRImages)
     lossBlend_DISTS = dists_criterion(blendedImages, HRImages)
 
-    loss = lossSR_MSE * 0.3 + lossSR_DISTS * 0.3 + lossDeblur * 0.3 + lossBlend_MSE + lossBlend_DISTS
+#     loss = lossSR_MSE * 0.3 + lossSR_DISTS * 0.3 + lossDeblur * 0.3 + lossBlend_MSE + lossBlend_DISTS
+    loss = lossBlend_MSE
 
     backproagateAndWeightUpdate(
         modelList, 
@@ -247,7 +248,8 @@ def validationStep(epoch, modelList, dataDict):
     lossBlend_MSE = mse_criterion(blendedImages, HRImages)
     lossBlend_DISTS = dists_criterion(blendedImages, HRImages)
 
-    loss = lossBlend_MSE * 0.7 + lossBlend_DISTS * 0.3
+#     loss = lossBlend_MSE * 0.7 + lossBlend_DISTS * 0.3
+    loss = lossBlend_MSE
 
     #return values
     lossDict = {
