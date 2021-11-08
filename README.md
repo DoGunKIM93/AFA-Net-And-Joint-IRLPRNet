@@ -63,4 +63,4 @@ python main.py -it
 ```
 
 ## Evaluation Metrics (Supplementary material)
-![initial](https://user-images.githubusercontent.com/16958744/131770346-e647e9a5-a687-4c99-906d-19f064a354ed.png)
+![initial](https://user-images.githubusercontent.com/16958744/140759646-3e0bd657-dd7c-466a-aeff-0701944804ec.png)
