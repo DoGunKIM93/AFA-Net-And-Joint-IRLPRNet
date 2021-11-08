@@ -40,6 +40,7 @@ from dataLoader import DataLoader
 from backbone.augmentation import _getSize, _resize
 
 from predefined.loss import CharbonnierLoss, EdgeLoss, Yolo_loss
+# please clone https://github.com/ultralytics/yolov3.git
 from yolov3.models.yolo import Model
 from yolov3.models.yolo_afa import Model_afa
 from yolov3.utils.loss import ComputeLoss
