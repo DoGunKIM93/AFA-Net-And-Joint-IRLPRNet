@@ -2,11 +2,14 @@
 AFA-Net: Adaptive Feature Attention Network in Image Deblurring and Super-Resolution for Improving License Plate Recognition
 
 ## Abstract
-Although a number of license plate recognition systems have become significantly advanced, they are still far from producing ideal images. They are still fiddled with low-resolution and motion blur, which are two of the most common problems in images extracted from automobile driving environment. In order to address this issue, we present a novel license plate recognition method that processes low-resolution and motion blurred images from dash cams. We propose a unique framework, AFA-Net (Adaptive Feature Attention Network), organized by image pre-restoration, feature composition and image reconstruction modules. The experimental results with 2,876 low-resolution and motion blurred images indicate that AFA-Net achieves 15.28\% improvement in recognition accuracy, 6.47\% in sequence similarity, and 3.89\% in character similarity, compared to the traditional license plate recognition models.
+Although a number of license plate recognition (LPR) systems have become significantly advanced, they are still far from producing ideal images. They are still fiddled with low-resolution (LR) and motion blur, which are two of the most common problems in images extracted from automobile driving environment. In order to address this issue, we present a novel LPR method that processes LR and motion blurred images from dash cams. We propose a unique framework, AFA-Net (Adaptive Feature Attention Network), which synthesizes the characteristics of Super Resolution (SR) and deblurring sub-networks at the pixel and feature levels. The proposed AFA-Net, organized by image pre-restoration, feature composition and image reconstruction modules, can generate a clear restoration image for robust LPR performance with the images obtained from dash cams in an unconstrained environment. Furthermore, we explore the novel problem, Joint-IRLPRNet (Joint-Image Restoration and License Plate Recognition Network), that simultaneously address image restoration (i.e. SR and deblurring) and LPR in an end-to end trainable manner. Moreover, we introduce a dataset called LBLP (LR and blurred license plate (LP)). The dataset is composed of 2,779 LR and motion blurred cropped LP images, extracted from unconstrained dash cams. The experimental results on LBLP dataset indicate that AFA-Net achieves 15.28\% improvement in recognition accuracy, 6.47\% in sequence similarity, and 3.89\% in character similarity, compared to the traditional LPR model with image restoration model. Moreover, Joint-IRLPRNet can be more effective results than AFA-Net.
 
-
-## Overview of our framework
+## Overview of our framework (AFA-Net, Joint-IRLPRNet)
+### AFA-Net
 ![initial](https://user-images.githubusercontent.com/16958744/140759452-45664911-9c55-44e8-ba0a-d25f695c7817.png)
+### Joint-IRLPRNet
+![initial](https://user-images.githubusercontent.com/16958744/140759723-c446fb51-3623-4110-a74a-3835dbac94ed.png)
+
 ![initial](https://user-images.githubusercontent.com/16958744/131770465-3a0e0788-448a-4758-a715-7f6438ea08a1.PNG)
 
 ## Results
