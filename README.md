@@ -7,10 +7,9 @@ Although a number of license plate recognition (LPR) systems have become signifi
 ## Overview of our framework (AFA-Net, Joint-IRLPRNet)
 ### AFA-Net
 ![initial](https://user-images.githubusercontent.com/16958744/140759452-45664911-9c55-44e8-ba0a-d25f695c7817.png)
+![initial](https://user-images.githubusercontent.com/16958744/131770465-3a0e0788-448a-4758-a715-7f6438ea08a1.PNG)
 ### Joint-IRLPRNet
 ![initial](https://user-images.githubusercontent.com/16958744/140759723-c446fb51-3623-4110-a74a-3835dbac94ed.png)
-
-![initial](https://user-images.githubusercontent.com/16958744/131770465-3a0e0788-448a-4758-a715-7f6438ea08a1.PNG)
 
 ## Results
 ![initial](https://user-images.githubusercontent.com/16958744/131770166-e6a8f02d-65f1-4212-9e37-af0015772954.PNG)
