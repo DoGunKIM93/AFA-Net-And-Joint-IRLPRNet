@@ -6,7 +6,7 @@ Although a number of license plate recognition systems have become significantly
 
 
 ## Overview of our framework
-![initial](https://user-images.githubusercontent.com/16958744/105068951-c7605080-5ac4-11eb-96f3-fab38861ce82.PNG)
+![initial](https://user-images.githubusercontent.com/16958744/140759452-45664911-9c55-44e8-ba0a-d25f695c7817.png)
 ![initial](https://user-images.githubusercontent.com/16958744/131770465-3a0e0788-448a-4758-a715-7f6438ea08a1.PNG)
 
 ## Results
