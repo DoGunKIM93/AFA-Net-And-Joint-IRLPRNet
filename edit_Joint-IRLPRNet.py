@@ -48,8 +48,8 @@ from yolov3.utils.datasets import letterbox
 
 ################ V E R S I O N ################
 # VERSION START (DO NOT EDIT THIS COMMENT, for tools/codeArchiver.py)
-version = 'Object_Detection'
-subversion = '1-Joint-IRLPRNet'
+version = '1-CVPR'
+subversion = '2-Joint-IRLPRNet'
 
 # VERSION END (DO NOT EDIT THIS COMMENT, for tools/codeArchiver.py)
 ###############################################
@@ -160,30 +160,24 @@ class ModelList(structure.ModelListBase):
         # IR
         self.BLENDER_RES_f4 = model.DeNIQuA_Res(None, CW=128, Blocks=9, inFeature=2, outCW=2048, featureCW=2048)
         self.BLENDER_RES_f4_optimizer = torch.optim.Adam(self.BLENDER_RES_f4.parameters(), lr=1E-3)
-        self.BLENDER_RES_f4_pretrained = "BLENDER_RES_f4-201.pth"
         
         self.BLENDER_RES_f3 = model.DeNIQuA_Res(None, CW=128, Blocks=9, inFeature=2, outCW=1024, featureCW=1024)
-        # self.BLENDER_RES_f3_optimizer = torch.optim.Adam(self.BLENDER_RES_f3.parameters(), lr=1E-3) #0.00001
-        self.BLENDER_RES_f3_pretrained = "temp/1-End-to-end_AFA-Net_0_1:1_v2_with_out_syn_with_per_BLENDER_RES_f3-101.pth" # BLENDER_RES_f3-LBLP.pth BLENDER_RES_f3-201.pth
+        self.BLENDER_RES_f3_optimizer = torch.optim.Adam(self.BLENDER_RES_f3.parameters(), lr=1E-3)
 
         self.BLENDER_RES_f2 = model.DeNIQuA_Res(None, CW=128, Blocks=9, inFeature=2, outCW=512, featureCW=512)
-        # self.BLENDER_RES_f2_optimizer = torch.optim.Adam(self.BLENDER_RES_f2.parameters(), lr=1E-3) #0.00001
-        self.BLENDER_RES_f2_pretrained = "temp/1-End-to-end_AFA-Net_0_1:1_v2_with_out_syn_with_per_BLENDER_RES_f2-101.pth" # BLENDER_RES_f2-LBLP.pth BLENDER_RES_f2-201.pth
+        self.BLENDER_RES_f2_optimizer = torch.optim.Adam(self.BLENDER_RES_f2.parameters(), lr=1E-3)
 
         self.BLENDER_RES_f1 = model.DeNIQuA_Res(None, CW=128, Blocks=9, inFeature=2, outCW=256, featureCW=256)
-        # self.BLENDER_RES_f1_optimizer = torch.optim.Adam(self.BLENDER_RES_f1.parameters(), lr=1E-3) #0.00001
-        self.BLENDER_RES_f1_pretrained = "temp/1-End-to-end_AFA-Net_0_1:1_v2_with_out_syn_with_per_BLENDER_RES_f1-101.pth" # BLENDER_RES_f1-LBLP.pth BLENDER_RES_f1-201.pth
+        self.BLENDER_RES_f1_optimizer = torch.optim.Adam(self.BLENDER_RES_f1.parameters(), lr=1E-3)
         
         self.BLENDER_DECO = model.tSeNseR_AFA(CW=2048, inFeatures=1)
-        # self.BLENDER_DECO_optimizer = torch.optim.Adam(self.BLENDER_DECO.parameters(), lr=1E-3) #0.00001
-        self.BLENDER_DECO_pretrained = "temp/1-End-to-end_AFA-Net_0_1:1_v2_with_out_syn_with_per_BLENDER_DECO-101.pth" # BLENDER_DECO-LBLP.pth BLENDER_DECO_ResNeSt200-2.pth BLENDER_DECO-201.pth
+        self.BLENDER_DECO_optimizer = torch.optim.Adam(self.BLENDER_DECO.parameters(), lr=1E-3)
         
-
 
         # Object Detection(LPR)
         self.LPR = Model('yolov3/models/yolov3.yaml', ch=3, nc=10, anchors=hyp.get('anchors')).to(device)
-        self.LPR_pretrained = "temp/1-End-to-end_AFA-Net_0_1:1_v2_with_out_syn_with_per_LPR-101.pth" # OD-201.pth OD-191.pth utra_yolov3.pt
-        # self.LPR_optimizer = torch.optim.Adam(self.LPR.parameters(), lr=1E-3)
+        self.LPR_pretrained = "utra_yolov3.pt"
+        self.LPR_optimizer = torch.optim.Adam(self.LPR.parameters(), lr=1E-3)
         
         nl = self.LPR.model[-1].nl
         nc = 10
@@ -229,12 +223,9 @@ def _blend(modelList, SRImages, deblurredImages):
 
 def trainStep(epoch, modelList, dataDict, i):
     #define loss function
-    # Charbonnier_criterion = CharbonnierLoss()
-    # Edge_criterion = EdgeLoss()
-    # l1_criterion = nn.L1Loss()
+    Charbonnier_criterion = CharbonnierLoss()
     mse_criterion = nn.MSELoss()
-    # yolo_criterion = Yolo_loss(device=None, batch=Config.param.data.dataLoader.train.batchSize, n_classes=10)
-    # Perceptual_criterion = VGGPerceptualLoss().cuda()
+    Perceptual_criterion = VGGPerceptualLoss().cuda()
     #define input data and label
     LRImages = dataDict['BLURRY_LR']
     HRImages = dataDict['GT']
@@ -259,8 +250,6 @@ def trainStep(epoch, modelList, dataDict, i):
     with torch.no_grad():
         #SR
         SRImages = modelList.SR(LRImages)
-        # print(LRImages.shape)
-        # print(SRImages.shape)
         #Deblur
         deblurredImages = modelList.DB(LRImages)
         # print("size=SRImages.size()[-2:] :", SRImages.size()[-2:])
@@ -268,15 +257,13 @@ def trainStep(epoch, modelList, dataDict, i):
         blendedImages, blendedFeatures = _blend(modelList, SRImages, deblurredImages)
     
     #calculate loss and backpropagation
-    # lossBlend_MSE = mse_criterion(blendedImages, HRImages)
+    lossBlend_MSE = mse_criterion(blendedImages, HRImages)
     # lossBlend_Perceptual = Perceptual_criterion(blendedImages, HRImages)
-    # loss_AFA_Net = lossBlend_MSE# + lossBlend_Perceptual*0.1
+    loss_AFA_Net = lossBlend_MSE# + lossBlend_Perceptual*0.1
     
     
     # Object Detection(LPR) 
-    # predict = modelList.LPR(blendedImages, blendedFeatures)
-    predict = modelList.LPR(blendedImages) #blendedImages HRImages
-    # print("predict shape : ", predict[0].shape)
+    predict = modelList.LPR(blendedImages, blendedFeatures)
     
     # 10 num 5 -> num * 10 6    
     new_data = []
@@ -297,21 +284,16 @@ def trainStep(epoch, modelList, dataDict, i):
     # print("labels_out shape : ", labels_out.shape)
 
     loss_lpr, loss_items, lbox, lobj, lcls = compute_loss(predict, labels_out)
-    loss = loss_lpr# * 0.1 + loss_AFA_Net
+    loss = loss_lpr * 0.1 + loss_AFA_Net
     
-    # loss = loss_AFA_Net
     #calculate loss and backpropagation    
     backproagateAndWeightUpdate(modelList, loss)#, gradientClipping=1.0) 
 
     #return values
-    lossDict = {'TRAIN_YOLOv3_LOSS' : loss_lpr, 'TRAIN_YOLOv3_lbox': lbox, 'TRAIN_YOLOv3_lobj': lobj, 'TRAIN_YOLOv3_lcls': lcls}
-    # SRImagesDict = {
-    #     "HR" : HRImages
-    # }
-
+    # lossDict = {'TRAIN_YOLOv3_LOSS' : loss_lpr, 'TRAIN_YOLOv3_lbox': lbox, 'TRAIN_YOLOv3_lobj': lobj, 'TRAIN_YOLOv3_lcls': lcls}
     # lossDict = {'TRAIN_AFA_Net_LOSS' : loss, 'TRAIN_AFA_Net_LOSS_mse': lossBlend_MSE}#, 'TRAIN_AFA_Net_LOSS_perceptural': lossBlend_Perceptual*0.1}
     
-    # lossDict = {'TRAIN_END2END_LOSS': loss, 'TRAIN_AFA_Net_LOSS' : loss_AFA_Net, 'TRAIN_YOLOv3_LOSS' : loss_lpr, 'TRAIN_YOLOv3_lbox': lbox, 'TRAIN_YOLOv3_lobj': lobj, 'TRAIN_YOLOv3_lcls': lcls}
+    lossDict = {'TRAIN_END2END_LOSS': loss, 'TRAIN_AFA_Net_LOSS' : loss_AFA_Net, 'TRAIN_YOLOv3_LOSS' : loss_lpr, 'TRAIN_YOLOv3_lbox': lbox, 'TRAIN_YOLOv3_lobj': lobj, 'TRAIN_YOLOv3_lcls': lcls}
     SRImagesDict = {
         "LR_BLURRY": LRImages,
         "SR": SRImages, 
@@ -327,16 +309,13 @@ def trainStep(epoch, modelList, dataDict, i):
 def validationStep(epoch, modelList, dataDict, i):
     #define loss function
     mse_criterion = nn.MSELoss()
-    # l1_criterion = nn.L1Loss()
-    # Charbonnier_criterion = CharbonnierLoss()
-    # Edge_criterion = EdgeLoss()
-    # yolo_criterion = Yolo_loss(device=None, batch=Config.param.data.dataLoader.validation.batchSize, n_classes=10)
-    # Perceptual_criterion = VGGPerceptualLoss().cuda()
+    Charbonnier_criterion = CharbonnierLoss()
+    Perceptual_criterion = VGGPerceptualLoss().cuda()
 
     #define input data and label
     LRImages = dataDict['BLURRY_LR']
     HRImages = dataDict['GT']
-    # bboxes = dataDict['TXT']
+    bboxes = dataDict['TXT']
 
     
     #eval mode
@@ -371,12 +350,8 @@ def validationStep(epoch, modelList, dataDict, i):
 
         # BLEND
         blendedImages, blendedFeatures = _blend(modelList, SRImages, deblurredImages)
-        
-        # bboxes = torch.Tensor(bboxes).cuda()
-        # bboxes_pred = modelList.LPR(SRImages, deblurredImages, blendedImages, inference=False)
-        
-        predict = modelList.LPR(blendedImages, augment = False)[0]
-        # predict = modelList.LPR(blendedImages, blendedFeatures, augment = False)[0]
+                
+        predict = modelList.LPR(blendedImages, blendedFeatures, augment = False)[0]
         
         conf_thres = 0.25
         iou_thres = 0.5
@@ -387,20 +362,6 @@ def validationStep(epoch, modelList, dataDict, i):
         gn = torch.tensor([320, 320])[[1, 0, 1, 0]]  # normalization gain whwh
         nb = 1
 
-        # lb = []
-        # targets = torch.zeros([0])
-        # for i, bbox in enumerate(bboxes):
-        #     new_bbox  = [[0 for col in range(6)] for row in range(len(bbox))]
-        #     # 4 ~ 6th
-        #     # print(bbox)
-        #     for k, bbo in enumerate(bbox):
-        #         new_bbox[k][0] = i
-        #         new_bbox[k][1:] = bbo
-        #     # print("new_bbox : ", new_bbox)
-        
-        #     targets = torch.Tensor(new_bbox).cuda() 
-        # lb = [targets[targets[:, 0] == i, 1:] for i in range(nb)]
-        
         # Apply NMS
         predict = non_max_suppression(predict, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
         # print(predict)
@@ -423,40 +384,16 @@ def validationStep(epoch, modelList, dataDict, i):
             full_list.sort(key=lambda x:int(x[1]))
             print("after full_list : ", full_list)
 
-        '''
-        # Process detections
-        for j, det in enumerate(predict):  # detections per image
-            print("len(det) :", len(det))
-            if len(det):
-                # Rescale boxes from img_size to im0 size
-                # print("img.shape[2:], im0.shape : ", blendedImages.shape[2:], blendedImages.shape)
-                det[:, :4] = scale_coords(HRImages.shape[2:], det[:, :4], HRImages.shape).round() # blendedImages
-
-                # Print results
-                for c in det[:, -1].unique():
-                    n = (det[:, -1] == c).sum()  # detections per class
-                    # s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
-
-                # Write results
-                for *xyxy, conf, cls in reversed(det):
-                    xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-                    line = (cls, *xywh, conf) if save_conf else (cls, *xywh)  # label format
-                    print(j, line)
-                    # with open(txt_path + '.txt', 'a') as f:
-                    #     f.write(('%g ' * len(line)).rstrip() % line + '\n')
-        '''
-        
-
     #calculate loss
     lossBlend_MSE = mse_criterion(blendedImages, HRImages) # for run
     # lossBlend_Perceptual = Perceptual_criterion(blendedImages, HRImages)
     loss_AFA_Net = lossBlend_MSE# + lossBlend_Perceptual*0.1
 
-    # loss_od, loss_items, lbox, lobj, lcls = compute_loss(pred, labels_out)
-    # loss = loss_AFA_Net * 0.3 + loss_od * 0.7
+    loss_od, loss_items, lbox, lobj, lcls = compute_loss(pred, labels_out)
+    loss = loss_AFA_Net * 0.1 + loss_od 
 
-    lossDict = {'TRAIN_AFA-Net_LOSS' : loss_AFA_Net}
-    # lossDict = {'VAL_END2END_LOSS': loss, 'TRAIN_AFA_Net_LOSS' : loss_AFA_Net, 'TRAIN_YOLOv3_LOSS' : loss_od, 'TRAIN_YOLOv3_lbox': lbox, 'TRAIN_YOLOv3_lobj': lobj, 'TRAIN_YOLOv3_lcls': lcls}
+    # lossDict = {'TRAIN_AFA-Net_LOSS' : loss_AFA_Net}
+    lossDict = {'VAL_END2END_LOSS': loss, 'TRAIN_AFA_Net_LOSS' : loss_AFA_Net, 'TRAIN_YOLOv3_LOSS' : loss_od, 'TRAIN_YOLOv3_lbox': lbox, 'TRAIN_YOLOv3_lobj': lobj, 'TRAIN_YOLOv3_lcls': lcls}
 
     SRImagesDict = {
         "LR_BLURRY": LRImages,
@@ -474,7 +411,7 @@ def inferenceStep(epoch, modelList, dataDict, num):
     # LRImages = dataDict['LR']
     LRImages = dataDict['BLURRY_LR']
     HRImages = dataDict['GT']
-    # bboxes = dataDict['TXT']
+    bboxes = dataDict['TXT']
 
     
     modelList.SR.eval()
@@ -551,53 +488,6 @@ def inferenceStep(epoch, modelList, dataDict, num):
             with open(savePath, 'w') as f:
                 f.write(predict_txt)
 
-        '''
-        # Process detections
-        for j, det in enumerate(predict):  # detections per image
-            print("len(det) :", len(det))
-
-            temp_list = []
-            if len(det):
-                # Rescale boxes from img_size to im0 size
-                # print("img.shape[2:], im0.shape : ", blendedImages.shape[2:], blendedImages.shape)
-                det[:, :4] = scale_coords(blendedImages.shape[2:], det[:, :4], blendedImages.shape).round() # blendedImages
-                
-                # Print results
-                for c in det[:, -1].unique():
-                    n = (det[:, -1] == c).sum()  # detections per class
-                    # s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
-
-                # Write results
-                for *xyxy, conf, cls in reversed(det):
-                    xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-                    line = (cls, *xywh, conf) if save_conf else (cls, *xywh)  # label format
-                    # 0 (tensor(5., device='cuda:0'), 0.0062500000931322575, 0.0015625000232830644, 0.0, 0.0031250000465661287, tensor(0.61358, device='cuda:0'))
-
-                    # print(line[0], line[1], line[2], line[3], line[4], line[5])
-                    temp_string = str(int(line[0].item())) + ',' + str(line[1]) +  ',' + str(line[2]) + ',' + str(line[3]) +  ',' + str(line[4]) + ',' + str(line[5].item())
-                    print("temp_string : ", temp_string)
-                    temp_list.append(temp_string)
-                    # print(i, line)
-        
-
-            full_list = []
-            for txtString in temp_list:
-                full_list.append(txtString.strip().split(','))
-            print("full_list : ", full_list)
-            full_list.sort(key=lambda x:x[1])
-            predict_txt = ''
-            for txtString in full_list:
-                # print(txtString)
-                predict = txtString[0]
-                # print("predict : ", predict)
-                predict_txt = predict_txt + predict
-            print(num, predict_txt)
-
-            savePath = f"./data/{version}/result/{subversion}/{'inference'}-{epoch}-{num}.txt"
-            print(savePath)
-            with open(savePath, 'w') as f:
-                f.write(predict_txt)
-        '''
 
         SRImagesDict = {
         "LR_BLURRY": LRImages,
@@ -606,19 +496,6 @@ def inferenceStep(epoch, modelList, dataDict, num):
         "Blend": blendedImages,
         "HR" : HRImages
         }   
-
-    # print(predict)
-    # modelList.NET.eval()
-    # #h,w = LRImages.shape[2], LRImages.shape[3]
-
-    # with torch.no_grad():
-    #     #SR
-    #     SRImages = modelList.NET(dataDict['LR'])
-    #     # Deblur
-    #     deblurredImages, _, _ = modelList.NET(LRImages)
-    #     #deblurredImages = deblurredImages[:,:,:h,:w]
-
-    #     SRImagesDict = {'Deblur': deblurredImages}
 
 
     return {}, SRImagesDict
