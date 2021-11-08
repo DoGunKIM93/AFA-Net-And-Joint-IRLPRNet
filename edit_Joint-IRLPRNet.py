@@ -26,9 +26,6 @@ from torchvision.utils import save_image
 #from iqa-pytorch
 from IQA_pytorch import MS_SSIM, SSIM, GMSD, LPIPSvgg, DISTS
 
-#Gradually warm-up(increasing) learning rate for pytorch's optimizer.
-# from warmup_scheduler import GradualWarmupScheduler
-
 #from this project
 import backbone.vision as vision
 import model
@@ -41,9 +38,6 @@ from backbone.structure import Epoch
 from dataLoader import DataLoader
 
 from backbone.augmentation import _getSize, _resize
-#from backbone.PULSE.stylegan import G_synthesis,G_mapping
-#from backbone.PULSE.SphericalOptimizer import SphericalOptimizer
-#from backbone.PULSE.loss import LossBuilder
 
 from predefined.loss import CharbonnierLoss, EdgeLoss, Yolo_loss
 from yolov3.models.yolo import Model
@@ -54,34 +48,8 @@ from yolov3.utils.datasets import letterbox
 
 ################ V E R S I O N ################
 # VERSION START (DO NOT EDIT THIS COMMENT, for tools/codeArchiver.py)
-
-#version = 'SISR-Implementation2'
-#subversion = '1-DRLN_192_train'
-#subversion = '1-DeFiAN_inference'
-
-#version = 'NTIRE2021-Track1'
-#subversion = '1-High_Deblur(DRLN_DMPHN_Lv4_176)_300_L1_64'
-#subversion = '1-High_Deblur(DRLN_DMPHN_Lv4_176)_300_L1_192'
-#subversion = '1-High_Deblur(DRLN_DMPHN_Lv4_176)_300_L2_128_end2end'
-#subversion = '1-High_Deblur(GFN)_300_L2_256_RDB'
-#subversion = '2-NTIRE2021_AFA-Net' #2-NTIRE2021_AFA-Net #2-NTIRE2021_AFA-Net_Deblur #2-NTIRE2021_AFA-Net_SR
-#subversion = '2-NTIRE2021_AFA-Net_MPRNet+DeFiAN_all_train'
-#subversion = '3-SISR_DeFiAN_REDS_sharp'
-
-# version = 'Deblur-Implementation2'
-# subversion = '1-MPRNet_train'
-
 version = 'Object_Detection'
-# subversion = '1-End-to-end_AFA-Net_0_1:1_v2_with_out_syn'
-# subversion = '1-AFA-Net_v2'
-# subversion = '1-End-to-end_AFA-Net_0_1:1_v2_with_out_syn_with_per'
-subversion = '1-End-to-end_AFA-Net_0_1:1_v2_with_out_syn_with_per_inference_101'
-# subversion = '1-pre_AFA-Net_YOLOv3_inference_226'
-
-# version = 'Satellite_Experimental'
-# subversion = '1-Defian_Satellite'
-# subversion = '1-Defian_Satellite_DOTA_v1.5_x2_from_Gomtang'
-# subversion = '1-Defian_Satellite_DOTA_v1.5_from_Gomtang_clipping'
+subversion = '1-Joint-IRLPRNet'
 
 # VERSION END (DO NOT EDIT THIS COMMENT, for tools/codeArchiver.py)
 ###############################################
@@ -163,8 +131,6 @@ class ModelList(structure.ModelListBase):
         # AFA-Net
         # PR_SR
         # DeFiAN
-        # L : n_channels = 64, n_blocks = 20, n_modules = 10 / S : n_channels = 32, n_blocks = 10, n_modules = 5
-        # self.SR = predefined.model.SR.DeFiAN(n_channels = 64, n_blocks = 20, n_modules = 10, scale = 4, normalize = 1)
         self.SR = predefined.model.SR.DeFiAN(n_channels = 64, n_blocks = 20, n_modules = 20, scale = 4, normalize = False)
         self.SR_pretrained = "DeFiAN-GOMTANG.pth" # DeFiAN_L_x4.pth # DeFiAN_S_x4.pth # DeFiAN_L_x4_air.pth # DeFiAN-GOMTANG.pth
         # self.SR_optimizer = torch.optim.Adam(self.SR.parameters(), lr=0.00001)
@@ -175,10 +141,8 @@ class ModelList(structure.ModelListBase):
         # PR_Deblur        
         # MPRNet
         self.DB = predefined.model.deblur.MPRNet()
-        self.DB_pretrained = "MPRNet_pretrained.pth"
-        
+        self.DB_pretrained = "MPRNet_pretrained.pth"        
         # self.DB_optimizer = torch.optim.Adam(self.DB.parameters(), lr=0.00001)
-        # self.DB_optimizer = torch.optim.Adam(self.DB.parameters(), lr=2e-4) # torch.optim.Adam(self.DB.parameters(), lr=2e-4, betas=(0.9, 0.999), eps=1e-8)
         # self.DB_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.DB_optimizer, T_0=10, T_mult=1, eta_min=0.000001)
                 
         # num_epochs = 3000
@@ -190,13 +154,13 @@ class ModelList(structure.ModelListBase):
         
         # FC
         self.BLENDER_FE = predefined.model.classifier.ResNeSt("200", mode="feature_extractor")
-        # self.BLENDER_FE_optimizer = torch.optim.Adam(self.BLENDER_FE.parameters(), lr=1E-3) #0.00001
-        self.BLENDER_FE_pretrained = "temp/1-End-to-end_AFA-Net_0_1:1_v2_with_out_syn_with_per_BLENDER_FE-101.pth" # BLENDER_FE-LBLP.pth BLENDER_FE_ResNeSt200-2.pth BLENDER_FE-201.pth
+        self.BLENDER_FE_optimizer = torch.optim.Adam(self.BLENDER_FE.parameters(), lr=1E-3)
+        self.BLENDER_FE_pretrained = "BLENDER_FE_ResNeSt200-2.pth"
 
         # IR
         self.BLENDER_RES_f4 = model.DeNIQuA_Res(None, CW=128, Blocks=9, inFeature=2, outCW=2048, featureCW=2048)
-        # self.BLENDER_RES_f4_optimizer = torch.optim.Adam(self.BLENDER_RES_f4.parameters(), lr=1E-3) #0.00001
-        self.BLENDER_RES_f4_pretrained = "temp/1-End-to-end_AFA-Net_0_1:1_v2_with_out_syn_with_per_BLENDER_RES_f4-101.pth" # BLENDER_RES_f4-LBLP.pth BLENDER_RES_f4-201.pth
+        self.BLENDER_RES_f4_optimizer = torch.optim.Adam(self.BLENDER_RES_f4.parameters(), lr=1E-3)
+        self.BLENDER_RES_f4_pretrained = "BLENDER_RES_f4-201.pth"
         
         self.BLENDER_RES_f3 = model.DeNIQuA_Res(None, CW=128, Blocks=9, inFeature=2, outCW=1024, featureCW=1024)
         # self.BLENDER_RES_f3_optimizer = torch.optim.Adam(self.BLENDER_RES_f3.parameters(), lr=1E-3) #0.00001
