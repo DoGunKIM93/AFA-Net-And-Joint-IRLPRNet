@@ -47,7 +47,7 @@ datasetPath: 'dataset directory path' (in Param.yaml)
 ```
 
 ## Pre-trained
-LBLP Pre-trained download : Due to the anoyomity issue, the pre-trained model will be released after the conference acceptacne. (Each file exceeds 100 MB)
+LBLP Pre-trained download : google drive link for original model (https://drive.google.com/drive/folders/1HlkP7DWPqeFg_cAHxWJAc7eN0xY7__yY?usp=drive_link)
 ```
 pretrainedPath: 'Pre-trained directory path' (in Param.yaml)
 ```
