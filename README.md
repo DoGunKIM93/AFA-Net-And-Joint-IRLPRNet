@@ -41,7 +41,7 @@ pip install fast_slic munch IQA_pytorch pillow
 ```
 
 ## Dataset
-LBLP Dataset download : Due to the anonymity issue, the full LBLP dataset will be released after the conference acceptance. For now, we only provide the test of the dataset through the png file. (LBLP_samples)
+LBLP Dataset download : google drive link (https://drive.google.com/file/d/1e95003bFPG30soCQan_opC6l3wHaIaU2/view?usp=drive_link)
 ```
 datasetPath: 'dataset directory path' (in Param.yaml)
 ```
